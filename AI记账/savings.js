@@ -482,8 +482,13 @@
 
   /**
    * 条目 → 品牌瓦片 id（键取自 deals.js 的 BRANDS / LOGOS）。
-   * 只有「真的对应某家商户」的条目才有；食堂清仓、外卖会员这种
-   * 没有具体商户的动作不硬套 logo，走分类线性图标。
+   * 三级判定：
+   *   ① MERCHANT_BRAND 显式映射（人工核对过，最准，优先级最高）；
+   *   ② 标题主语里的品牌名（自动识别，主语 = 冒号/竖线之前的部分）；
+   *   ③ 都没有 → 不硬套 logo，走分类线性图标。
+   *
+   * 为什么只扫「主语」：标题常写成「华莱士：只买抖音/美团团购双人餐」——
+   * 主体是华莱士，抖音/美团只是工具。全标题扫描会把工具品牌误当主体。
    */
   var MERCHANT_BRAND = {
     'mcd.01': 'mcd', 'mcd.member': 'mcd-member',
@@ -508,14 +513,90 @@
     'zunte.52': 'zunte'
   };
 
+  /** 标题主语：取「：/:|/」之前的部分，后面是补充说明或操作方式 */
+  function titleSubject(title) {
+    var t = String(title || '');
+    var m = t.match(/^([^：:｜|]+)/);
+    return (m && m[1] ? m[1] : t).trim();
+  }
+
+  /**
+   * 品牌名扫描缓存：deals.js 的 BRAND_NAMES（中文名 → logo key）。
+   * BRAND_NAMES 按品牌名长度降序，保证「美团单车」先于「美团」命中。
+   */
+  var _brandNames = null;
+  function brandNameTable() {
+    if (_brandNames) { return _brandNames; }
+    var D = dealsApi();
+    var src = (D && D.BRAND_NAMES) ? D.BRAND_NAMES : null;
+    _brandNames = { list: [], map: src || {} };
+    if (src) {
+      for (var k in src) {
+        if (Object.prototype.hasOwnProperty.call(src, k)) {
+          _brandNames.list.push(k);
+        }
+      }
+      _brandNames.list.sort(function (a, b) { return b.length - a.length; });
+    }
+    return _brandNames;
+  }
+
+  /**
+   * 在一段文字里找出所有品牌名（按出现位置排序，同位置长名优先）。
+   * 返回 [{name, key, at}]。
+   */
+  function scanBrandNames(text) {
+    var t = String(text || '');
+    if (!t) { return []; }
+    var bt = brandNameTable();
+    var found = [];
+    var used = [];
+    for (var i = 0; i < bt.list.length; i++) {
+      var n = bt.list[i];
+      var at = t.indexOf(n);
+      if (at < 0) { continue; }
+      /* 同位置已被更长的名字占住 → 跳过（「美团」与「美团单车」同起点时） */
+      var clash = false;
+      for (var j = 0; j < found.length; j++) {
+        if (found[j].at === at && found[j].name.length >= n.length) { clash = true; break; }
+      }
+      if (clash) { continue; }
+      found.push({ name: n, key: bt.map[n], at: at });
+    }
+    found.sort(function (a, b) {
+      if (a.at !== b.at) { return a.at - b.at; }
+      return b.name.length - a.name.length;
+    });
+    return found;
+  }
+
+  /**
+   * 条目标题里的品牌：返回按位置排序的 key 数组（最多 2 个）。
+   * 「美团/饿了么」这种并列主体会返回两个，卡片上并排显示两个瓦片。
+   */
+  function brandsOfEntry(entry) {
+    if (!entry) { return []; }
+    var subj = titleSubject(entry.title);
+    var hits = scanBrandNames(subj);
+    var keys = [];
+    for (var i = 0; i < hits.length && keys.length < 2; i++) {
+      var k = hits[i].key;
+      if (k && keys.indexOf(k) < 0) { keys.push(k); }
+    }
+    return keys;
+  }
+
   /** 取品牌瓦片 id：'fastfood.mcd.01' → 'mcd'，没有则返回 '' */
   function brandIdOf(entry) {
     var id = String((entry && entry.id) || '');
     var m = id.match(/^[a-z]+\.([\w.\-]+)$/);
-    return (m && MERCHANT_BRAND[m[1]]) || '';
+    if (m && MERCHANT_BRAND[m[1]]) { return MERCHANT_BRAND[m[1]]; }
+    var ks = brandsOfEntry(entry);
+    return ks.length ? ks[0] : '';
   }
 
   function dealsApi() {
+    if (isNode) { return require('./deals.js'); }
     return (global.AJ && global.AJ.deals) ? global.AJ.deals : null;
   }
 
@@ -528,14 +609,30 @@
   /**
    * 条目图标：真实品牌 logo > 品牌字母章 > 分类线性图标。
    * size: 'md'(24px，卡片标题) | 'sm'(20px，紧凑行) | 省略(30px)
+   *
+   * 「美团/饿了么」这类并列主体返回两个瓦片并排（.sv-tiles），
+   * 单品牌仍是单个（.sv-tile），排版不变。
    */
   function entryIconHtml(entry, size) {
     if (!entry) { return ''; }
-    var bid = brandIdOf(entry);
     var D = dealsApi();
-    if (bid && D && D.brandTile) {
-      var tile = D.brandTile(bid, size || 'md');
-      if (tile) { return tile; }
+    var keys = brandsOfEntry(entry);
+    /* 显式映射优先（人工核对过），其次标题扫描 */
+    var id = String(entry.id || '');
+    var m = id.match(/^[a-z]+\.([\w.\-]+)$/);
+    if (m && MERCHANT_BRAND[m[1]]) { keys = [MERCHANT_BRAND[m[1]]]; }
+
+    if (D && D.brandTile && keys.length) {
+      var tiles = '';
+      for (var i = 0; i < keys.length; i++) {
+        var t = D.brandTile(keys[i], size || 'md');
+        if (t) { tiles += t; }
+      }
+      if (tiles) {
+        return keys.length > 1
+          ? '<span class="sv-tiles">' + tiles + '</span>'
+          : tiles;
+      }
     }
     return catIconHtml(entry.cat, size === 'sm' ? 'sv-ico sm' : 'sv-ico');
   }
@@ -571,7 +668,7 @@
     var m = catMeta(entry.cat);
     var checked = !!opts.checked;
     var q = opts.q || '';
-    var saveLabel = saveText(entry);
+    var saveLabel = opts.saveLabel || saveText(entry);
 
     var html = '<div class="sv-card' + (checked ? ' is-checked' : '') + '" data-sv-id="' + esc(entry.id) + '">';
 
@@ -591,12 +688,14 @@
 
     html += '<div class="sv-risk">' + svIcon('alert') + esc(entry.risk) + '</div>';
 
-    html += '<div class="sv-acts">' +
-      '<button type="button" class="btn-mini' + (checked ? '' : ' primary') + '" data-sv-act="toggle" data-sv-id="' + esc(entry.id) + '">' +
-      (checked ? '✓ 今天用了（点击撤销）' : '✓ 今天用了') +
-      '</button>' +
-      '<button type="button" class="btn-mini" data-sv-act="detail" data-sv-id="' + esc(entry.id) + '">详情</button>' +
-      '</div>';
+    if (!opts.noActs) {
+      html += '<div class="sv-acts">' +
+        '<button type="button" class="btn-mini' + (checked ? '' : ' primary') + '" data-sv-act="toggle" data-sv-id="' + esc(entry.id) + '">' +
+        (checked ? '✓ 今天用了（点击撤销）' : '✓ 今天用了') +
+        '</button>' +
+        '<button type="button" class="btn-mini" data-sv-act="detail" data-sv-id="' + esc(entry.id) + '">详情</button>' +
+        '</div>';
+    }
 
     html += '</div>';
     return html;
@@ -611,6 +710,17 @@
     var now = ctx.now || new Date();
     var logs = ctx.logs || [];
     var list = rankToday(ENTRIES, ctx);
+    /* 同一品牌当天若已被「省钱雷达」推了活动，图谱这条就不重复出现 ——
+       两个模块说同一件事会让用户以为是两笔不同的省钱机会。 */
+    if (ctx && ctx.excludeNames && ctx.excludeNames.length) {
+      list = list.filter(function (e) {
+        var t = String(e.title || '');
+        for (var k = 0; k < ctx.excludeNames.length; k++) {
+          if (t.indexOf(ctx.excludeNames[k]) >= 0) { return false; }
+        }
+        return true;
+      });
+    }
     var day = dateKey(now);
     var html = '';
 
@@ -775,6 +885,7 @@
     /* 渲染 */
     catMeta: catMeta, entryCardHtml: entryCardHtml, todayCardHtml: todayCardHtml,
     catIconHtml: catIconHtml, entryIconHtml: entryIconHtml, brandIdOf: brandIdOf,
+    brandsOfEntry: brandsOfEntry, titleSubject: titleSubject,
     esc: esc, fmt: fmt,
 
     /* 导出 */

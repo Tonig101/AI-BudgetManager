@@ -9,7 +9,7 @@
  * Node  ：require('./billfilter.js') 直接返回 API（便于单元测试）
  *
  * 对外 API（window.AJ.billFilter）：
- *   DEFAULTS       默认空筛选 { cats: [], sources: [], min: '', max: '', note: '' }
+ *   DEFAULTS       默认空筛选 { cats: [], sources: [], min: '', max: '', note: '', from: '', to: '' }
  *   CATS          支出分类（与 DATA.CATEGORY_KEYS 一致，缺 DATA 时用内置副本兜底）
  *   SOURCES       收入分类（与 DATA.INCOME_SOURCES 一致，缺 DATA 时用内置副本兜底）
  *   normalize(f)  把任意输入整理成安全筛选对象（非法输入一律兜底，绝不抛异常）
@@ -22,7 +22,9 @@
  *   - 分类 / 来源都未选任何：不过滤类型（全部显示）
  *   - 选了部分：支出账单需 b.category 落在所选支出分类；收入账单需 b.source 落在所选收入分类
  *   - 两类各自独立（可只选支出 / 只选收入 / 都选）
- *   - 金额区间、备注关键词与类型选择是「与（AND）」关系
+ *   金额区间、备注关键词、时间范围与类型选择是「与（AND）」关系
+ *   - 时间范围：from = 起始日、to = 截止日，均为 'YYYY-MM-DD'（闭区间）；
+ *     两者都空 = 不限日期；填反了（from > to）会自动对调，不会筛不出东西
  *   - 空筛选（全空）= 显示全部（等价无筛选）
  */
 (function (global) {
@@ -57,11 +59,29 @@
     ? DATA.INCOME_SOURCES.slice() : BUILTIN_SOURCES.slice();
 
   /** 默认空筛选（导出为常量供 UI 重置时引用；运行时状态请用 normalize(DEFAULTS) 取新对象，避免引用共享） */
-  var DEFAULTS = { cats: [], sources: [], min: '', max: '', note: '' };
+  var DEFAULTS = { cats: [], sources: [], min: '', max: '', note: '', from: '', to: '' };
 
   /** 返回一份全新的空筛选对象（避免外部改动污染 DEFAULTS） */
   function freshDefault() {
-    return { cats: [], sources: [], min: '', max: '', note: '' };
+    return { cats: [], sources: [], min: '', max: '', note: '', from: '', to: '' };
+  }
+
+  /**
+   * 把输入转成 'YYYY-MM-DD' 或 ''（=不限）。
+   * 非法格式（'abc'、'2026-13-01'、'2026/01/01'）一律兜底成不限，绝不抛异常。
+   * 同时校验是真实存在的日期（挡掉 2 月 30 日这类）。
+   */
+  function toDateStr(v) {
+    if (v === '' || v === null || v === undefined) { return ''; }
+    var s = String(v).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) { return ''; }
+    var y = Number(s.slice(0, 4));
+    var m = Number(s.slice(5, 7));
+    var d = Number(s.slice(8, 10));
+    if (m < 1 || m > 12 || d < 1 || d > 31) { return ''; }
+    var dt = new Date(y, m - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) { return ''; }
+    return s;
   }
 
   /**
@@ -98,16 +118,24 @@
   /**
    * 把输入整理成安全筛选对象；非法输入一律兜底，绝不抛异常。
    * @param {*} f 任意（可能 null / 非对象 / 字段类型错 / 含 NaN）
-   * @return {{cats:string[],sources:string[],min:(number|string),max:(number|string),note:string}}
+   * @return {{cats:string[],sources:string[],min:(number|string),max:(number|string),note:string,from:string,to:string}}
    */
   function normalize(f) {
     if (!f || typeof f !== 'object') { return freshDefault(); }
+    var from = toDateStr(f.from);
+    var to = toDateStr(f.to);
+    /* 填反了就对调，避免用户输入 from > to 后一条都筛不出来 */
+    if (from !== '' && to !== '' && from > to) {
+      var sw = from; from = to; to = sw;
+    }
     return {
       cats: safeList(f.cats, CATS),
       sources: safeList(f.sources, SOURCES),
       min: toAmount(f.min),
       max: toAmount(f.max),
-      note: (typeof f.note === 'string') ? f.note.trim() : ''
+      note: (typeof f.note === 'string') ? f.note.trim() : '',
+      from: from,
+      to: to
     };
   }
 
@@ -115,10 +143,11 @@
   function isActive(f) {
     var n = normalize(f);
     return n.cats.length > 0 || n.sources.length > 0 ||
-      n.min !== '' || n.max !== '' || n.note !== '';
+      n.min !== '' || n.max !== '' || n.note !== '' ||
+      n.from !== '' || n.to !== '';
   }
 
-  /** 启用的筛选维度数（0~4）：支出分类 / 收入分类 / 金额区间 / 备注关键词 */
+  /** 启用的筛选维度数（0~5）：支出分类 / 收入分类 / 金额区间 / 备注关键词 / 时间范围 */
   function activeCount(f) {
     var n = normalize(f);
     var c = 0;
@@ -126,6 +155,7 @@
     if (n.sources.length > 0) { c++; }
     if (n.min !== '' || n.max !== '') { c++; }
     if (n.note !== '') { c++; }
+    if (n.from !== '' || n.to !== '') { c++; }
     return c;
   }
 
@@ -159,6 +189,15 @@
     if (n.note !== '') {
       var note = (bill.note == null ? '' : String(bill.note));
       if (note.trim().toLowerCase().indexOf(n.note.toLowerCase()) === -1) { return false; }
+    }
+
+    /* 时间范围：闭区间 [from, to]；账单日期是 'YYYY-MM-DD'，字符串比较即时间比较。
+       日期缺失的账单在启用时间筛选时一律排除（否则会混进不在区间内的记录）。 */
+    if (n.from !== '' || n.to !== '') {
+      var bd = (typeof bill.date === 'string') ? bill.date : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(bd)) { return false; }
+      if (n.from !== '' && bd < n.from) { return false; }
+      if (n.to !== '' && bd > n.to) { return false; }
     }
     return true;
   }

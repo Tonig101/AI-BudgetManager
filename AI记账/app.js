@@ -167,6 +167,40 @@
 
   /* 让 ocr.js 的云端识别走 WorkBuddy 云服务（视觉大模型），而非本地 detectCloud（浏览器直连腾讯云）。
      由 server.py 托管页面时 AJ_BACKEND_OCR 为真，ocr.js 的 detectBackend 会改调云服务。 */
+  /* ==================================================================
+   * 买谷指南模块（gu.js）—— 「省钱图谱 → 吃谷避坑」第 11 类的交互层
+   *
+   * 与 PIGGY 同构：gu.js 缺失 / 加载失败时全部返回空值，
+   * 吃谷工具箱入口自动隐藏，其它功能一行都不受影响。
+   * ================================================================== */
+  var GU = (function () {
+    var g = (global.AJ && global.AJ.gu) || null;
+    if (g && typeof g.searchGlossary === 'function' && typeof g.setCheck === 'function') { return g; }
+    return {
+      missing: true,
+      isReady: function () { return false; },
+      load: function () {},
+      reset: function () { return false; },
+      GLOSSARY: [], CHANNELS: [], GROUP_CHECKS: [], GACHA_QUESTIONS: [],
+      searchGlossary: function () { return []; },
+      gachaVerdict: function () { return { ok: false, pass: 0, total: 0, verdict: '', reason: '' }; },
+      getChecks: function () { return {}; },
+      setCheck: function () { return false; },
+      allGroupChecked: function () { return false; },
+      checkedCount: function () { return 0; },
+      getJar: function () { return { quota: 0, used: {}, logs: [] }; },
+      setQuota: function () { return { ok: false, quotaCents: 0, reason: 'missing' }; },
+      spend: function () { return { ok: false, reason: 'missing' }; },
+      addFunds: function () { return { ok: false, reason: 'missing' }; },
+      remainingCents: function () { return null; },
+      usedThisMonthCents: function () { return 0; },
+      monthKey: function () { return ''; },
+      listLogs: function () { return []; },
+      fmtCents: function (c) { return money((c || 0) / 100); },
+      dateKey: function () { return ''; }
+    };
+  })();
+
   global.AJ_BACKEND_OCR = true;
 
   /* 「理财课」聊天卡片最多直接列几条资源：2 个视频 + 1 门课程，正好 3 条，
@@ -419,8 +453,10 @@
   /** 轻量视图历史：记录进入子视图（专家/目标/看板）前的视图（仅内存，不持久化）。供「返回」按钮使用 */
   var viewHistory = [];
   /** 双 UI 视图集：完整版四视图 / 简洁版八屏（含 AI 对话记账屏 sai、省钱屏 ssave） */
-  var FULL_VIEWS = { chat: 1, dash: 1, goals: 1, coach: 1 };
-  var SIMPLE_VIEWS = { shome: 1, slist: 1, sbudget: 1, sprofile: 1, sai: 1, scoach: 1, sgoals: 1, ssave: 1, spiggy: 1 };
+  var FULL_VIEWS = { chat: 1, dash: 1, goals: 1, coach: 1, dazai: 1 };
+  /* 凑单搭子面板是否已挂载（首次进入才 mount，避免重复绑事件） */
+  var dazaiMounted = false;
+  var SIMPLE_VIEWS = { shome: 1, slist: 1, sbudget: 1, sprofile: 1, sai: 1, scoach: 1, sgoals: 1, ssave: 1, spiggy: 1, sdazai: 1 };
 
   /** 账单分析：最近一次导入的原始结果（默认不写入账本） */
   var analysisData = null;
@@ -640,6 +676,9 @@
       savedMoney: clampNumber(s.savedMoney, 0, 99999999, 0),
       blockedCount: Math.round(clampNumber(s.blockedCount, 0, 999999, 0)),
       uiMode: (s.uiMode === 'simple') ? 'simple' : 'full',
+      /* 用户是否曾在「设置 → 界面」里显式选过 UI 类型。
+         老账本没有这个字段 → 读成 false（即「没选过」），才能被窄屏默认规则接管。 */
+      uiModePicked: s.uiModePicked === true,
       settings: normalizeSettings(s.settings)
     };
   }
@@ -713,6 +752,8 @@
       savedMoney: 0,
       blockedCount: 0,
       uiMode: 'full',
+      /* 全新账本：还没选过 UI 类型，交给 init() 里的窄屏默认规则决定 */
+      uiModePicked: false,
       settings: normalizeSettings(null)
     };
   }
@@ -1377,6 +1418,34 @@
     '记好了。下次看到「限时」两个字，先深呼吸三次。'
   ];
 
+  /**
+   * 冷静期草稿 → 心愿单标题。只影响标题文案，不动账本。
+   * 两种已知脏数据都出自 NLP 的备注清洗，而改 nlp.js 的风险高于收益
+   * （量词那一轮的教训：任何「动词 + 量词」规则都会连带打伤「买盒饭」），
+   * 所以收口放在展示层，且只认白名单动词：
+   *   1. 「叫 外卖」/「点 外卖」——虚词被剔掉后留下单字残渣 + 空格；
+   *   2. 只剩一个字的标题（老 bug 留下的「盲」）——退到原始输入，再退到分类。
+   * @param {{note:string, raw:string, category:string}} draft 冷静期草稿
+   * @return {string} 至少 1 个字符的标题，最终兜底「想买的东西」
+   */
+  var WISH_TITLE_RESIDUE = /^(?:叫|点|买|花|吃|喝|玩|看|约|订|充|给|送|做|开|收|加|打|洗|剪|修|寄|租|抢|入|抽|冲|追|囤|拼|搞|弄|拿|换|借)[\s]+(?=[\u4e00-\u9fa5]{2,})/;
+
+  function wishTitleOf(draft) {
+    var d = draft || {};
+    var note = String(d.note || '').trim();
+    var title = note.replace(WISH_TITLE_RESIDUE, '').trim();
+    if (title.length >= 2) { return title.slice(0, 40); }
+    /* 太短：从原始输入里再捞一次（去掉金额之后的剩余部分） */
+    var raw = String(d.raw || '').trim();
+    if (raw) {
+      var fromRaw = parseWishAddText(raw).title;
+      if (fromRaw.length >= 2) { return fromRaw.slice(0, 40); }
+    }
+    var cat = String(d.category || '').trim();
+    if (cat.length >= 2) { return cat.slice(0, 40); }
+    return (title || note || '想买的东西').slice(0, 40);
+  }
+
   function resolveCooldown(keep) {
     var draft = pendingBill;
     if (!draft) { return; }
@@ -1395,9 +1464,35 @@
       /* 阿账事件源③：用户选「先不买」拦截成功 → 举 STOP 牌（stop），主理人决策 #1 */
       MOOD.onEvent('cooldown_block');
       petReact('cooldown_block', { amount: draft.amount });
-      addAIMessage(aiBubble('这波省下 ' + money(draft.amount) + '，已记进你的「省下的钱」成就（累计 ' +
+      /* 与剁手冷静法的 coolingSkip 同一语义：钱计入「省下的钱」的同时，必须在
+         心愿单里留一条 —— 否则用户选「先不买」之后东西就凭空消失了，48 小时后
+         也没人回来问他还想不想要。source 固定传 'cooling'：WISH.add 会据此把
+         savedCounted 置 true，将来真买下时才能精确回退，不产生双计。
+         反过来，入清单失败（清单满 / 存储不可用）绝不能连累上面已经写好的
+         savedMoney / blockedCount —— 钱确实省下来了这件事照样成立。 */
+      var wishTitle = wishTitleOf(draft);
+      var wishAdded = null;
+      if (wishReady() && Number(draft.amount) > 0) {
+        wishAdded = WISH.add({
+          title: wishTitle,
+          amount: draft.amount,
+          note: '记账时选了先不买',
+          coolDays: 2,
+          source: 'cooling'
+        });
+      }
+      var wishLine = '';
+      if (wishAdded && wishAdded.ok) {
+        var coolLine = toneLine('cool.added', { title: wishTitle });
+        if (coolLine) { wishLine = esc(coolLine) + '<br>'; }
+      } else if (wishAdded) {
+        wishLine = '（心愿单这次没记上：' + wishFailText(wishAdded.reason) + '）<br>';
+      }
+      addAIMessage(aiBubble(wishLine + '这波省下 ' + money(draft.amount) + '，已记进你的「省下的钱」成就（累计 ' +
         money(state.savedMoney) + '）。'));
-      showToast('已为你省下 ' + money(draft.amount), 'ok');
+      showToast(wishAdded && wishAdded.ok
+        ? '已放进心愿单，48 小时后我再来问你'
+        : '已为你省下 ' + money(draft.amount), 'ok');
       renderAll();
     }
     stepFlow();
@@ -1665,10 +1760,9 @@
   /* 理财专家面板渲染                                                     */
   /* ================================================================== */
 
-  /** 渲染「理财专家」Tab：专属建议 + 团购省钱 + 理财学院 */
+  /** 渲染「理财专家」Tab：专属建议 + 理财学院（团购省钱已移到「省钱助手」面板） */
   function renderCoachPanel() {
     renderCoachTips();
-    renderCoachGroupBuy();
     renderCoachAcademy();
     renderPersona();
   }
@@ -2329,7 +2423,8 @@
   /**
    * 聊天入口：「理财课」——直接列 3 条视频 / 课程资源 + 一键跳理财学院。
    * 学习资源里排在后面的 UP 主主页不进气泡（LEARN_INLINE_MAX 上限不变），
-   * 只在底部小字里提示「另有 2 位省钱博主」，避免气泡被撑长。
+   * 只在底部小字里提示还有几位博主主页（数量按 learningResources() 动态统计），
+   * 避免气泡被撑长。
    * 不切视图，避免打断正在看聊天记录的用户；链接统一过 safeHttpUrl。
    */
   function showLearnGuide() {
@@ -2338,6 +2433,15 @@
       : [];
     var rows = '';
     var shown = 0;
+    /* UP 主主页数动态统计：博主位每加一位，这句小字就得跟着变，
+       写死数字迟早和 ACADEMY 对不上。 */
+    var upCount = 0;
+    for (var u = 0; u < list.length; u++) {
+      if (list[u].type === 'up') { upCount++; }
+    }
+    var upHint = upCount > 0
+      ? '另有 ' + upCount + ' 位 B 站博主主页（省钱 / 财经科普），在理财学院查看。'
+      : '其余学习资源在理财学院查看。';
     for (var i = 0; i < list.length && shown < LEARN_INLINE_MAX; i++) {
       var href = safeHttpUrl(list[i].url);
       if (href === '') { continue; }
@@ -2362,9 +2466,10 @@
     }
     html += '<div class="coach-qa-foot">' +
       '视频源为公开 B 站内容、经镜像站转发（打不开就去 B 站搜同名标题）；课程为中国大学 MOOC 官方页面。' +
-      '另有 2 位 B 站省钱博主主页，在理财学院查看。</div>';
+      upHint + '</div>';
     html += '<div class="coach-qa-actions">' +
-      '<button type="button" class="btn-mini primary" data-act="learn-all">去理财学院看全部（含 2 位省钱博主）›</button>' +
+      '<button type="button" class="btn-mini primary" data-act="learn-all">去理财学院看全部' +
+      (upCount > 0 ? '（含 ' + upCount + ' 位博主）' : '') + '›</button>' +
       '</div>';
     addAIMessage('<div class="bubble ai coach-bubble">' + html + '</div>');
   }
@@ -2690,18 +2795,87 @@
     svg.innerHTML = parts.join('');
   }
 
-  /** 完整版「本月账单流水」：与简洁版明细页一致，按日期分组（今天 / 昨天 / M月D日） */
+  /* ================================================================== */
+  /* 账单列表折叠（完整版「本月账单流水」/ 简洁版「明细」共用同一套语义）    */
+  /* ================================================================== */
+
+  /** 折叠时默认展示的日期组数量（1 组 = 一天） */
+  var BILL_COLLAPSE_GROUPS = 2;
+  var billListOpen = false;   /* 完整版流水：是否展开全部 */
+  var spListOpen = false;      /* 简洁版明细：是否展开全部 */
+
+  /**
+   * 更新列表头部的「展开全部 / 收起」按钮。
+   * 只有当分组数确实超过折叠阈值时才显示——否则用户会看到一个点了没反应的按钮。
+   * @param {string} btnId  按钮 id（btnBillExpand / btnSpBillExpand）
+   * @param {number} total  过滤后的总条数
+   * @param {number} groups 总日期组数
+   * @param {boolean} open  当前是否已展开
+   */
+  function updateBillExpandBtn(btnId, total, groups, open) {
+    var btn = $(btnId);
+    if (!btn) { return; }
+    /* 组数不足以折叠 → 隐藏按钮 */
+    if (groups <= BILL_COLLAPSE_GROUPS) {
+      btn.hidden = true;
+      return;
+    }
+    btn.hidden = false;
+    var txt = $(btnId + 'Txt');
+    if (txt) {
+      txt.textContent = open ? '收起' : ('展开全部 ' + total + ' 笔');
+    }
+    btn.classList.toggle('is-open', !!open);
+  }
+
+  /**
+   * 卡片头部的范围提示：告诉用户「现在看到的是哪段时间 / 多少笔」。
+   * 之前标题写死「本月账单流水」但实际渲染全部账单，标题与内容对不上；
+   * 加了时间筛选后这里如实显示当前范围。
+   */
+  function updateBillScopeHint(count) {
+    var el = $('billScopeHint');
+    if (!el) { return; }
+    var bf = BF.normalize(billFilter);
+    var scope;
+    if (bf.from && bf.to) { scope = bfDateShort(bf.from) + '–' + bfDateShort(bf.to); }
+    else if (bf.from) { scope = bfDateShort(bf.from) + ' 起'; }
+    else if (bf.to) { scope = '截至 ' + bfDateShort(bf.to); }
+    else { scope = '全部'; }
+    el.textContent = scope + ' · ' + count + ' 笔';
+  }
+
+  /** 简洁版「明细」的范围提示（与完整版同一套文案） */
+  function updateSpScopeHint(count) {
+    var el = $('spScopeHint');
+    if (!el) { return; }
+    var bf = BF.normalize(billFilter);
+    var scope;
+    if (bf.from && bf.to) { scope = bfDateShort(bf.from) + '–' + bfDateShort(bf.to); }
+    else if (bf.from) { scope = bfDateShort(bf.from) + ' 起'; }
+    else if (bf.to) { scope = '截至 ' + bfDateShort(bf.to); }
+    else { scope = '全部'; }
+    el.textContent = scope + ' · ' + count + ' 笔';
+  }
+
+  /** 完整版「本月账单流水」：与简洁版明细页一致，按日期分组（今天 / 昨天 / M月D日）
+   *
+   * 折叠策略：默认只展开最近 BILL_COLLAPSE_GROUPS 个「日期组」（不是 N 条），
+   * 这样组头和组内条目永远成对出现，不会出现「孤零零一条挂在组头下面」的割裂感。
+   * 账单多的时候卡片不再无限长，点「展开全部」再看全量。 */
   function renderBillList() {
     var list = $('billList');
     var sorted = state.bills.slice().sort(function (a, b) {
       if (a.date !== b.date) { return a.date < b.date ? 1 : -1; }
       return (b.createdAt || 0) - (a.createdAt || 0);
     });
-    /* 取消「最近 8 条」限制：应用筛选后渲染全部账单（仍按日期分组，今天/昨天/M月D日 组头） */
+    /* 应用筛选后渲染全部账单（仍按日期分组，今天/昨天/M月D日 组头） */
     var bills = BF.filter(sorted, billFilter);
     renderBillFilterBar('billFilterBar', bills.length);
+    updateBillScopeHint(bills.length);
     if (bills.length === 0) {
       list.innerHTML = '<li class="empty">还没有符合条件的账单，换个筛选试试</li>';
+      updateBillExpandBtn('btnBillExpand', 0, 0, billListOpen);
       return;
     }
     var todayStr = ENG.formatDate(new Date());
@@ -2715,13 +2889,24 @@
       var md = ds.slice(5).split('-');
       return parseInt(md[0], 10) + '月' + parseInt(md[1], 10) + '日';
     }
-    var html = '';
+    /* 先按日期分组，再决定渲染几组 */
+    var groups = [];
     var i = 0;
     while (i < bills.length) {
       var ds = bills[i].date;
-      html += '<li class="bill-day">' + esc(dayLabel(ds)) + '</li>';
-      while (i < bills.length && bills[i].date === ds) {
-        var b = bills[i];
+      var items = [];
+      while (i < bills.length && bills[i].date === ds) { items.push(bills[i]); i++; }
+      groups.push({ date: ds, items: items });
+    }
+    var shown = billListOpen ? groups : groups.slice(0, BILL_COLLAPSE_GROUPS);
+    updateBillExpandBtn('btnBillExpand', bills.length, groups.length, billListOpen);
+    var html = '';
+    var gi;
+    var ii;
+    for (gi = 0; gi < shown.length; gi++) {
+      html += '<li class="bill-day">' + esc(dayLabel(shown[gi].date)) + '</li>';
+      for (ii = 0; ii < shown[gi].items.length; ii++) {
+        var b = shown[gi].items[ii];
         var isIncome = b.type === 'income';
         var time = spTimeOf(b);
         html += '<li class="bill-item">' +
@@ -2733,15 +2918,10 @@
           '<span class="bill-amount' + (isIncome ? ' income' : '') + '">' +
           (isIncome ? '+' : '-') + money(b.amount) + '</span>' +
           '</li>';
-        i++;
       }
     }
     list.innerHTML = html;
   }
-
-  /* ================================================================== */
-  /* 看板 · 支出统计（参考钱迹：类目排行 / 月支出趋势 / 明细排行）          */
-  /* ================================================================== */
 
   /* 三张统计图共用一个月份；默认本月，只能往回翻（不允许翻到未来） */
   var statMonth = null;
@@ -3165,18 +3345,22 @@
     $('spMExpense').textContent = money(ENG.round2(exp));
     $('spMIncome').textContent = money(ENG.round2(inc));
     renderBillFilterBar('spFilterBar', monthBills.length);
+    updateSpScopeHint(monthBills.length);
     var byDate = {};
     monthBills.forEach(function (b) { (byDate[b.date] = byDate[b.date] || []).push(b); });
     var dates = Object.keys(byDate).sort().reverse();
+    updateBillExpandBtn('btnSpBillExpand', monthBills.length, dates.length, spListOpen);
     if (!dates.length) {
       $('spListBody').innerHTML = '<div class="sp-empty sp-empty-block">本月还没有记账，记一笔就会出现在这里</div>';
       return;
     }
     var todayStr = ENG.formatDate(new Date());
     var yestStr = ENG.formatDate(new Date(Date.now() - 86400000));
+    /* 折叠：默认只渲染最近几个日期组，展开后看全月 */
+    var shownDates = spListOpen ? dates : dates.slice(0, BILL_COLLAPSE_GROUPS);
     var html = '';
-    for (i = 0; i < dates.length; i++) {
-      var ds = dates[i];
+    for (i = 0; i < shownDates.length; i++) {
+      var ds = shownDates[i];
       var label = ds === todayStr ? '今天' : (ds === yestStr ? '昨天' : ds);
       var de = 0, di = 0;
       byDate[ds].forEach(function (b) { if (spIsIncome(b)) { di += b.amount; } else { de += b.amount; } });
@@ -3304,6 +3488,14 @@
       var input = (e.target && e.target.closest) ? e.target.closest('input[name="spUiMode"]') : null;
       if (!input) { return; }
       setUiMode(input.value);
+    });
+    /* 同 #setUiModeSeg：点「已选中」的档位也视为显式确认，补打 uiModePicked */
+    $('spUiSeg').addEventListener('click', function (e) {
+      var input = (e.target && e.target.closest) ? e.target.closest('input[name="spUiMode"]') : null;
+      if (input && input.checked && state && !state.uiModePicked) {
+        state.uiModePicked = true;
+        saveState();
+      }
     });
   }
 
@@ -3667,6 +3859,29 @@
   /** 弹层当前页签：cooling / bought / dropped */
   var wishTab = 'cooling';
 
+  /**
+   * 手动添加区的输入框状态。
+   * 为什么必须放模块变量：renderWishSheet() 每次都整体重写 #wishBody.innerHTML，
+   * 值只存在 DOM 里的话，一重绘（切页签 / 别处触发的刷新）就没了。
+   * focus 记住用户正在哪个框里打字，重绘后把焦点还回原处。
+   */
+  var wishUi = { title: '', amount: '', focus: '' };
+
+  /**
+   * 「加心愿单 球鞋 500」这类明确命令。
+   * 只认句首（可带「帮我 / 我想」等口头前缀），命令词后接内容或直接结束。
+   * 刻意不做「句子里出现心愿单」的宽匹配 —— 否则「心愿单里的球鞋买了 500」
+   * 会被当成「添加」，反而把本该记账的句子抢走。
+   */
+  var WISH_ADD_RE = /^(?:帮我|请|麻烦|给我|我要|我想)?\s*(?:放进心愿单|放到心愿单|加进心愿单|加入心愿单|添加到心愿单|添加心愿单|加心愿单|放心愿单|心愿单添加|心愿单加|心愿单放)\s*([\s\S]*)$/;
+
+  /** WISH.add 的失败原因 → 一句人话（弹层 / 聊天命令 / 记账冷静期卡三处共用，保证文案一致） */
+  function wishFailText(reason) {
+    if (reason === 'full') { return '心愿单满了，先清几条'; }
+    if (reason === 'title') { return '先写个名字'; }
+    return '浏览器存不了数据，这次没记上';
+  }
+
   /** 心愿单是否可用：模块存在 + 存储可写 */
   function wishReady() {
     return !!(WISH && !WISH.missing && WISH.isReady && WISH.isReady());
@@ -3801,6 +4016,15 @@
 
     return '' +
       '<div class="wish-tabs" role="tablist" aria-label="心愿单分类">' + tabsHtml + '</div>' +
+      /* 手动添加区：看板卡片写着「想买又下不了手的东西，先放进来」，点进来就必须有地方放。 */
+      '<div class="wish-add">' +
+      '  <input type="text" id="wishAddTitle" class="wish-add-input" autocomplete="off" maxlength="40" ' +
+      'placeholder="想买什么？比如 球鞋" aria-label="想买的东西" value="' + esc(wishUi.title) + '" />' +
+      '  <input type="number" id="wishAddAmount" class="wish-add-input wish-add-num" min="0" step="0.01" ' +
+      'inputmode="decimal" placeholder="金额 ¥" aria-label="金额，可以留空" value="' +
+      esc(wishUi.amount) + '" />' +
+      '  <button type="button" class="wish-btn wish-btn--primary wish-add-btn" data-act="wish-add">放进去</button>' +
+      '</div>' +
       '<ul class="wish-list">' + listHtml + '</ul>' +
       '<div class="wish-sec">' +
       '  <span class="wish-stat">因为冷静期，累计省下 <b>' + money(st.savedAmount) + '</b></span>' +
@@ -3812,7 +4036,19 @@
   function renderWishSheet() {
     var body = $('wishBody');
     if (!body) { return; }
+    /* 重绘会整体换掉 innerHTML：先记住焦点在哪，画完再还回去（用户可能正打到一半） */
+    var keepFocus = wishUi.focus;
     body.innerHTML = wishReady() ? wishSheetHtml() : '';
+    if (keepFocus && wishReady()) {
+      var el = $(keepFocus);
+      if (el && el.focus) {
+        el.focus();
+        try {
+          var end = String(el.value || '').length;
+          el.setSelectionRange(end, end);
+        } catch (err) { /* number 类型不支持 setSelectionRange，忽略 */ }
+      }
+    }
   }
 
   function openWishSheet() {
@@ -3905,6 +4141,135 @@
     renderWishSheet();
   }
 
+  /**
+   * 解析「加心愿单」后面那段，拆出名称与金额。
+   * 金额交给 NLP.findAmounts（项目里唯一可信的金额抽取），再从名称里切掉，
+   * 剩下的就是商品名，避免自己写正则把「9块9」这类口语小数拆错。
+   * @param {string} tail 命令词之后的原文
+   * @return {{title:string, amount:number}} amount 为 0 表示没说金额
+   */
+  function parseWishAddText(tail) {
+    var rest = String(tail || '').trim();
+    var amount = 0;
+    var title = rest;
+    var amts = (NLP && typeof NLP.findAmounts === 'function') ? NLP.findAmounts(rest) : [];
+    if (amts && amts.length) {
+      amount = Number(amts[0].value) || 0;
+      title = rest.slice(0, amts[0].start) + ' ' + rest.slice(amts[0].end);
+    }
+    title = title
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s，,。、:：;；~]+/, '')
+      .replace(/[\s，,。、:：;；~]+$/, '')
+      .replace(/^(的|是|要)/, '')
+      .trim();
+    return { title: title, amount: amount };
+  }
+
+  /**
+   * 弹层里手动「放进去」：把名称 + 金额写进心愿单。
+   * 值优先取 DOM（用户正在打字），DOM 已被重绘换掉时回退到 wishUi。
+   */
+  function wishAddSubmit() {
+    if (!wishReady()) {
+      showToast('当前浏览器不能保存数据，心愿单暂不可用', 'warn');
+      return;
+    }
+    var tEl = $('wishAddTitle');
+    var aEl = $('wishAddAmount');
+    var title = String((tEl ? tEl.value : wishUi.title) || '').trim();
+    var amtRaw = String((aEl ? aEl.value : wishUi.amount) || '').trim();
+    wishUi.title = title;
+    wishUi.amount = amtRaw;
+    if (!title) {
+      showToast('先写个名字，比如「球鞋」', 'warn');
+      if (tEl) { tEl.focus(); }
+      return;
+    }
+    var amount = 0;
+    if (amtRaw) {
+      // 只认十进制数字串。不要「先剔字符再转换」：
+      // 那样 "-5" 会被静默改成 5、"1e5" 会被改成 15，用户根本不知道金额被动了。
+      if (!/^\d+(?:\.\d+)?$/.test(amtRaw)) {
+        showToast('金额填个数字吧，比如 500', 'warn');
+        if (aEl) { aEl.focus(); }
+        return;
+      }
+      amount = Math.round(Number(amtRaw) * 100) / 100;
+      if (!isFinite(amount) || amount < 0) {
+        showToast('金额填个数字吧，比如 500', 'warn');
+        if (aEl) { aEl.focus(); }
+        return;
+      }
+    }
+    var res = WISH.add({ title: title, amount: amount, source: 'manual', coolDays: 2 });
+    if (!res || !res.ok) {
+      showToast(wishFailText(res ? res.reason : 'store'), 'warn');
+      return;
+    }
+    wishUi.title = '';
+    wishUi.amount = '';
+    wishUi.focus = '';
+    /* 新加的一定落在「冷静中」，切回这一页才看得见刚放进去的东西 */
+    wishTab = 'cooling';
+    showToast('已放进心愿单，48 小时后提醒你', 'ok');
+    renderAll();
+    renderWishSheet();
+  }
+
+  /**
+   * 聊天里「加心愿单 球鞋 500」的落地动作（由 commandMatch 短路进来）。
+   * 只写心愿单：**不记账、不弹冷静期卡** —— 用户说的是「先放着」。
+   * @param {string} title 名称（为空则引导补名字，并把表单递到手上）
+   * @param {number} amount 金额（0 表示没说，WISH.add 内部会 clamp）
+   */
+  function wishAddFromText(title, amount) {
+    var t = String(title || '').trim();
+    if (!t) {
+      showToast('想放什么进去？说「加心愿单 球鞋 500」这样', 'warn');
+      /* 顺手打开弹层并聚焦输入框，比只丢一句提示更容易把这次意图救回来 */
+      openWishSheet();
+      var input = $('wishAddTitle');
+      if (input) { input.focus(); }
+      return;
+    }
+    if (!wishReady()) {
+      showToast('当前浏览器不能保存数据，心愿单暂不可用', 'warn');
+      return;
+    }
+    var res = WISH.add({ title: t, amount: Number(amount) || 0, source: 'manual', coolDays: 2 });
+    if (!res || !res.ok) {
+      showToast(wishFailText(res ? res.reason : 'store'), 'warn');
+      return;
+    }
+    wishTab = 'cooling';
+    var amtPart = res.item.amount > 0 ? (' ' + money(res.item.amount)) : '';
+    var line = toneLine('cool.added', { title: res.item.title });
+    addAIMessage(aiBubble(esc(line ||
+      ('「' + res.item.title + '」' + amtPart + '先放进心愿单，晾 48 小时再决定。'))));
+    showToast('已放进心愿单，48 小时后提醒你', 'ok');
+    renderAll();
+    renderWishSheet();
+  }
+
+  /** 添加区输入同步：只存值，**不重绘**（重绘会打断打字） */
+  function wishPanelInput(e) {
+    var t = e.target;
+    if (!t) { return; }
+    if (t.id === 'wishAddTitle') { wishUi.title = t.value || ''; }
+    else if (t.id === 'wishAddAmount') { wishUi.amount = t.value || ''; }
+  }
+
+  /** 添加区回车提交（名称 / 金额两个框都认） */
+  function wishPanelKeydown(e) {
+    var t = e.target;
+    if (!t || (t.id !== 'wishAddTitle' && t.id !== 'wishAddAmount')) { return; }
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      e.preventDefault();
+      wishAddSubmit();
+    }
+  }
+
   /** 弹层内点击分发 */
   function wishPanelClick(e) {
     var btn = e.target.closest ? e.target.closest('[data-act]') : null;
@@ -3916,6 +4281,7 @@
       renderWishSheet();
       return;
     }
+    if (act === 'wish-add') { wishAddSubmit(); return; }
     if (act === 'wish-buy') { wishReviewDecide(id, 'bought'); return; }
     if (act === 'wish-drop') { wishReviewDecide(id, 'dropped'); return; }
     if (act === 'wish-extend') { wishReviewDecide(id, 'extend'); return; }
@@ -4556,8 +4922,11 @@
     if ($('bfMin')) { $('bfMin').value = (bf.min === '' ? '' : bf.min); }
     if ($('bfMax')) { $('bfMax').value = (bf.max === '' ? '' : bf.max); }
     if ($('bfNote')) { $('bfNote').value = bf.note; }
+    if ($('bfFrom')) { $('bfFrom').value = bf.from; }
+    if ($('bfTo')) { $('bfTo').value = bf.to; }
     renderBillFilterCaps('bfCats', bf.cats, BF.CATS, 'cats');
     renderBillFilterCaps('bfSources', bf.sources, BF.SOURCES, 'sources');
+    syncBfTimeQuick(bf.from, bf.to);
   }
 
   /** 从抽屉控件读回筛选条件（确认 / 重置时用） */
@@ -4581,8 +4950,66 @@
       sources: sources,
       min: $('bfMin') ? $('bfMin').value : '',
       max: $('bfMax') ? $('bfMax').value : '',
-      note: $('bfNote') ? $('bfNote').value : ''
+      note: $('bfNote') ? $('bfNote').value : '',
+      from: $('bfFrom') ? $('bfFrom').value : '',
+      to: $('bfTo') ? $('bfTo').value : ''
     });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 时间范围筛选：快捷胶囊（今天 / 近7天 / 近30天 / 本月）+ 自定义起止日  */
+  /* ------------------------------------------------------------------ */
+
+  /** 快捷时间胶囊 → 具体起止日（'YYYY-MM-DD'） */
+  function bfQuickRange(kind) {
+    var now = new Date();
+    var today = ENG.formatDate(now);
+    if (kind === 'today') { return { from: today, to: today }; }
+    if (kind === '7d') { return { from: ENG.formatDate(ENG.addDays(now, -6)), to: today }; }
+    if (kind === '30d') { return { from: ENG.formatDate(ENG.addDays(now, -29)), to: today }; }
+    if (kind === 'month') {
+      var first = new Date(now.getFullYear(), now.getMonth(), 1);
+      var last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return { from: ENG.formatDate(first), to: ENG.formatDate(last) };
+    }
+    return { from: '', to: '' };
+  }
+
+  /**
+   * 同步快捷胶囊的高亮态。
+   * 用户手动改了日期框时，胶囊全部熄灭（因为已经不属于任何一个快捷档了）。
+   */
+  function syncBfTimeQuick(from, to) {
+    var box = $('bfTimeQuick');
+    if (!box) { return; }
+    var caps = box.querySelectorAll('.bf-qcap');
+    var kinds = ['today', '7d', '30d', 'month'];
+    var hit = -1;
+    var i;
+    for (i = 0; i < kinds.length; i++) {
+      var r = bfQuickRange(kinds[i]);
+      if (r.from === from && r.to === to) { hit = i; break; }
+    }
+    for (i = 0; i < caps.length; i++) {
+      caps[i].classList.toggle('on', i === hit);
+    }
+  }
+
+  /** 快捷胶囊点击：填入起止日期框 */
+  function onBfTimeQuick(e) {
+    var btn = e.target.closest ? e.target.closest('[data-bf-quick]') : null;
+    if (!btn) { return; }
+    var r = bfQuickRange(btn.getAttribute('data-bf-quick'));
+    if ($('bfFrom')) { $('bfFrom').value = r.from; }
+    if ($('bfTo')) { $('bfTo').value = r.to; }
+    syncBfTimeQuick(r.from, r.to);
+  }
+
+  /** 用户手动改日期框 → 熄灭所有快捷胶囊 */
+  function onBfDateInput(e) {
+    var from = $('bfFrom') ? $('bfFrom').value : '';
+    var to = $('bfTo') ? $('bfTo').value : '';
+    syncBfTimeQuick(from, to);
   }
 
   /** 刷新两版列表页的「筛选」按钮角标（激活时显示「筛选·N」） */
@@ -4603,7 +5030,27 @@
     else if (min !== '') { seg.push('≥ ¥' + min); }
     else if (max !== '') { seg.push('≤ ¥' + max); }
     if (f.note) { seg.push('含「' + f.note + '」'); }
+    /* 时间范围：起止都填显示区间，只填一端显示单边 */
+    var from = f.from || '';
+    var to = f.to || '';
+    if (from && to) {
+      seg.push(bfDateShort(from) + ' ~ ' + bfDateShort(to));
+    } else if (from) {
+      seg.push(bfDateShort(from) + ' 起');
+    } else if (to) {
+      seg.push('截至 ' + bfDateShort(to));
+    }
     return seg.join(' · ');
+  }
+
+  /** '2026-10-28' → '10月28日'（跨年时带年份） */
+  function bfDateShort(ds) {
+    if (!ds || ds.length < 10) { return ds || ''; }
+    var y = ds.slice(0, 4);
+    var md = ds.slice(5).split('-');
+    var thisYear = String(new Date().getFullYear());
+    var label = parseInt(md[0], 10) + '月' + parseInt(md[1], 10) + '日';
+    return (y === thisYear) ? label : (y + '年' + label);
   }
 
   /** 列表上方的筛选条：明确告诉用户「正在筛选什么、筛出多少笔」，可一键清除 */
@@ -4686,6 +5133,13 @@
     var btn = e.target.closest ? e.target.closest('[data-bf-all]') : null;
     if (!btn) { return; }
     var group = btn.getAttribute('data-bf-all');
+    /* 时间范围的「不限」：清空起止日期框与快捷胶囊 */
+    if (group === 'time') {
+      if ($('bfFrom')) { $('bfFrom').value = ''; }
+      if ($('bfTo')) { $('bfTo').value = ''; }
+      syncBfTimeQuick('', '');
+      return;
+    }
     var hostId = group === 'cats' ? 'bfCats' : 'bfSources';
     var host = $(hostId);
     if (!host) { return; }
@@ -5436,6 +5890,29 @@
     if (cls) { body.classList.add(cls); }
   }
 
+  /** 窄屏（手机）判定阈值：视口宽度 ≤ 640px 视为手机形态。
+      只看宽度不看 UA / 触屏能力，这样桌面浏览器缩窗口或开设备模拟都能复现同一分支。 */
+  var PHONE_MAX_WIDTH = 640;
+
+  /** 是否处于窄屏（手机）视口。纯函数：不读不写 state、不弹提示、无副作用，便于单测。
+   *  优先用 matchMedia 判 '(max-width: 640px)'；环境不支持时回退到 innerWidth，
+   *  再退一层到 documentElement.clientWidth，最后按 1024（非窄屏）兜底。 */
+  function isNarrowPhone() {
+    try {
+      if (global.matchMedia && typeof global.matchMedia === 'function') {
+        return global.matchMedia('(max-width: ' + PHONE_MAX_WIDTH + 'px)').matches === true;
+      }
+    } catch (e) {
+      /* matchMedia 不可用/抛错 → 走下面的宽度回退 */
+    }
+    var w = global.innerWidth;
+    if (typeof w !== 'number' || !isFinite(w) || w <= 0) {
+      w = (DOC && DOC.documentElement) ? DOC.documentElement.clientWidth : 0;
+    }
+    if (typeof w !== 'number' || !isFinite(w) || w <= 0) { w = 1024; }
+    return w <= PHONE_MAX_WIDTH;
+  }
+
   /** 取当前 UI 类型（简洁版 / 完整版），缺省回退到完整版 */
   function getUiMode() {
     return (state && state.uiMode === 'simple') ? 'simple' : 'full';
@@ -5467,6 +5944,8 @@
     var saveSheet = $('saveHubSheet');
     var saveBody = $('spSaveBody');
     var saveMask = $('saveHubMask');
+    var dazai = $('panelDazai');
+    var dazaiBody = $('spDazaiBody');
     if (simple && shell) {
       if (chat && chat.parentNode !== shell) { shell.insertBefore(chat, $('tabbarSimple')); }
       if (coach && coach.parentNode !== shell) { shell.insertBefore(coach, $('tabbarSimple')); }
@@ -5479,6 +5958,11 @@
         saveSheet.setAttribute('aria-modal', 'false');
         if (saveMask) { saveMask.hidden = true; }
       }
+      /* 凑单搭子：简洁版整块搬进 #spDazaiBody。完整版它在 #app 内，
+         而简洁版把 #app 整体隐藏了 —— 不搬进来简洁版就永远看不到这个功能。 */
+      if (dazai && dazaiBody) {
+        if (dazai.parentNode !== dazaiBody) { dazaiBody.appendChild(dazai); }
+      }
     } else if (layout) {
       if (chat && chat.parentNode !== layout) { layout.insertBefore(chat, $('panelDash')); }
       if (coach && coach.parentNode !== layout) { layout.appendChild(coach); }
@@ -5488,6 +5972,8 @@
         if (saveMask && saveSheet.parentNode !== saveMask) { saveMask.appendChild(saveSheet); }
         saveSheet.setAttribute('aria-modal', 'true');
       }
+      /* 完整版：凑单搭子回到 #app 的双栏布局原位 */
+      if (dazai && dazai.parentNode !== layout) { layout.appendChild(dazai); }
     }
   }
 
@@ -5496,6 +5982,9 @@
     if (mode !== 'simple' && mode !== 'full') { return; }
     if (!state) { return; }
     state.uiMode = mode;
+    /* 设置页 segmented control 是「用户显式选择」的唯一入口，打上标记后
+       init() 里的窄屏默认规则就不再覆盖他的选择。 */
+    state.uiModePicked = true;
     // 两套界面的视图互不通用，清空历史避免「返回」落到另一套界面的视图上
     viewHistory.length = 0;
     saveState();
@@ -5700,6 +6189,16 @@
       var input = (e.target && e.target.closest) ? e.target.closest('input[name="setUiMode"]') : null;
       if (!input) { return; }
       setUiMode(input.value);
+    });
+    /* 点「已选中」的 radio 不会触发 change（DOM 标准行为），但用户的点击本身就是一次
+       显式确认 —— 补打 uiModePicked。否则窄屏被自动带进来的用户（picked=false）
+       永远无法锁定当前档，换宽屏就会被重算冲掉。 */
+    $('setUiModeSeg').addEventListener('click', function (e) {
+      var input = (e.target && e.target.closest) ? e.target.closest('input[name="setUiMode"]') : null;
+      if (input && input.checked && state && !state.uiModePicked) {
+        state.uiModePicked = true;
+        saveState();
+      }
     });
 
     /* ---- 说话风格：三张卡片单选（change 会冒泡，委托到容器上） ---- */
@@ -6117,34 +6616,89 @@
     addAIMessage(aiBubble(ov.sentence));
   }
 
-  function showPieCard() {
-    var ov = getOverview();
-    var slices = getCategorySlices(ov.cycleAgg.byCategory);
-    if (slices.length === 0) {
-      addAIMessage(aiBubble('本周期还没记账呢，先记一笔我就能画饼图了。'));
-      return;
-    }
+  /** 饼图卡片 HTML（SVG 环形图 + 图例），主路径与空态兜底共用。 */
+  function pieCardHtml(slices, total) {
     var svg = '<svg viewBox="0 0 100 100">' +
       '<g transform="rotate(-90 50 50)">' + donutSvgHtml(slices, 100, 20, 100) + '</g>' +
-      '<text x="50" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#2B313B">' + money(ov.cycleAgg.expense) + '</text>' +
+      '<text x="50" y="48" text-anchor="middle" font-size="12" font-weight="600" fill="#2B313B">' + money(total) + '</text>' +
       '<text x="50" y="59" text-anchor="middle" font-size="6" fill="#8A93A0">总支出</text>' +
       '</svg>';
     var legend = '';
     var i;
     for (i = 0; i < slices.length && i < 6; i++) {
-      var pct = ov.cycleAgg.expense > 0 ? (slices[i].value / ov.cycleAgg.expense * 100) : 0;
+      var pct = total > 0 ? (slices[i].value / total * 100) : 0;
       legend += '<div><i style="background:' + slices[i].color + '"></i>' + esc(slices[i].key) +
         ' ' + money(slices[i].value) + '（' + pct.toFixed(0) + '%）</div>';
     }
-    addAIMessage(aiBubble('本周期支出构成：'));
-    var html = '<div class="mini-pie">' + svg + '<div class="mini-pie-legend">' + legend + '</div></div>';
-    addAIMessage(html);
+    return '<div class="mini-pie">' + svg + '<div class="mini-pie-legend">' + legend + '</div></div>';
+  }
 
+  /** 最大头一句话（label 如「本周期」/「最近 30 天」）。 */
+  function pieTopLine(slices, total, label) {
     var top = slices[0];
-    var topPct = ov.cycleAgg.expense > 0 ? (top.value / ov.cycleAgg.expense * 100) : 0;
-    addAIMessage(aiBubble('本周期一共花了 ' + money(ov.cycleAgg.expense) + '，最大头是 <span class="hl">' +
-      esc(top.key) + '</span>（' + money(top.value) + '，占 ' + topPct.toFixed(0) + '%）。' +
+    var topPct = total > 0 ? (top.value / total * 100) : 0;
+    return label + '一共花了 ' + money(total) + '，最大头是 <span class="hl">' +
+      esc(top.key) + '</span>（' + money(top.value) + '，占 ' + topPct.toFixed(0) + '%）。';
+  }
+
+  function showPieCard() {
+    var ov = getOverview();
+    var slices = getCategorySlices(ov.cycleAgg.byCategory);
+    if (slices.length === 0) {
+      showPieEmptyFallback(ov);
+      return;
+    }
+    addAIMessage(aiBubble('本周期支出构成：'));
+    addAIMessage(pieCardHtml(slices, ov.cycleAgg.expense));
+    addAIMessage(aiBubble(pieTopLine(slices, ov.cycleAgg.expense, '本周期') +
       (ov.engel.alert ? '餐饮占比偏高，注意别把社交预算吃掉。' : '结构还算健康。')));
+  }
+
+  /**
+   * 饼图空态分级兜底（严禁再谎称「还没记账」）：
+   * A. 账本里一笔支出都没有 → 如实说「本期还没有支出」（有本期收入则一并说明）；
+   * B. 有支出但都在本周期外 → 直接画「最近 30 天」支出构成（近 30 天也没数据则退全量），
+   *    不让用户二次追问，一句内给出可看的饼图。
+   */
+  function showPieEmptyFallback(ov) {
+    var incomeInCycle = ENG.round2(ov.cycleAgg.income || 0);
+    var noExpenseMsg = '本周期（' + esc(ov.cycle.start) + ' ~ ' + esc(ov.cycle.end) + '）还没有支出' +
+      (incomeInCycle > 0 ? '，本期收入 ' + money(incomeInCycle) + ' 已经入账' : '') +
+      '。记下第一笔支出，我就能画花销饼图了。';
+    var hasAnyExpense = false;
+    var i;
+    for (i = 0; i < state.bills.length; i++) {
+      if (state.bills[i] && state.bills[i].type === 'expense') { hasAnyExpense = true; break; }
+    }
+    if (!hasAnyExpense) {
+      addAIMessage(aiBubble(noExpenseMsg));
+      return;
+    }
+    var agg = null;
+    var label = '';
+    var range = '';
+    var startStr = ENG.formatDate(new Date(ov.today.getTime() - 29 * 86400000));
+    agg = ENG.aggregate(state.bills, startStr, ov.todayStr);
+    if (agg.expense > 0) {
+      label = '最近 30 天';
+      range = startStr + ' ~ ' + ov.todayStr;
+    } else {
+      agg = ov.allAgg;
+      label = '全部支出';
+      range = '有记录以来';
+    }
+    var s2 = getCategorySlices(agg.byCategory);
+    if (s2.length === 0) {
+      addAIMessage(aiBubble(noExpenseMsg));
+      return;
+    }
+    addAIMessage(aiBubble('本期（' + esc(ov.cycle.start) + ' 起）还没花过钱' +
+      (incomeInCycle > 0 ? '（本期收入 ' + money(incomeInCycle) + ' 已入账）' : '') +
+      '，先看' + label + '（' + esc(range) + '）的支出构成👇'));
+    addAIMessage(pieCardHtml(s2, agg.expense));
+    var engel2 = ENG.getEngel(agg.byCategory, agg.expense);
+    addAIMessage(aiBubble(pieTopLine(s2, agg.expense, label) +
+      (engel2.alert ? '餐饮占比偏高，注意别把社交预算吃掉。' : '结构还算健康。')));
   }
 
   function showEntryGuide() {
@@ -7925,13 +8479,16 @@
     item: '充电宝',
     budget: '',
     rows: [
-      { platform: '淘宝', price: '', spec: '10000mAh', ship: '', coupon: '', need: '' },
-      { platform: '拼多多', price: '', spec: '10000mAh', ship: '', coupon: '', need: '' },
-      { platform: '京东', price: '', spec: '10000mAh', ship: '', coupon: '', need: '' }
+      { platform: '淘宝', price: '', spec: '10000mAh', ship: '', coupon: '', need: '', link: '' },
+      { platform: '拼多多', price: '', spec: '10000mAh', ship: '', coupon: '', need: '', link: '' },
+      { platform: '京东', price: '', spec: '10000mAh', ship: '', coupon: '', need: '', link: '' }
     ]
   };
   var DEAL_PLATFORMS = ['网易严选', '当当', '淘宝', '天猫', '京东', '拼多多', '抖音', '唯品会', '美团', '饿了么', '线下门店'];
   /** 真实搜索快照的排序状态：price=价格升序 / reviews=评价降序 */
+  /* 当前真实搜索列表（已排序）——「填入比价」按这里的下标定位条目。
+     不能拿 sku 当主键：慢慢买来源的 sku 是空串，按 sku 匹配会把第 2 条填成第 1 条。 */
+  var realItemsView = [];
   /* 抓取来源名 → 比价表里的平台名（统一叫法，也避免下拉框里没有这个值） */
   var PLAT_ALIAS = { '网易严选': '网易严选', '当当网': '当当', '当当': '当当' };
 
@@ -7947,6 +8504,19 @@
   var realLive = null;
   var realBusy = false;
   var realStatus = '';
+  /* 列表分页：后端一次抓满 REAL_SCAN_WANT 条进缓存，前端每页只摆 REAL_PAGE_SIZE 条。
+     翻页是纯前端切片（瞬时），不会为第 2 页再打一遍电商站点。 */
+  var REAL_PAGE_SIZE = 8;
+  var REAL_SCAN_WANT = 30;      // 要和后端 SEARCH_SCAN 对齐：抓得比这多也拿不到
+  var realPage = 1;             // 1 基，跟界面上的「第 N 页」一致
+  /* 上一次**失败**的关键词：用来判断屏幕上的旧结果是不是「这次要的回答」。
+     不记这个就会出现「搜手机失败 → 却把上次搜笔记本电脑的报价当结果摆着」的误导。 */
+  var realFailKw = '';
+  /* 本次失败是不是「后端没启动」导致的（区别于「后端在跑但没抓到」）。
+     是的话界面要给一键照做的指引，而不是一句「连不上 8010」。 */
+  var realFailNoBackend = false;
+  /* 输入框里用户当前输的词：重绘时优先回填它，不要把旧数据的关键词盖回去 */
+  var realInputKw = '';
   var REAL_LIVE_KEY = 'ai_jizhang_real_search_v1';
   /* 在线抓取的后端地址：页面若由 deals_api.py 托管（http/https 打开），同源地址最优先；
      file:// 直接打开时只能走 127.0.0.1:8010（跨域已由后端 CORS 放行） */
@@ -7974,17 +8544,15 @@
 
   function renderDealsSheet() {
     var d = dealsNow();
-    $('dealsHeadDate').textContent = DEALS.dateKey(d) + ' ' + DEALS.weekdayCn(d);
-    var tabs = DOC.querySelectorAll('#dealsTabs .atab');
-    var i;
-    for (i = 0; i < tabs.length; i++) {
-      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-deal-tab') === dealsTab);
-    }
+    var headDate = $('dealsHeadDate');
+    if (headDate) { headDate.textContent = DEALS.dateKey(d) + ' ' + DEALS.weekdayCn(d); }
+    /* 省钱助手面板已合并为统一二级 tab（hubTab），旧的 #dealsTabs 元素已不存在，
+       比价内容统一由 renderHubSheet 渲染。若这里再按老 dealsTab 写 #dealsPane，
+       会把正在看的「比价计算器」冲成「今天」内容（搜完比价后整块消失就是这么来的）。 */
+    if (typeof renderHubSheet === 'function') { renderHubSheet(); return; }
     var pane = $('dealsPane');
-    if (dealsTab === 'calendar') { pane.innerHTML = dealsCalendarHtml(d); }
-    else if (dealsTab === 'compare') { pane.innerHTML = dealsCompareHtml(d); }
-    else if (dealsTab === 'about') { pane.innerHTML = dealsAboutHtml(d); }
-    else { pane.innerHTML = dealsTodayHtml(d); }
+    if (!pane) { return; }
+    pane.innerHTML = dealsCompareHtml(d);
   }
 
   /** 今天：限时活动 + 未来 7 天 + 常驻活动 */
@@ -8148,17 +8716,76 @@
     }).filter(function (g) { return g.count >= 2; });
   }
 
+  /** 「打开」按钮的悬浮说明：说清点开会跳到哪（慢慢买来源会多一跳中转） */
+  function openTip(it) {
+    var plat = it.platform || it.source || '商品';
+    if (it.source === '慢慢买比价') {
+      /* 慢慢买是聚合中转：先开它的比价页（可能先过人机校验），
+         正常浏览器会自动跳到商家商品页；没跳成就点页内「去购买」。两种情况都说清楚。 */
+      return '点此打开慢慢买的比价页（可能先过人机校验）；会自动跳到' + plat +
+        '的商品页，没跳成就点页内「去购买」';
+    }
+    return '点此在新标签页打开' + plat + '的商品页';
+  }
+
+  /* 缩略图加载失败时的底座图标：按真实平台给个能认出来的符号，比"破图"体面 */
+  var PIC_EMOJI = { '京东': '🐶', '天猫': '🐱', '淘宝': '🛍️', '网易严选': '🧺',
+                    '当当': '📚', '苏宁': '🛒', '唯品会': '👗', '拼多多': '🔖' };
+
+  function picEmoji(it) {
+    var p = it && (it.platform || it.source);
+    return PIC_EMOJI[p] || '📦';
+  }
+
+  /** 页码条：页多时只留首尾 + 当前页附近，中间用省略号，免得一排按钮刷屏 */
+  function pagerNumsHtml(cur, total) {
+    var keep = {}, p;
+    keep[1] = 1;
+    keep[total] = 1;
+    var lo = Math.max(1, cur - 1);
+    var hi = Math.min(total, cur + 1);
+    /* 当前页靠边时补足 3 个连续页码，否则 4 页会显示成「1 2 … 4」，中间少个 3 很怪 */
+    if (cur <= 2) { hi = Math.min(total, 3); }
+    if (cur >= total - 1) { lo = Math.max(1, total - 2); }
+    for (p = lo; p <= hi; p++) { keep[p] = 1; }
+    var nums = Object.keys(keep).map(Number).sort(function (a, b) { return a - b; });
+    var out = '', prev = 0;
+    nums.forEach(function (n) {
+      if (prev && n - prev > 1) { out += '<span class="rs-pgdots">…</span>'; }
+      out += '<button type="button" class="rs-pgnum' + (n === cur ? ' on' : '') +
+        '" data-real-page="' + n + '"' + (n === cur ? ' aria-current="page"' : '') + '>' + n + '</button>';
+      prev = n;
+    });
+    return out;
+  }
+
+  /** 翻到第 n 页。数据都在内存里，只是换个切片，所以是瞬时的 */
+  function gotoRealPage(n) {
+    var d = realSearchData();
+    var total = (d && d.items) ? d.items.length : 0;
+    var pages = Math.max(1, Math.ceil(total / REAL_PAGE_SIZE));
+    var target = Math.min(Math.max(1, parseInt(n, 10) || 1), pages);
+    if (target === realPage) { return; }
+    realPage = target;
+    renderDealsSheet();
+    var pane = $('dealsPane');
+    var list = pane ? pane.querySelector('.rs-list') : null;
+    if (list && list.scrollIntoView) { list.scrollIntoView({ block: 'start' }); }
+  }
+
   function realSearchBlockHtml() {
     var d = realSearchData();
     var m = d ? d.meta : null;
     var isLive = !!(d && realLive && d === realLive);
+    /* 输入框回填：优先用用户正在输的词，别让旧数据的关键词把它盖回去 */
+    var kwNow = realInputKw || (m ? m.keyword : '');
 
     var html = '<div class="rs-wrap">';
 
     /* 搜什么比什么：输入关键词 → 本机后端真实抓当当 → 结果直接进这里 */
     html += '<div class="rs-search">' +
       '<input id="rsKw" type="text" inputmode="search" placeholder="搜什么比什么：输入商品关键词" value="' +
-      esc(m ? m.keyword : '') + '" />' +
+      esc(kwNow) + '" />' +
       '<button type="button" class="rs-go" id="btnRsSearch">' + (realBusy ? '抓取中…' : '搜同款') + '</button>' +
       '</div>';
     html += '<div class="rs-status' + (realStatus ? ' is-err' : '') + '" id="rsStatus">' +
@@ -8166,18 +8793,59 @@
         (d ? '' : '还没有数据。输入关键词点「搜同款」，或用下面的快照。')) +
       '</div>';
 
+    /* 后端没启动 → 给一份能照着做的指引（双击哪个文件、看到什么算成功），
+       并放一个「再试一次」按钮：用户起了后端点一下就能继续，不用刷新页面。 */
+    if (realFailNoBackend) {
+      html += '<div class="rs-nobackend">' +
+        '<p class="rs-nb-h">真实比价需要本机后端，现在它没在跑</p>' +
+        '<ol class="rs-nb-steps">' +
+        '<li>在 <b>AI记账</b> 文件夹里双击 <b>启动比价后端.bat</b></li>' +
+        '<li>等黑色窗口里出现「Uvicorn running on http://127.0.0.1:8010」</li>' +
+        '<li>回到这里点下面的「再试一次」</li>' +
+        '</ol>' +
+        '<button type="button" class="rs-nb-retry" id="btnRsRetry">再试一次</button>' +
+        '</div>';
+    }
+
     if (!d) {
       html += '<div class="deals-empty">还没有真实搜索快照。输入关键词点「搜同款」' +
         '（需要本机跑 <code>python deals_api.py</code>），或在本机运行 ' +
         '<code>python deals_scrape.py 关键词</code> 抓一次进快照。</div></div>';
       return html;
     }
+
+    /* 诚实性底线：搜索失败时，上一次的结果绝不能冒充这一次的结果。
+       只要「失败的关键词」= 输入框现在要搜的词，而手里数据的来源关键词又不是它，
+       就把列表整个收起来——只明确说清「这次没抓到」和「原本摆着的是哪次的数据」。
+       否则用户搜「手机」却看到「笔记本电脑」的价格，中间还顶着绿色「真实抓取」标签。 */
+    var staleKw = (realFailKw && kwNow && realFailKw === kwNow && m && m.keyword !== kwNow)
+      ? String(m.keyword || '') : '';
+    if (staleKw) {
+      html += '<div class="rs-stale">' +
+        '<p class="rs-stale-h">' + ic('alert', null, '这不是你要的结果') + '这不是你要的结果</p>' +
+        '<p>这次搜「<b>' + esc(kwNow) + '</b>」没抓到，原本留在这里的是「<b>' + esc(staleKw) +
+          '</b>」的数据（抓取于 ' + esc(m.scraped_at || '—') + '），已经收起来，免得和新搜索混在一起。</p>' +
+        '<p class="rs-stale-tip">可以点「搜同款」重试；或者把词换得更通用些，' +
+          '比如「保温杯」换成「水杯」、「机械键盘」换成「键盘」。</p>' +
+        '</div></div>';
+      return html;
+    }
+
     var items = d.items.slice();
     if (realSort === 'reviews') {
       items.sort(function (a, b) { return (b.reviews || 0) - (a.reviews || 0) || a.price - b.price; });
     } else {
       items.sort(function (a, b) { return a.price - b.price || (b.reviews || 0) - (a.reviews || 0); });
     }
+    /* 排序在**全量**上做，再切当前页 —— 否则「按销量排」只是在 8 条里排，
+       真正的销量冠军若原本排在后面就永远翻不出来。 */
+    var totalItems = items.length;
+    var totalPages = Math.max(1, Math.ceil(totalItems / REAL_PAGE_SIZE));
+    if (realPage > totalPages) { realPage = totalPages; }
+    if (realPage < 1) { realPage = 1; }
+    var pageStart = (realPage - 1) * REAL_PAGE_SIZE;
+    var pageItems = items.slice(pageStart, pageStart + REAL_PAGE_SIZE);
+    realItemsView = pageItems;   /* 供「填入比价」按下标回查条目（下标是**当前页**的） */
 
     html += '<div class="rs-src">' +
       '<span class="rs-badge">' + ic('check', null, '真实抓取') + '真实抓取</span>' +
@@ -8196,7 +8864,7 @@
       '<span>解析 <b>' + (m.total_parsed || 0) + '</b> 条</span>' +
       '<span>关键词相关 <b>' + (m.relevant || 0) + '</b> 条</span>' +
       (m.dropped ? '<span class="rs-drop">剔除 <b>' + m.dropped + '</b> 条不相关</span>' : '') +
-      '<span>取前 <b>' + items.length + '</b> 条</span>' +
+      '<span>共 <b>' + totalItems + '</b> 条 · 每页 ' + REAL_PAGE_SIZE + ' 条</span>' +
       (m.price_range ? '<span>价格带 <b>¥' + m.price_range[0] + '–' + m.price_range[1] + '</b></span>' : '') +
       (m.shop_count ? '<span><b>' + m.shop_count + '</b> 家店</span>' : '') +
       (m.from_cache ? '<span class="rs-cache">' + cacheAgeText(m.cache_age_sec) + '</span>' : '') +
@@ -8249,34 +8917,71 @@
 
     html += '<div class="rs-list">';
     /* 列表里只要有一条真标了材质，才给没标的显示「材质未标注」灰牌，避免满屏噪音 */
-    var hasMat = d.items.some(function (x) { return x.material && x.material !== '材质未标注'; });
-    items.forEach(function (it, i) {
+    var hasMat = pageItems.some(function (x) { return x.material && x.material !== '材质未标注'; });
+    pageItems.forEach(function (it, i) {
       var chips = '';
       var plat = it.platform || it.source;
-      if (multiSrc && plat) { chips += '<span class="rs-chip is-plat">' + esc(plat) + '</span>'; }
+      /* 平台标签：多源时都显示；只有单一来源时，只有"真实平台 ≠ 来源名"才显示
+         （慢慢买聚合站里的天猫/京东必须标出来，否则用户不知道这价是谁的） */
+      if (plat && (multiSrc || plat !== it.source)) { chips += '<span class="rs-chip is-plat">' + esc(plat) + '</span>'; }
       if (it.material && it.material !== '材质未标注') { chips += '<span class="rs-chip">' + esc(it.material) + '</span>'; }
       else if (hasMat) { chips += '<span class="rs-chip is-mute">材质未标注</span>'; }
       if (it.target && it.target !== '通用') { chips += '<span class="rs-chip">' + esc(it.target) + '</span>'; }
       (it.feature || []).forEach(function (f) { chips += '<span class="rs-chip is-soft">' + esc(f) + '</span>'; });
       if (it.original && it.original > it.price) { chips += '<span class="rs-chip is-soft">原价 ¥' + DEALS.fmt(it.original) + '</span>'; }
 
+      var itemUrl = safeHttpUrl(it.url);
+      /* 缩略图底座：图挂了就露出底下的平台图标，不留破图框（电商图床有防盗链） */
+      var picUrl = safeHttpUrl(it.image);
+      var thumb = '<span class="rs-thumb">' +
+        '<span class="rs-thumb-ph">' + picEmoji(it) + '</span>' +
+        (picUrl
+          ? '<img class="rs-pic" src="' + esc(picUrl) + '" alt="' + esc(it.title) + '" ' +
+            'loading="lazy" decoding="async" referrerpolicy="no-referrer" />'
+          : '') +
+        '</span>';
       html += '<div class="rs-row">' +
-        '<span class="rs-rank' + (i === 0 && realSort === 'price' ? ' is-first' : '') + '">' + (i + 1) + '</span>' +
+        '<span class="rs-rank' + (i === 0 && realSort === 'price' && realPage === 1 ? ' is-first' : '') + '">' +
+          (pageStart + i + 1) + '</span>' +
+        thumb +
         '<div class="rs-main">' +
-        '<a class="rs-title" href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer nofollow">' +
-        esc(it.title) + '</a>' +
+        (itemUrl
+          ? '<a class="rs-title" href="' + esc(itemUrl) + '" target="_blank" rel="noopener noreferrer nofollow">' +
+            esc(it.title) + '</a>'
+          : '<span class="rs-title is-plain">' + esc(it.title) + '</span>') +
         '<div class="rs-sub">' +
         '<span class="rs-shop">' + ic('cat-shop', 'rs-ico', '店铺') + esc(it.shop) + '</span>' +
         chips +
         '<span class="rs-rev">' + (it.reviews === null ? '无数据' : it.reviews + (it.reviews_label ? ' ' + it.reviews_label : ' 条评价')) + '</span>' +
         '<span class="rs-pg">第 ' + (it.page || 1) + ' 页</span>' +
+        (itemUrl
+          ? '<a class="rs-lnk" href="' + esc(itemUrl) + '" target="_blank" rel="noopener noreferrer nofollow" ' +
+            'title="打开商品页">' + ic('external', 'rs-ico', null) + '<span>去逛逛</span></a>'
+          : '') +
         '</div></div>' +
         '<div class="rs-price"><b>¥' + DEALS.fmt(it.price) + '</b><small>' +
         (it.price_label || '标价') + '</small></div>' +
-        '<button type="button" class="rs-fill" data-real-fill="' + esc(it.sku) + '">填入比价</button>' +
+        (itemUrl
+          ? '<a class="rs-open" href="' + esc(itemUrl) + '" target="_blank" rel="noopener noreferrer nofollow" ' +
+            'title="' + esc(openTip(it)) + '">打开</a>'
+          : '<span class="rs-open is-off">—</span>') +
+        '<button type="button" class="rs-fill" data-real-fill="' + i + '">填入比价</button>' +
         '</div>';
     });
     html += '</div>';
+
+    /* 翻页：数据全在手里，翻页只是重新切片，所以按钮点了立刻就换 */
+    if (totalPages > 1) {
+      html += '<nav class="rs-pager" aria-label="搜索结果翻页">' +
+        '<button type="button" class="rs-pgbtn" data-real-page="' + (realPage - 1) + '"' +
+          (realPage <= 1 ? ' disabled' : '') + '>' + '‹ 上一页' + '</button>' +
+        '<span class="rs-pginfo">第 <b>' + realPage + '</b> / ' + totalPages + ' 页' +
+          '<i>共 ' + totalItems + ' 条</i></span>' +
+        '<span class="rs-pgnums">' + pagerNumsHtml(realPage, totalPages) + '</span>' +
+        '<button type="button" class="rs-pgbtn" data-real-page="' + (realPage + 1) + '"' +
+          (realPage >= totalPages ? ' disabled' : '') + '>下一页 ›</button>' +
+        '</nav>';
+    }
 
     html += '<p class="deals-note">数据来源：' + esc(m.source) + '（' + esc(m.source_host) + '）公开搜索结果，' +
       '关键词「' + esc(m.keyword) + '」，抓取时间 ' + esc(m.scraped_at) + '，翻 ' + pages + ' 页共解析 ' +
@@ -8284,7 +8989,11 @@
       (m.dropped ? '，其中 <b>' + m.dropped + '</b> 条因是图书/周边配件/蹭词被判定不相关已剔除' : '') +
       '，取相关且字段完整的前 ' + items.length + ' 条。' +
       '价格与销量/评价数为抓取当时的页面展示值，会随促销和库存变动，下单前以站点实时价为准。' +
-      (hasMat ? '「材质未标注」表示标题里没写 304/316，不代表质量好坏。' : '') + '</p>';
+      (hasMat ? '「材质未标注」表示标题里没写 304/316，不代表质量好坏。' : '') +
+      ' 每行末尾的<strong>「打开」</strong>按钮点一下就在新标签页跳到该商品页：' +
+      '网易严选/当当是直连商品页；京东/天猫/淘宝来自慢慢买，会先打开它的比价页（可能先过人机校验），' +
+      '浏览器一般会自动跳到商家商品页，没跳成就点页内「去购买」。' +
+      '</p>';
 
     html += '<details class="rs-how"' + (isLive ? '' : ' open') + '><summary>数据怎么来的 · 想搜别的词怎么办</summary>' +
       (isLive
@@ -8327,6 +9036,7 @@
     }
     realBusy = true;
     realStatus = '';
+    realInputKw = kw;              /* 记下正在搜的词，重绘时回填它 */
     var goBtn = $('btnRsSearch');
     if (goBtn) { goBtn.textContent = '抓取中…'; }
     var st = $('rsStatus');
@@ -8335,15 +9045,24 @@
       realBusy = false;
       realLive = data;
       realSort = 'price';
+      realPage = 1;                /* 新的一次搜索，从第 1 页看起 */
+      realFailKw = '';             /* 成功了：解除「旧结果不可信」的封印 */
+      realFailNoBackend = false;   /* 后端通了：收起「后端没启动」的指引卡片 */
       try { global.localStorage.setItem(REAL_LIVE_KEY, JSON.stringify(data)); } catch (e) { /* 隐私模式忽略 */ }
       renderDealsSheet();
       showToast('已抓到 ' + data.items.length + ' 条「' + kw + '」真实结果（' + data.meta.source + '）');
     }).catch(function (err) {
       realBusy = false;
       var msg = err && err.message ? err.message : '未知原因';
-      realStatus = '这次没抓到：' + msg +
+      /* 关键：记下失败的关键词。渲染时会据此把上一次的结果收起来，
+         避免「搜手机失败 → 却把上次搜笔记本电脑的报价摆着当结果」。 */
+      realFailKw = kw;
+      /* 后端回的原因常自带「没抓到…」，别再叠一层前缀说成「这次没抓到：没抓到…」 */
+      realStatus = (String(msg || '').indexOf('没抓到') >= 0 ? '' : '这次没抓到：') + msg +
         (err && err.business ? '' :
-          '。浏览器直接抓电商页面会被跨域拦截，需要本机后端代理：运行 python deals_api.py 后再点「搜同款」。');
+          '。浏览器直接抓电商页面会被跨域拦截，需要本机后端代理：双击 AI记账 文件夹里的「启动比价后端.bat」，等窗口显示服务已启动，再点「搜同款」。');
+      realFailNoBackend = !(err && err.business);
+      renderDealsSheet();          /* 重绘一次，让旧结果立刻退场，而不是等用户重新进面板 */
       var goBtn2 = $('btnRsSearch');
       if (goBtn2) { goBtn2.textContent = '搜同款'; }
       var st2 = $('rsStatus');
@@ -8362,7 +9081,10 @@
       if (i >= bases.length) {
         return Promise.reject(new Error('连不上本机后端（127.0.0.1:8010）'));
       }
-      var url = bases[i] + '/api/deals/search?keyword=' + encodeURIComponent(kw) + '&pages=2&limit=8';
+      /* 一次抓满 REAL_SCAN_WANT 条（与后端 SEARCH_SCAN 对齐）：页面上只摆 8 条，
+         但要多抓些才翻得动页。实测抓 30 条与抓 8 条耗时一样（抓取量由 pages 决定）。 */
+      var url = bases[i] + '/api/deals/search?keyword=' + encodeURIComponent(kw) +
+        '&pages=2&limit=' + REAL_SCAN_WANT + '&offset=0';
       return global.fetch(url).then(function (r) {
         /* 后端有响应：400/502 时也读出 JSON 里的原因，直接报给用户，不再换地址 */
         if (!r.ok) {
@@ -8387,10 +9109,9 @@
   }
 
   /** 复制「重抓命令」，方便别人自己验证数据不是编的 */
-  function copyRealCmd() {
-    var el = $('rsCmd');
-    var text = el ? el.textContent : '';
-    if (!text) { return; }
+  /** 复制一段文本到剪贴板：优先 clipboard API，本地 file:// 被拒时用 execCommand 兜底 */
+  function copyTextToClipboard(text, okMsg, failMsg) {
+    if (!text) { showToast('没有可复制的内容'); return; }
     var fallback = function () {
       /* execCommand 兜底：本地 file:// 打开时 clipboard API 常被拒 */
       try {
@@ -8404,14 +9125,14 @@
         ta.select();
         var ok = DOC.execCommand && DOC.execCommand('copy');
         DOC.body.removeChild(ta);
-        if (ok) { showToast('命令已复制，粘贴到本机终端即可重抓'); return; }
+        if (ok) { showToast(okMsg); return; }
       } catch (e) { /* 忽略，走最后的提示 */ }
-      showToast('复制失败，手动选中那行命令复制');
+      showToast(failMsg || '复制失败，请手动选中复制');
     };
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function () {
-          showToast('命令已复制，粘贴到本机终端即可重抓');
+          showToast(okMsg);
         }, fallback);
         return;
       }
@@ -8419,32 +9140,86 @@
     fallback();
   }
 
-  /** 把某条真实报价填进下方比价表（平台记为当当，规格带上材质/人群） */
-  function fillRealOffer(sku) {
+  /** 打开比价表单某一行填的商品链接（用输入框里的当前值，方便先改再打开） */
+  function openDealRowLink(btn) {
+    var wrap = btn.closest ? btn.closest('.dco-link') : null;
+    var input = wrap ? wrap.querySelector('.dc-link') : null;
+    var url = safeHttpUrl(input ? input.value : '');
+    /* 链接为空：按钮是禁用态，这里再兜一道底，什么都不做（不跳转、不弹窗） */
+    if (!url) { return; }
+    var w = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!w) { showToast('浏览器拦了弹窗，允许后再点一次'); }
+  }
+
+  function copyRealCmd() {
+    var el = $('rsCmd');
+    var text = el ? el.textContent : '';
+    copyTextToClipboard(text, '命令已复制，粘贴到本机终端即可重抓', '复制失败，手动选中那行命令复制');
+  }
+
+  /** 把某条真实报价填进下方比价表（带商品链接，链接可在表里继续改） */
+  function fillRealOffer(idx) {
     var d = realSearchData();
     if (!d) { return; }
     var it = null;
-    for (var i = 0; i < d.items.length; i++) { if (String(d.items[i].sku) === String(sku)) { it = d.items[i]; break; } }
-    if (!it) { return; }
+    /* 按当前列表下标取条目：列表已排序，下标与渲染一一对应。
+       慢慢买来源的 sku 是空串，只按 sku 匹配会把第 2 条填成第 1 条。 */
+    var i = Number(idx);
+    if (realItemsView && realItemsView[i]) { it = realItemsView[i]; }
+    if (!it) {
+      /* 兜底：只有非数字下标才按 sku 找（老调用方式），数字下标一律按列表下标 */
+      for (var k = 0; k < d.items.length && !/^\d+$/.test(String(idx)); k++) {
+        if (String(d.items[k].sku) === String(idx)) { it = d.items[k]; break; }
+      }
+    }
+    if (!it) { showToast('这条结果已过期，请重新搜一次'); return; }
     syncDealForm();
-    var plat = PLAT_ALIAS[it.source] || it.source || (d.meta && d.meta.source) || '网易严选';
+    /* 平台名优先用商品真实所在平台（京东/天猫/淘宝…），保证下拉框能选中；
+       没有就退回来源别名。 */
+    var plat = (DEAL_PLATFORMS.indexOf(it.platform) >= 0) ? it.platform
+      : (PLAT_ALIAS[it.source] || it.source || (d.meta && d.meta.source) || '网易严选');
     var spec = (it.material && it.material !== '材质未标注' ? it.material + ' ' : '') +
       (it.target && it.target !== '通用' ? it.target + '款 ' : '') + d.meta.keyword;
+    var link = safeHttpUrl(it.url);
     var row = null;
-    for (var k = 0; k < dealsForm.rows.length; k++) {
-      if (String(dealsForm.rows[k].price).trim() === '') { row = dealsForm.rows[k]; break; }
+    for (var k2 = 0; k2 < dealsForm.rows.length; k2++) {
+      if (String(dealsForm.rows[k2].price).trim() === '') { row = dealsForm.rows[k2]; break; }
     }
     if (row) {
       row.platform = plat; row.price = String(it.price); row.spec = spec;
+      row.link = link;
     } else {
       if (dealsForm.rows.length >= 6) { showToast('比价最多 6 个平台，先删一行再填'); return; }
-      dealsForm.rows.push({ platform: plat, price: String(it.price), spec: spec, ship: '', coupon: '', need: '' });
+      dealsForm.rows.push({ platform: plat, price: String(it.price), spec: spec, ship: '', coupon: '', need: '', link: link });
     }
     dealsForm.item = d.meta.keyword;
     dealsForm.budget = dealsForm.budget || '';
     renderDealsSheet();
-    showToast('已填入 ¥' + DEALS.fmt(it.price) + '（' + plat + ' · ' + it.shop + '）');
+    showToast('已填入 ¥' + DEALS.fmt(it.price) + '（' + plat + ' · ' + it.shop + '）' +
+      (link ? '，商品链接也带上了' : ''));
     runDealCompare();
+  }
+
+  /**
+   * 链接来源小字：说清这行链接到底是「慢慢买比价页」还是「平台直链」，
+   * 别让用户以为点「打开」就能一步进商家商品页。
+   * @param {string} url 该行的商品链接
+   * @param {string} platform 该行选中的平台名
+   * @return {string} 小字说明文本（没有链接时返回空串）
+   */
+  function dealLinkHintText(url, platform) {
+    var lk = String(url || '').trim();
+    if (!lk) { return ''; }
+    if (/manmanbuy\.com/i.test(lk)) {
+      return '链接来自慢慢买比价页（不是「' + (platform || '商家') + '」直链，可自行粘贴商家商品链接替换）';
+    }
+    if (/you\.163\.com/i.test(lk)) {
+      return '网易严选直连商品页，点右侧按钮直接打开';
+    }
+    if (/dangdang\.com/i.test(lk)) {
+      return '当当直连商品页，点右侧按钮直接打开';
+    }
+    return '外部商品链接，点右侧按钮直接打开';
   }
 
   function dealOfferRowHtml(r, idx) {
@@ -8452,6 +9227,11 @@
     DEAL_PLATFORMS.forEach(function (p) {
       opts += '<option value="' + esc(p) + '"' + (r.platform === p ? ' selected' : '') + '>' + esc(p) + '</option>';
     });
+    /* 链接来源必须说清楚：慢慢买聚合来的只是「比价页」，不是京东/天猫直链，
+       否则用户会以为点「打开」能直接进商家商品页（实际要先过中转页）。
+       直连源（严选/当当）才真的能一步到商品页。 */
+    var lk = String(r.link || '').trim();
+    var hint = dealLinkHintText(lk, r.platform);
     return '<div class="dc-offer" data-offer>' +
       '<div class="dco-main">' +
       '<select class="dc-plat">' + opts + '</select>' +
@@ -8463,7 +9243,47 @@
       '<input class="dc-coupon" type="number" inputmode="decimal" placeholder="券" value="' + esc(r.coupon) + '" />' +
       '<input class="dc-need" type="number" inputmode="numeric" placeholder="需买N件" value="' + esc(r.need) + '" />' +
       (idx > 0 ? '<button class="dc-del" type="button" data-del-row="' + idx + '" aria-label="删除这行"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></button>' : '<span class="dc-del-ph"></span>') +
-      '</div></div>';
+      '</div>' +
+      '<div class="dco-link">' +
+      '<svg class="dco-link-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-link"/></svg>' +
+      '<input class="dc-link" type="url" inputmode="url" spellcheck="false" autocomplete="off" ' +
+      'placeholder="' + (lk ? '商品链接（可粘贴 / 改成你要看的那个页面，右侧按钮直接打开）' : '粘贴商品链接（可留空）') + '" value="' + esc(r.link || '') + '" />' +
+      '<button class="dco-go' + (lk ? '' : ' dl-go-off') + '" type="button" data-deal-open="1"' + (lk ? '' : ' disabled') + ' ' +
+      'title="' + (lk ? '打开这个商品页' : '这一行还没有商品链接，先粘贴一个') + '" aria-label="打开这个商品页">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external"/></svg></button>' +
+      '</div>' +
+      '<span class="dl-link-hint">' + esc(hint) + '</span>' +
+      '</div>';
+  }
+
+  /**
+   * 链接/平台变化时，同步这一行的小字来源说明和「打开」按钮的可用状态。
+   * 空链接 → 按钮置灰禁用、点击无动作；有链接 → 按钮可用。
+   * @param {Element} el 该行内的链接输入框或平台下拉框
+   */
+  function syncDealLinkRow(el) {
+    if (!el) { return; }
+    var row = el.closest ? el.closest('.dc-offer') : null;
+    if (!row) { return; }
+    var input = row.querySelector('.dc-link');
+    var platEl = row.querySelector('.dc-plat');
+    var lk = input ? String(input.value || '').trim() : '';
+    var hintEl = row.querySelector('.dl-link-hint');
+    if (hintEl) {
+      hintEl.textContent = dealLinkHintText(lk, platEl ? platEl.value : '');
+    }
+    var btn = row.querySelector('.dco-go');
+    if (btn) {
+      if (lk) {
+        btn.removeAttribute('disabled');
+        btn.classList.remove('dl-go-off');
+        btn.setAttribute('title', '打开这个商品页');
+      } else {
+        btn.setAttribute('disabled', 'disabled');
+        btn.classList.add('dl-go-off');
+        btn.setAttribute('title', '这一行还没有商品链接，先粘贴一个');
+      }
+    }
   }
 
   /** 把表单当前值读回 dealsForm，避免切 tab 丢输入 */
@@ -8476,20 +9296,22 @@
     if (rows.length) {
       var out = [];
       for (var i = 0; i < rows.length; i++) {
+        var linkEl = rows[i].querySelector('.dc-link');
         out.push({
           platform: rows[i].querySelector('.dc-plat').value,
           price: rows[i].querySelector('.dc-price').value,
           spec: rows[i].querySelector('.dc-spec').value,
           ship: rows[i].querySelector('.dc-ship').value,
           coupon: rows[i].querySelector('.dc-coupon').value,
-          need: rows[i].querySelector('.dc-need').value
+          need: rows[i].querySelector('.dc-need').value,
+          link: linkEl ? linkEl.value.trim() : ''
         });
       }
       dealsForm.rows = out;
     }
   }
 
-  function runDealCompare() {
+  function runDealCompare(noScroll) {
     if (!dealsReady()) { return; }
     syncDealForm();
     var offers = [];
@@ -8501,7 +9323,8 @@
         spec: r.spec,
         ship: r.ship || 0,
         coupon: r.coupon || 0,
-        needQty: r.need || 1
+        needQty: r.need || 1,
+        link: r.link || ''
       });
     });
     if (!offers.length) {
@@ -8516,7 +9339,7 @@
     dealsLastResult = res;
     var box = $('dealsResult');
     box.innerHTML = dealResultHtml(res);
-    if (box.scrollIntoView) {
+    if (!noScroll && box.scrollIntoView) {
       try { box.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) { /* 老浏览器忽略 */ }
     }
   }
@@ -8530,10 +9353,13 @@
       html += '<div class="dc-table">' +
         '<div class="dc-tr dc-th"><span>平台 / 商品</span><span>到手价</span><span>折合单价</span></div>';
       r.rows.forEach(function (row, i) {
+        var rowLink = safeHttpUrl(row.link);
         html += '<div class="dc-tr' + (i === 0 ? ' is-best' : '') + '">' +
           '<span class="dc-td-plat"><b>' + esc(row.platform) + '</b>' +
           (row.title ? '<small>' + esc(row.title) + '</small>' : '') +
           (row.needQty > 1 ? '<em class="dc-need-tag">需买 ' + row.needQty + ' 件</em>' : '') +
+          (rowLink ? '<a class="dc-td-link" href="' + esc(rowLink) + '" target="_blank" rel="noopener noreferrer nofollow">' +
+            '看商品<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external"/></svg></a>' : '') +
           '</span>' +
           '<span class="dc-td-eff">¥' + DEALS.fmt(row.eff) + '</span>' +
           '<span class="dc-td-per">' + esc(DEALS.perLabel(row)) + '</span>' +
@@ -8579,9 +9405,9 @@
     dealsForm.item = '充电宝 10000mAh';
     dealsForm.budget = '100';
     dealsForm.rows = [
-      { platform: '淘宝', price: '89', spec: '10000mAh', ship: '', coupon: '', need: '' },
-      { platform: '拼多多', price: '79', spec: '10000mAh', ship: '', coupon: '5', need: '' },
-      { platform: '京东', price: '99', spec: '10000mAh', ship: '', coupon: '', need: '2' }
+      { platform: '淘宝', price: '89', spec: '10000mAh', ship: '', coupon: '', need: '', link: '' },
+      { platform: '拼多多', price: '79', spec: '10000mAh', ship: '', coupon: '5', need: '', link: '' },
+      { platform: '京东', price: '99', spec: '10000mAh', ship: '', coupon: '', need: '2', link: '' }
     ];
     $('dealsPane').innerHTML = dealsCompareHtml(dealsNow());
     runDealCompare();
@@ -8762,11 +9588,13 @@
   /* ---------------- 开关 ---------------- */
 
   /**
-   * 省钱面板的一级视图：'radar'（省钱雷达）| 'graph'（省钱图谱）。
-   * 两个功能原本各占一个全屏 sheet，顶栏和「我的」菜单各有入口，占地且重复；
-   * 现在合并为一个面板，用一级分段控件（#saveHubSeg）切换，内部结构不变。
+   * 省钱助手的二级 tab。2026-10-28 起「省钱雷达」与「省钱图谱」彻底合并：
+   * 原来的两个全屏 sheet + 一级分段控件（#saveHubSeg）已删除，
+   * 现在只剩一组二级 tab：今天 / 14 天日历 / 比价计算器 / 图谱 / 大全 / 省钱账 / 说明。
+   * 「今天」用图谱那套卡片 UI（统计条 + 省钱动作 + 打卡），并把雷达的当天品牌活动并进来，
+   * 同一品牌只出现一次 —— 两个模块说同一件事会让用户以为是两笔不同的机会。
    */
-  var saveHubView = 'radar';
+  var hubTab = 'today';
 
   /**
    * 打开省钱面板，可直接指定落到哪一侧、以及该侧的二级 tab。
@@ -8777,66 +9605,106 @@
    * @param {string=} tab 二级 tab（today / calendar / compare / about …）
    */
   function openSaveHub(view, tab) {
-    var next = (view === 'graph') ? 'graph' : 'radar';
-    /* 先做就绪校验再落状态：否则提前 return 后 saveHubView 与画面会不一致 */
-    if (next === 'radar' && !dealsReady()) {
+    /* view 只是旧入口留下的语义（radar / graph）；合并后两者都落在同一个面板，
+       tab 决定落在哪个二级页，不给就统一落到「今天」。 */
+    var want = String(tab || '') || hubTab || 'today';
+    /* 就绪校验：雷达侧（calendar / compare）与图谱侧（map / index / book / about）分开校验 */
+    if ((want === 'calendar' || want === 'compare') && !dealsReady()) {
       addAIMessage(aiBubble('省钱雷达模块没加载起来，刷新一下页面再试。'));
       return;
     }
-    if (next === 'graph' && !savingsReady()) {
+    if ((want === 'map' || want === 'index' || want === 'book' || want === 'about') && !savingsReady()) {
       degradeSavingsUi();
       addAIMessage(aiBubble('省钱图谱模块没加载起来，刷新一下页面再试。'));
       return;
     }
-    saveHubView = next;
-    if (saveHubView === 'radar') { dealsTab = tab || dealsTab || 'today'; }
-    else { savingsTab = tab || savingsTab || 'today'; }
+    hubTab = want;
     var sheet = $('saveHubSheet');
-    if (sheet) { sheet.setAttribute('data-hub', saveHubView); }
-    var segs = DOC.querySelectorAll('#saveHubSeg .shs');
-    for (var i = 0; i < segs.length; i++) {
-      var on = segs[i].getAttribute('data-hub') === saveHubView;
-      segs[i].classList.toggle('active', on);
-      segs[i].setAttribute('aria-selected', on ? 'true' : 'false');
+    if (sheet) { sheet.setAttribute('data-hub', 'merged'); }
+    var tabs = DOC.querySelectorAll('#hubTabs .atab');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-hub-tab') === hubTab);
     }
-    var radarView = $('saveHubViewRadar');
-    var graphView = $('saveHubViewGraph');
-    if (radarView) { radarView.hidden = (saveHubView !== 'radar'); }
-    if (graphView) { graphView.hidden = (saveHubView !== 'graph'); }
     if (getUiMode() === 'simple') {
       /* 简洁版没有遮罩：切到「省钱」屏即可，内容由 switchView → renderSaveHubPanel 重绘。
          绝不能把 #saveHubMask 打开 —— 面板不在里面，只会留下空遮罩盖住整页。 */
       switchView('ssave');
     } else {
       $('saveHubMask').hidden = false;
-      if (saveHubView === 'radar') { renderDealsSheet(); } else { renderSavingsSheet(); }
+      renderHubSheet();
     }
-    if (saveHubView === 'graph' && savingsRecovered) {
+    if (savingsRecovered) {
       savingsRecovered = false;
       showToast('省钱打卡记录格式异常，已重置（账单数据没受影响）');
     }
+    /* 团购省钱卡已从「理财专家」面板移到省钱助手 —— 在这里渲染一次，
+       完整版/简洁版两条分支都能拿到内容。 */
+    renderCoachGroupBuy();
   }
 
   /**
    * 简洁版「省钱」屏的内容渲染。
-   * 面板常驻在 #spSaveBody 内，这里只按当前一级视图（radar / graph）重绘，
+   * 面板常驻在 #spSaveBody 内，这里只按当前二级 tab 重绘，
    * 不碰遮罩、不弹层 —— 与完整版的 openSaveHub 分开，避免两套语义互相污染。
    */
   function renderSaveHubPanel() {
-    if (saveHubView === 'graph') {
-      if (savingsReady()) { renderSavingsSheet(); }
-    } else if (dealsReady()) {
-      renderDealsSheet();
-    }
+    renderHubSheet();
+    /* 团购省钱卡住在省钱助手面板里，简洁版切到本页时同样要渲染 */
+    renderCoachGroupBuy();
   }
 
   /**
-   * 一级分段控件切换。点当前已激活的那一侧不重绘，避免无谓的 DOM 重建。
-   * @param {string} view 'radar' | 'graph'
+   * 合并后的省钱助手面板渲染：一张二级 tab 栏 + 一个内容区。
+   * 「今天」= 图谱卡片 UI（统计条 + 省钱动作 + 打卡）+ 雷达当天的品牌活动；
+   * 其余页分别承接雷达（14 天日历 / 比价计算器）与图谱（图谱 / 大全 / 省钱账 / 说明）。
    */
-  function switchSaveHub(view) {
-    if (view === saveHubView) { return; }
-    openSaveHub(view);
+  function renderHubSheet() {
+    var tabs = DOC.querySelectorAll('#hubTabs .atab');
+    var i;
+    for (i = 0; i < tabs.length; i++) {
+      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-hub-tab') === hubTab);
+    }
+    var headDate = $('dealsHeadDate');
+    if (headDate && dealsReady()) {
+      var now = dealsNow();
+      headDate.textContent = DEALS.dateKey(now) + ' ' + DEALS.weekdayCn(now);
+    }
+    var st = $('savingsHeadStat');
+    if (st && savingsReady()) { st.textContent = savingsHeadStatText(); }
+    var pane = $('hubPane');
+    if (!pane) { return; }
+    var body = pane.parentNode;
+    var keepTop = body ? body.scrollTop : 0;
+    /* 雷达侧内容（14 天日历 / 比价）与图谱侧内容（今天 / 图谱 / 大全 / 省钱账 / 说明）
+       共用同一个内容区，靠 hidden 切换 —— 两个内容容器都保留，事件委托不用重写。 */
+    var dp = $('dealsPane');
+    var sp = $('savingsPane');
+    var radarSide = (hubTab === 'calendar' || hubTab === 'compare');
+    if (radarSide) {
+      if (dp) { dp.hidden = false; dp.innerHTML = (hubTab === 'calendar') ? dealsCalendarHtml(dealsNow()) : dealsCompareHtml(dealsNow()); }
+      if (sp) { sp.hidden = true; }
+    } else {
+      if (dp) { dp.hidden = true; }
+      if (sp) {
+        sp.hidden = false;
+        if (hubTab === 'map') { sp.innerHTML = savingsMapHtml(); }
+        else if (hubTab === 'index') { sp.innerHTML = savingsIndexHtml(); }
+        else if (hubTab === 'book') { sp.innerHTML = savingsBookHtml(); }
+        else if (hubTab === 'about') { sp.innerHTML = savingsAboutHtml(); }
+        else { sp.innerHTML = savingsTodayHtml(); }
+      }
+    }
+    if (body) { body.scrollTop = keepTop; }
+  }
+
+  /**
+   * 二级 tab 切换（合并后只剩这一组分段）。点当前已激活的那一项不重绘。
+   * @param {string} tab 'today' | 'calendar' | 'compare' | 'map' | 'index' | 'book' | 'about'
+   */
+  function switchSaveHub(tab) {
+    if (tab === hubTab) { return; }
+    hubTab = tab;
+    renderHubSheet();
   }
 
   /** 关闭省钱面板（雷达/图谱共用同一个面板，关闭即整体收起） */
@@ -8921,6 +9789,14 @@
     var done = savingsTodayDone();
     var html = '';
 
+    /* 雷达当天命中的品牌：图谱里同品牌的条目不再重复出现（同一件事不说两遍） */
+    var radar = dealsReady() ? (DEALS.dealsOn(dealsNow()) || []) : [];
+    var radarNames = [];
+    for (var ri = 0; ri < radar.length; ri++) {
+      if (radarNames.indexOf(radar[ri].name) < 0) { radarNames.push(radar[ri].name); }
+    }
+    ctx.excludeNames = radarNames;
+
     html += '<div class="sv-hero">' +
       '<div class="sv-hero-num"><b>' + money(sum.monthSaved) + '</b><small>本周期省下</small></div>' +
       '<div class="sv-hero-num"><b>' + sum.monthCount + '</b><small>本周期打卡</small></div>' +
@@ -8946,7 +9822,52 @@
       html += '</div>';
     }
 
+    /* 雷达的当天品牌活动：同款卡片 UI，但不提供打卡（它是活动信息，不是可执行动作） */
+    var limited = [];
+    var always = [];
+    for (var rj = 0; rj < radar.length; rj++) {
+      if (radar[rj].type === 'always') { always.push(radar[rj]); } else { limited.push(radar[rj]); }
+    }
+    if (limited.length) {
+      html += '<div class="sv-sec">今天有活动的品牌</div>';
+      for (var rk = 0; rk < limited.length; rk++) {
+        html += SAV.entryCardHtml(radarAsEntry(limited[rk]), { noActs: true, saveLabel: limited[rk].tag || '活动' });
+      }
+    }
+    if (always.length) {
+      html += '<div class="sv-sec">常驻优惠（不用等）</div><div class="deals-pills">';
+      for (var al = 0; al < always.length; al++) {
+        html += '<span class="deals-pill" title="' + esc(always[al].tip) + '">' + esc(always[al].name) +
+          '·' + esc(always[al].title) + '</span>';
+      }
+      html += '</div>';
+    }
+
     return html;
+  }
+
+  /** 雷达分类 → 图谱分类（雷达用「快餐/饮品/…」，图谱用 fastfood/drinks/…） */
+  var RADAR_CAT_MAP = { '快餐': 'fastfood', '饮品': 'drinks', '零食': 'snacks', '聚餐': 'fun', '超市': 'daily', '电商': 'promo' };
+
+  /** 雷达活动 → 图谱卡片用的条目结构（只读展示，不进打卡体系） */
+  function radarAsEntry(it) {
+    return {
+      id: 'radar.' + it.id,
+      cat: RADAR_CAT_MAP[it.cat] || 'promo',
+      title: it.name + ' · ' + it.title,
+      action: it.how,
+      who: it.place ? (it.place + '（' + it.cat + '）') : (it.cat + '活动'),
+      gate: it.tag || '常驻',
+      scene: 'always',
+      risk: it.tip,
+      trigger: null,
+      save: { type: 'none' },
+      priceRef: {},
+      billCats: ['餐饮'],
+      keywords: [it.name],
+      certainty: it.certainty || 'stable',
+      source: it.source || '品牌官方活动页'
+    };
   }
 
   /* ---------------- 图谱 ---------------- */
@@ -8980,6 +9901,235 @@
     return html;
   }
 
+  /* ================================================================== */
+  /* 买谷工具箱（gu.js 交互层）                                          */
+  /*                                                                   */
+  /* 5 个模块的入口都在「省钱图谱 → 吃谷避坑」分类下：                    */
+  /*   模块1 谷圈黑话速查  → gu.glossary.101 的展开态里带搜索框           */
+  /*   模块2 渠道分级      → gu.channel.102 的展开态里带红黄绿三档         */
+  /*   模块3 拼团防跑路    → gu.group.103 的展开态里带 5 项勾选清单       */
+  /*   模块4 盲盒冷静器    → gu.gacha.104 的展开态里带 3 问自检            */
+  /*   模块5 吃谷罐        → gu.budget.105 的展开态里带额度设置            */
+  /* 做法：详情展开时按条目 id 追加对应的交互面板，而不是另开一个页签 ——  */
+  /* 用户是「为了这一条动作」才来的，就地给工具，不用来回跳。            */
+  /* ================================================================== */
+
+  /* 面板内的临时 UI 状态（不落盘：落盘的只有勾选与额度，那才是用户资产） */
+  var guUi = {
+    glossaryQuery: '',      /* 黑话搜索词 */
+    glossaryOpen: '',        /* 展开的词条 */
+    gachaStep: 0,           /* 盲盒冷静器当前第几问（0 基） */
+    gachaAnswers: [],       /* 每问选中的选项下标 */
+    gachaDone: false,       /* 是否已给结论 */
+    jarQuotaInput: '',      /* 额度输入框 */
+    jarSpendInput: ''       /* 买谷支出输入框 */
+  };
+
+  /** 吃谷工具的条目 id → 面板渲染函数 */
+  function guToolPanel(e) {
+    if (!e || e.cat !== 'gu') { return ''; }
+    switch (e.id) {
+      case 'gu.glossary.101': return guGlossaryPanel();
+      case 'gu.channel.102': return guChannelPanel();
+      case 'gu.group.103': return guGroupPanel();
+      case 'gu.gacha.104': return guGachaPanel();
+      case 'gu.budget.105': return guJarPanel();
+      default: return '';
+    }
+  }
+
+  /* ---------------- 模块1：谷圈黑话速查 ---------------- */
+
+  function guGlossaryPanel() {
+    var q = guUi.glossaryQuery;
+    var hits = GU.searchGlossary(q);
+    var html = '<div class="gu-panel" id="guPanelGlossary">';
+
+    html += '<div class="gu-panel-h">' + ic('bulb', 'bico-brand', '黑话速查') +
+      '<b>谷圈黑话速查</b><span class="gu-hint">看不懂交易帖先查词</span></div>';
+
+    html += '<div class="gu-search-row">' +
+      '<input type="search" id="guGlossaryInput" class="gu-input" placeholder="搜「捆」「热谷」「祖国版」…" value="' +
+      esc(q) + '" autocomplete="off" />' +
+      '<span class="gu-count">' + hits.length + ' 词</span></div>';
+
+    if (!hits.length) {
+      html += '<div class="gu-empty">没查到「' + esc(q) + '」。<br><span class="hint">换个说法试试，比如「海景」「盲盒」「跑单」。</span></div>';
+    } else {
+      html += '<div class="gu-gloss-list">';
+      for (var i = 0; i < hits.length; i++) {
+        var g = hits[i];
+        var open = guUi.glossaryOpen === g.w;
+        html += '<div class="gu-gloss' + (open ? ' is-open' : '') + '">';
+        html += '<button type="button" class="gu-gloss-top" data-gu-act="gloss" data-gu-word="' + esc(g.w) + '">' +
+          '<b>' + esc(g.w) + '</b><span class="gu-gloss-m">' + esc(g.m) + '</span>' +
+          '<span class="gu-caret">' + (open ? '收起' : '避坑') + '</span></button>';
+        if (open) {
+          html += '<div class="gu-gloss-t">' + ic('alert', 'bico-warn', '避坑') + esc(g.t) + '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div class="gu-panel-f">只解释没用 —— 每条都带一句「怎么避」。数据来源：谷圈通用黑话 + 消协口径。</div>';
+    html += '</div>';
+    return html;
+  }
+
+  /* ---------------- 模块2：渠道分级 ---------------- */
+
+  function guChannelPanel() {
+    var html = '<div class="gu-panel" id="guPanelChannel">';
+    html += '<div class="gu-panel-h">' + ic('scale', 'bico-brand', '渠道分级') +
+      '<b>买谷渠道分级</b><span class="gu-hint">下单前对一遍</span></div>';
+
+    for (var i = 0; i < GU.CHANNELS.length; i++) {
+      var c = GU.CHANNELS[i];
+      html += '<div class="gu-chan gu-chan-' + esc(c.level) + '">';
+      html += '<div class="gu-chan-h"><span class="gu-chan-dot"></span><b>' + esc(c.label) + '</b>' +
+        '<span class="gu-chan-tone">' + esc(c.tone) + '</span></div>';
+      for (var k = 0; k < c.items.length; k++) {
+        html += '<div class="gu-chan-item"><b>' + esc(c.items[k].t) + '</b><span>' + esc(c.items[k].v) + '</span></div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div class="gu-panel-f">任何说「未成年不能闲鱼所以私转」的团长直接拉黑 —— 这是跑路高发话术。数据来源：消协 / 监管口径 + 平台规则。</div>';
+    html += '</div>';
+    return html;
+  }
+
+  /* ---------------- 模块3：拼团防跑路清单 ---------------- */
+
+  function guGroupPanel() {
+    var checks = GU.getChecks();
+    var done = GU.checkedCount();
+    var all = GU.allGroupChecked();
+    var html = '<div class="gu-panel" id="guPanelGroup">';
+
+    html += '<div class="gu-panel-h">' + ic('clipboard', 'bico-brand', '拼团清单') +
+      '<b>跟团前必查 5 项</b><span class="gu-hint">全过再跟团</span></div>';
+
+    html += '<div class="gu-progress"><span class="gu-progress-bar" style="width:' +
+      Math.round(done / GU.GROUP_CHECKS.length * 100) + '%"></span>' +
+      '<span class="gu-progress-t">已过 ' + done + ' / ' + GU.GROUP_CHECKS.length + ' 项</span></div>';
+
+    html += '<div class="gu-check-list">';
+    for (var i = 0; i < GU.GROUP_CHECKS.length; i++) {
+      var g = GU.GROUP_CHECKS[i];
+      var on = !!checks[g.id];
+      html += '<label class="gu-check' + (on ? ' is-on' : '') + '">' +
+        '<input type="checkbox" data-gu-act="check" data-gu-id="' + esc(g.id) + '"' + (on ? ' checked' : '') + ' />' +
+        '<span class="gu-check-box">' + (on ? ic('check', '', '已勾选') : '') + '</span>' +
+        '<span class="gu-check-body"><b>' + esc(g.t) + '</b><span>' + esc(g.v) + '</span></span>' +
+        '</label>';
+    }
+    html += '</div>';
+
+    if (all) {
+      html += '<div class="gu-verdict gu-verdict-ok">' + ic('check', '', '可以跟团') +
+        '五项全过，这个团可以跟。到账后先验货再确认收货。</div>';
+    } else {
+      html += '<div class="gu-verdict gu-verdict-wait">' + ic('alert', 'bico-warn', '还没过完') +
+        '还差 ' + (GU.GROUP_CHECKS.length - done) + ' 项。差任何一项都可能血本无归，先问清再打勾。</div>';
+    }
+
+    html += '<div class="gu-panel-f">勾选状态会记住，下次跟团直接对照。数据来源：谷圈拼团防坑共识。</div>';
+    html += '</div>';
+    return html;
+  }
+
+  /* ---------------- 模块4：盲盒抽赏冷静器 ---------------- */
+
+  function guGachaPanel() {
+    var html = '<div class="gu-panel" id="guPanelGacha">';
+    html += '<div class="gu-panel-h">' + ic('target', 'bico-brand', '盲盒冷静器') +
+      '<b>抽前 3 问自检</b><span class="gu-hint">两问答不上就别抽</span></div>';
+
+    if (guUi.gachaDone) {
+      var v = GU.gachaVerdict(guUi.gachaAnswers);
+      html += '<div class="gu-verdict ' + (v.ok ? 'gu-verdict-ok' : 'gu-verdict-no') + '">' +
+        ic(v.ok ? 'check' : 'alert', v.ok ? '' : 'bico-warn', '冷静器结论') +
+        '<b>' + esc(v.verdict) + '</b><span>' + esc(v.reason) + '</span></div>';
+      html += '<button type="button" class="btn-mini" data-gu-act="gacha-reset">重新自检</button>';
+      html += '<div class="gu-panel-f">参考：消协盲盒指引（概率必须公示、8 岁以下禁售、8-18 岁需监护人同意）+ 闲鱼比价口径。</div>';
+      html += '</div>';
+      return html;
+    }
+
+    var step = guUi.gachaStep;
+    if (step < 0) { step = 0; }
+    if (step >= GU.GACHA_QUESTIONS.length) {
+      guUi.gachaDone = true;
+      return guGachaPanel();
+    }
+    var q = GU.GACHA_QUESTIONS[step];
+
+    html += '<div class="gu-progress"><span class="gu-progress-bar" style="width:' +
+      Math.round(step / GU.GACHA_QUESTIONS.length * 100) + '%"></span>' +
+      '<span class="gu-progress-t">第 ' + (step + 1) + ' / ' + GU.GACHA_QUESTIONS.length + ' 问</span></div>';
+
+    html += '<div class="gu-gacha-q"><b>' + esc(q.q) + '</b><span class="gu-hint">' + esc(q.hint) + '</span></div>';
+    html += '<div class="gu-gacha-opts">';
+    for (var i = 0; i < q.opts.length; i++) {
+      html += '<button type="button" class="gu-gacha-opt" data-gu-act="gacha" data-gu-step="' + step +
+        '" data-gu-opt="' + i + '">' + esc(q.opts[i].t) + '</button>';
+    }
+    html += '</div>';
+
+    if (step > 0) {
+      html += '<button type="button" class="btn-mini" data-gu-act="gacha-back">← 上一个问题</button>';
+    }
+
+    html += '<div class="gu-panel-f">冷静器的目的不是阻止你抽，而是让你抽之前把「热冷 / 概率 / 出手意愿」想清楚。</div>';
+    html += '</div>';
+    return html;
+  }
+
+  /* ---------------- 模块5：吃谷罐 ---------------- */
+
+  function guJarPanel() {
+    var quota = GU.getJar().quota || 0;
+    var used = GU.usedThisMonthCents();
+    var left = GU.remainingCents();
+    var html = '<div class="gu-panel" id="guPanelJar">';
+
+    html += '<div class="gu-panel-h">' + ic('piggy', 'bico-brand', '吃谷罐') +
+      '<b>吃谷预算隔离</b><span class="gu-hint">物理隔离最防超支</span></div>';
+
+    if (!quota) {
+      html += '<div class="gu-jar-empty">还没设月度额度。<br><span class="hint">先定一个数（比如 ¥50），买谷只从这个数里出，花完就停。</span></div>';
+    } else {
+      var usedPct = Math.min(100, Math.round(used / quota * 100));
+      html += '<div class="gu-jar-stat"><div><b>' + money(used / 100) + '</b><small>本月已用</small></div>' +
+        '<div><b>' + money(quota / 100) + '</b><small>月度额度</small></div>' +
+        '<div><b class="' + (left !== null && left < 0 ? 'expense' : 'income') + '">' +
+        (left === null ? '—' : money(left / 100)) + '</b><small>还能花</small></div></div>';
+      html += '<div class="gu-jar-bar"><span class="gu-jar-bar-in' + (usedPct >= 100 ? ' is-full' : '') +
+        '" style="width:' + usedPct + '%"></span></div>';
+    }
+
+    html += '<div class="gu-jar-row">' +
+      '<input type="number" id="guQuotaInput" class="gu-input gu-input-num" placeholder="月度额度 ¥" min="0" step="1" value="' +
+      esc(guUi.jarQuotaInput) + '" />' +
+      '<button type="button" class="btn-mini primary" data-gu-act="jar-quota">设定额度</button></div>';
+
+    html += '<div class="gu-jar-row">' +
+      '<input type="number" id="guSpendInput" class="gu-input gu-input-num" placeholder="这次买谷花了 ¥" min="0" step="0.01" value="' +
+      esc(guUi.jarSpendInput) + '" />' +
+      '<button type="button" class="btn-mini" data-gu-act="jar-spend">记一笔</button></div>';
+
+    html += '<div class="gu-jar-hint">' +
+      (quota
+        ? '超出额度会直接拦住 —— 想要就先把额度调高，别在冲动时调。'
+        : '额度是「允许花多少」，不是提醒，是硬闸：花完就停，月末没花完可以转回主预算。') + '</div>';
+
+    html += '<div class="gu-panel-f">数据来源：广州市消协零花钱预算建议。额度与流水存在本地，不上传。</div>';
+    html += '</div>';
+    return html;
+  }
+
   function savingsListHtml() {
     var list = savingsFiltered();
     if (!list.length) {
@@ -8992,7 +10142,11 @@
       var e = list[i];
       var chk = SAV.isChecked(savingsDb.logs, e.id, day);
       html += SAV.entryCardHtml(e, { checked: chk, q: savingsQuery });
-      if (savingsOpen[e.id]) { html += savingsDetailHtml(e); }
+      if (savingsOpen[e.id]) {
+        html += savingsDetailHtml(e);
+        /* 吃谷类条目就地追加交互工具（黑话速查 / 渠道分级 / 拼团清单 / 盲盒冷静 / 吃谷罐） */
+        html += guToolPanel(e);
+      }
     }
     return html;
   }
@@ -9502,6 +10656,23 @@
     }
     if (compact.indexOf('截屏记账') !== -1 || compact.indexOf('截图记账') !== -1) {
       return cmdHit('ocr', openOcrModal, compact);
+    }
+    /* ---- 心愿单：明确的「加心愿单 XXX 500」必须排在下面的 hasAmount 之前 ----
+      这条命令的典型输入恰恰带金额，而「带金额一律记账」的铁律会把商品名记成
+      「加心愿单 球鞋」，结果既记了一笔假账、心愿单还是空的。
+      判据刻意收紧到「句首的明确命令词（可带帮我 / 我想）」，不是「句中出现心愿单」，
+      否则「心愿单里的球鞋买了 500」会被当成添加。 */
+    var bareWish = compact.replace(/^(帮我|请|麻烦|给我|我要|我想)/, '');
+    if (bareWish === '心愿单' || bareWish === '心愿清单' || bareWish === '打开心愿单' ||
+      bareWish === '看心愿单' || bareWish === '我的心愿单') {
+      return cmdHit('wish-open', openWishSheet, compact);
+    }
+    var wishAddHit = WISH_ADD_RE.exec(text);
+    if (wishAddHit) {
+      var wishParsed = parseWishAddText(wishAddHit[1]);
+      return cmdHit('wish-add', function () {
+        wishAddFromText(wishParsed.title, wishParsed.amount);
+      }, compact);
     }
     /* ---- 业务规则：句子里带金额的一律当成记账（= 意图层的 V4 规则） ----
        ⚠️ 禁止改动：这是「带金额优先记账」的唯一实现处，V4 与它保持同一判据。
@@ -11192,8 +12363,8 @@
     // 避免代码路径（OCR / 指令 / 返回）把用户切到被隐藏的面板而留空白
     if (getUiMode() === 'simple') {
       if (!SIMPLE_VIEWS[view]) {
-        // 完整版视图 → 简洁版等价屏：聊天→AI 对话、看板→预算、目标→攒钱目标、专家→理财专家
-        view = ({ chat: 'sai', dash: 'sbudget', goals: 'sgoals', coach: 'scoach' })[view] || 'shome';
+        // 完整版视图 → 简洁版等价屏：聊天→AI 对话、看板→预算、目标→攒钱目标、专家→理财专家、搭子→凑单搭子
+        view = ({ chat: 'sai', dash: 'sbudget', goals: 'sgoals', coach: 'scoach', dazai: 'sdazai' })[view] || 'shome';
       }
     } else if (!FULL_VIEWS[view]) {
       view = 'chat';
@@ -11215,6 +12386,17 @@
     /* 简洁版「省钱」屏：面板常驻在 #spSaveBody 内，切进来时补一次渲染，
        保证首次进入与数据变更后看到的都是最新内容（不弹遮罩、不调 openSaveHub）。 */
     if (view === 'ssave') { renderSaveHubPanel(); }
+    /* 凑单搭子：首次进入挂载（读本机数据 + 建事件委托），之后每次进入重绘一次，
+       保证看到的是最新算价与好友表决。简洁版视图名为 sdazai（同一块面板）。 */
+    if ((view === 'dazai' || view === 'sdazai') && global.DAZAI) {
+      if (!dazaiMounted) {
+        dazaiMounted = true;
+        global.DAZAI.mount();
+        /* 首次进来先摊开用法说明，省得对着一堆输入框发懵；看过一次就不再自动弹 */
+        maybeAutoDazaiGuide();
+      }
+      else { global.DAZAI.refresh(); }
+    }
     /* 简洁版「存钱罐」屏：进入时补一次渲染，保证数字是最新的 */
     if (view === 'spiggy') {
       piggyDraft = '';
@@ -11227,6 +12409,92 @@
   function goBackView() {
     var prev = viewHistory.pop() || (getUiMode() === 'simple' ? 'shome' : 'chat');
     switchView(prev, true);
+  }
+
+  /* ===================== 凑单搭子 · 教程 =====================
+   * 面板内「教程」按钮的折叠说明。dzBody 每次 refresh() 都会被整块重建，
+   * 所以教程必须挂在 dzBody 之外的独立节点上，不能塞进渲染函数里。 */
+  var DZ_GUIDE_KEY = 'ai_jizhang_dazai_guide_v1';
+
+  function dzGuideHtml() {
+    return '<h3 class="dz-guide-h">凑单搭子怎么用</h3>' +
+      '<p class="dz-guide-lead">它解决两件事：大促时「再凑一件到底划不划算」，' +
+        '以及「这笔钱要不要先让朋友把关」。照下面 5 步走一遍就会了。</p>' +
+
+      '<div class="dz-gstep">' +
+        '<h4 class="dz-gstep-h"><span class="dz-gnum">1</span>先把规则填对</h4>' +
+        '<ul>' +
+          '<li><b>每满 300 / 减 30</b>：跨店满减档位，照活动页上的数字填。</li>' +
+          '<li><b>88VIP 身份</b>选「是」之后，才能挑消费券（500 减 50 / 1500 减 150 / 3000 减 300）。</li>' +
+          '<li>下面那行灰字是<b>当前生效的规则</b>。A、B 没填或 A ≤ B 时，跨店满减不参与计算。</li>' +
+        '</ul>' +
+      '</div>' +
+
+      '<div class="dz-gstep">' +
+        '<h4 class="dz-gstep-h"><span class="dz-gnum">2</span>把要买的东西加进来</h4>' +
+        '<ul>' +
+          '<li>点<b>＋ 加一件</b>，填商品名、原价、这件自带的券、品类。</li>' +
+          '<li>每件底下三个开关，按这件商品的实际情况开：<br>' +
+            '<b>跨店</b>＝参与跨店满减；<b>VIP券</b>＝计入 88VIP 券的门槛金额；<b>95折</b>＝享 88VIP 的 95 折。</li>' +
+          '<li>左边<b>勾选框</b>取消后这件不计入总价，方便你对比「把它拿掉会不会更亏」。</li>' +
+        '</ul>' +
+      '</div>' +
+
+      '<div class="dz-gstep">' +
+        '<h4 class="dz-gstep-h"><span class="dz-gnum">3</span>看实付和优惠明细</h4>' +
+        '<ul>' +
+          '<li>算价顺序固定：<b>商品券 → 品类券 → 跨店满减 → 88VIP 券 → 95 折</b>。</li>' +
+          '<li>优惠券按每件「还能优惠多少」分摊，单件封顶，所以<b>不会出现某件实付为负</b>，' +
+            '优惠也不会算重。</li>' +
+          '<li>最下面<b>「明细合计 ＝ 原价 − 实付」</b>是对账行：显示 ✓ 就说明账是平的。</li>' +
+        '</ul>' +
+      '</div>' +
+
+      '<div class="dz-gstep">' +
+        '<h4 class="dz-gstep-h"><span class="dz-gnum">4</span>想找人把关：用审批宝</h4>' +
+        '<ol>' +
+          '<li>计算器里点<b>导入到审批宝</b>，再切到上面的<b>审批</b>页。</li>' +
+          '<li>点<b>生成分享链接</b>，把链接发给朋友。</li>' +
+          '<li>朋友打开链接就能逐件投「同意 / 不同意」并留言，<b>不用注册</b>。</li>' +
+          '<li>回到这页点<b>刷新好友表决</b>，就能看到谁同意、谁反对。</li>' +
+        '</ol>' +
+      '</div>' +
+
+      '<div class="dz-gstep">' +
+        '<h4 class="dz-gstep-h"><span class="dz-gnum">5</span>算完记进账本</h4>' +
+        '<ul>' +
+          '<li>点<b>记进账本</b>，算出来的实付金额会带进记账流程，选好分类和账户确认即可。</li>' +
+        '</ul>' +
+      '</div>' +
+
+      '<p class="dz-gnote"><b>两个要注意的地方</b><br>' +
+        '① 分享链接要让<b>别的设备</b>也能打开，需要本机后端在跑 —— 双击 AI记账 文件夹里的' +
+        '<b>启动比价后端.bat</b>，看到窗口里显示端口 8010 就成了；没起时链接只能在本机用。<br>' +
+        '② 商品和审批单都只存在<b>你自己这台设备</b>上，不会上传。</p>' +
+
+      '<div class="dz-guide-foot">' +
+        '<button class="dz-guide-close" type="button" data-dz-guide-close>知道了</button>' +
+      '</div>';
+  }
+
+  /** force 传 true/false 强制开合；不传则切换。展开过一次就记住，之后不再自动弹。 */
+  function toggleDazaiGuide(force) {
+    var box = $('dzGuide');
+    var btn = $('dzGuideBtn');
+    if (!box) { return; }
+    var open = (force === true || force === false) ? force : !!box.hidden;
+    if (!box.innerHTML) { box.innerHTML = dzGuideHtml(); }
+    box.hidden = !open;
+    if (btn) { btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    if (open) { try { localStorage.setItem(DZ_GUIDE_KEY, '1'); } catch (e) { /* 隐私模式忽略 */ } }
+  }
+
+  /** 首次进入搭子时自动展开一次教程；看过就不再自动弹（仍可点「教程」手动打开） */
+  function maybeAutoDazaiGuide() {
+    var seen = false;
+    try { seen = localStorage.getItem(DZ_GUIDE_KEY) === '1'; } catch (e) { /* 隐私模式忽略 */ }
+    if (seen) { return; }
+    toggleDazaiGuide(true);
   }
 
   function bindEvents() {
@@ -11460,6 +12728,17 @@
     $('btnOcr').addEventListener('click', openOcrModal);
     $('btnAnalysis').addEventListener('click', openAnalysisSheet);
     $('btnCoach').addEventListener('click', function () { switchView('coach'); });
+    /* 顶栏「凑单搭子」：完整版/简洁版都进同一块搭子面板（switchView 内部按当前 UI 映射）。 */
+    $('btnDazaiTop').addEventListener('click', function () { switchView('dazai'); });
+    /* 搭子面板内的「返回」：复用全局返回栈 goBackView()，跟其他子页行为一致 */
+    $('dzBack').addEventListener('click', function () { goBackView(); });
+    /* 搭子面板内的「教程」：展开/收起用法说明，首进自动展开一次 */
+    $('dzGuideBtn').addEventListener('click', function () { toggleDazaiGuide(); });
+    /* 教程里的「知道了」：内容是动态注入的，只能靠事件委托 */
+    $('dzGuide').addEventListener('click', function (e) {
+      var c = (e.target && e.target.closest) ? e.target.closest('[data-dz-guide-close]') : null;
+      if (c) { toggleDazaiGuide(false); }
+    });
     /* 看板「理财课 · 视频」卡的「全部 ›」：进理财学院并定位到学院区。
        按钮是静态节点（不会被 innerHTML 重建），只绑一次，不存在重复绑定。 */
     $('btnLearnAll').addEventListener('click', openAcademy);
@@ -11495,12 +12774,12 @@
     /* 专家面板「‹ 返回」：桌面端无底部导航，靠它回到进入专家前的视图 */
     $('btnCoachBack').addEventListener('click', goBackView);
 
-    /* ---- 省钱：一个入口 + 一级分段（雷达 / 图谱），两个功能共用一个面板 ---- */
+    /* ---- 省钱助手：雷达与图谱已合并成一个面板，只剩一组二级 tab ---- */
     $('btnSaveHub').addEventListener('click', function () { openSaveHub('radar'); });
     $('btnCloseSaveHub').addEventListener('click', closeSaveHub);
-    $('saveHubSeg').addEventListener('click', function (e) {
-      var b = e.target.closest ? e.target.closest('[data-hub]') : null;
-      if (b) { switchSaveHub(b.getAttribute('data-hub')); }
+    $('hubTabs').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('[data-hub-tab]') : null;
+      if (b) { switchSaveHub(b.getAttribute('data-hub-tab')); }
     });
     $('saveHubMask').addEventListener('click', function (e) {
       if (e.target === $('saveHubMask')) { closeSaveHub(); }
@@ -11508,13 +12787,6 @@
 
     /* ---- 省钱雷达：切 tab / 比价计算 / 导出日历 ---- */
     $('btnDealsCard').addEventListener('click', function () { openSaveHub('radar'); });
-    $('dealsTabs').addEventListener('click', function (e) {
-      var tab = e.target.closest ? e.target.closest('[data-deal-tab]') : null;
-      if (!tab) { return; }
-      syncDealForm();
-      dealsTab = tab.getAttribute('data-deal-tab');
-      renderDealsSheet();
-    });
     $('dealsPane').addEventListener('click', function (e) {
       var del = e.target.closest ? e.target.closest('[data-del-row]') : null;
       if (del) {
@@ -11534,14 +12806,24 @@
       if (sortBtn) {
         syncDealForm();
         realSort = sortBtn.getAttribute('data-real-sort');
+        realPage = 1;              /* 换了排序顺序整份重排，停在原页码会看不出变化 */
         renderDealsSheet();
+        return;
+      }
+      var pgBtn = e.target.closest ? e.target.closest('[data-real-page]') : null;
+      if (pgBtn) {
+        if (!pgBtn.disabled) { gotoRealPage(pgBtn.getAttribute('data-real-page')); }
         return;
       }
       var fillBtn = e.target.closest ? e.target.closest('[data-real-fill]') : null;
       if (fillBtn) { fillRealOffer(fillBtn.getAttribute('data-real-fill')); return; }
+      var openRowBtn = e.target.closest ? e.target.closest('[data-deal-open]') : null;
+      if (openRowBtn) { openDealRowLink(openRowBtn); return; }
       var copyBtn = e.target.closest ? e.target.closest('[data-real-copy]') : null;
       if (copyBtn) { copyRealCmd(); return; }
       if (e.target.id === 'btnRsSearch') { runRealSearch(); return; }
+      /* 后端启动后「再试一次」：直接重跑当前关键词的搜索 */
+      if (e.target.id === 'btnRsRetry') { runRealSearch(); return; }
       var target = e.target.id;
       if (target === 'btnDealCalc') { runDealCompare(); }
       else if (target === 'btnDealDemo') { fillDealDemo(); }
@@ -11552,15 +12834,44 @@
           platform: '抖音',
           price: '',
           spec: dealsForm.rows[0] ? dealsForm.rows[0].spec : '',
-          ship: '', coupon: '', need: ''
+          ship: '', coupon: '', need: '', link: ''
         });
         renderDealsSheet();
       }
     });
+    /* 电商图床（京东/阿里/严选）有防盗链，图挂了就把 <img> 收起来，
+       露出底座的平台图标——比留一个破图框体面，也不占额外高度 */
+    $('dealsPane').addEventListener('error', function (e) {
+      var t = e.target;
+      if (t && t.classList && t.classList.contains('rs-pic')) { t.classList.add('is-broken'); }
+    }, true);
     $('dealsPane').addEventListener('keydown', function (e) {
       if (e.target && e.target.id === 'rsKw' && (e.key === 'Enter' || e.keyCode === 13)) {
         e.preventDefault();
         runRealSearch();
+      }
+    });
+    /* 商品链接改完（失焦）就静默重算一次，让结果表里的「看商品」跟着变；不滚动页面 */
+    $('dealsPane').addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !t.classList) { return; }
+      if (t.classList.contains('dc-link')) {
+        syncDealLinkRow(t);
+        runDealCompare(true);
+        return;
+      }
+      /* 平台名变了，来源小字里带的平台名要跟着变 */
+      if (t.classList.contains('dc-plat')) {
+        syncDealLinkRow(t);
+      }
+    });
+    /* 边输入边同步：链接从空变成有值时，「打开」按钮立刻可用；来源小字也立刻更新 */
+    $('dealsPane').addEventListener('input', function (e) {
+      var t = e.target;
+      /* 搜索词要留住：面板因其它原因重绘时，输入框不能把用户正在打的字清掉 */
+      if (t && t.id === 'rsKw') { realInputKw = t.value; return; }
+      if (t && t.classList && t.classList.contains('dc-link')) {
+        syncDealLinkRow(t);
       }
     });
     $('btnDealsCsv').addEventListener('click', function () {
@@ -11576,13 +12887,6 @@
 
     /* ---- 省钱图谱：切 tab / 搜索 / 分类 / 打卡 / 导出（入口已并入省钱面板） ---- */
     $('btnSavingsCard').addEventListener('click', function () { openSaveHub('graph'); });
-    $('savingsTabs').addEventListener('click', function (e) {
-      var tab = e.target.closest ? e.target.closest('[data-sv-tab]') : null;
-      if (!tab) { return; }
-      savingsTab = tab.getAttribute('data-sv-tab');
-      savingsEdit = null;
-      renderSavingsSheet();
-    });
     $('savingsPane').addEventListener('click', function (e) {
       /* 分类筛选：只重画 chips 与列表，不动搜索框，避免输入焦点丢失 */
       var chip = e.target.closest ? e.target.closest('[data-sv-cat]') : null;
@@ -11648,6 +12952,125 @@
       var c = $('svCount');
       if (c) { c.textContent = savingsFiltered().length + ' 条'; }
     });
+    /* ---- 买谷工具箱（gu.js）：黑话速查 / 渠道分级 / 拼团清单 / 盲盒冷静 / 吃谷罐 ---- */
+    $('savingsPane').addEventListener('click', function (e) {
+      var gact = e.target.closest ? e.target.closest('[data-gu-act]') : null;
+      if (!gact) { return; }
+      var what = gact.getAttribute('data-gu-act');
+
+      /* 只重画列表，保持滚动位置（工具面板在列表内部） */
+      function repaint() {
+        var l = $('svList');
+        if (!l) { return; }
+        var body = $('savingsPane').parentNode;
+        var keep = body ? body.scrollTop : 0;
+        l.innerHTML = savingsListHtml();
+        if (body) { body.scrollTop = keep; }
+      }
+
+      if (what === 'gloss') {
+        var w = gact.getAttribute('data-gu-word') || '';
+        guUi.glossaryOpen = (guUi.glossaryOpen === w) ? '' : w;
+        repaint();
+        return;
+      }
+      if (what === 'check') {
+        var cid = gact.getAttribute('data-gu-id') || '';
+        /* 注意：click 事件派发到我们这里时，浏览器已经把 checkbox.checked 翻转过了，
+           直接读它的当前值就是「用户想要的新状态」，不能再取反（取了反会写反）。 */
+        var on = !!gact.checked;
+        if (!GU.setCheck(cid, on)) { showToast('勾选状态没存上，检查一下浏览器存储', 'warn'); }
+        repaint();
+        return;
+      }
+      if (what === 'gacha') {
+        var step = parseInt(gact.getAttribute('data-gu-step'), 10);
+        var opt = parseInt(gact.getAttribute('data-gu-opt'), 10);
+        if (isNaN(step) || isNaN(opt)) { return; }
+        guUi.gachaAnswers[step] = opt;
+        guUi.gachaStep = step + 1;
+        if (guUi.gachaStep >= GU.GACHA_QUESTIONS.length) { guUi.gachaDone = true; }
+        repaint();
+        return;
+      }
+      if (what === 'gacha-back') {
+        guUi.gachaStep = Math.max(0, guUi.gachaStep - 1);
+        repaint();
+        return;
+      }
+      if (what === 'gacha-reset') {
+        guUi.gachaStep = 0;
+        guUi.gachaAnswers = [];
+        guUi.gachaDone = false;
+        repaint();
+        return;
+      }
+      if (what === 'jar-quota') {
+        var qin = $('guQuotaInput');
+        var raw = qin ? qin.value : '';
+        var res = GU.setQuota(raw);
+        if (!res.ok) {
+          showToast(res.reason === 'toolarge' ? '额度太大了，重新填一个' : '额度填个数字吧，比如 50', 'warn');
+          return;
+        }
+        guUi.jarQuotaInput = '';
+        showToast('吃谷额度已设为 ' + money(res.quotaCents / 100) + '，买谷只从这个数里出');
+        repaint();
+        return;
+      }
+      if (what === 'jar-spend') {
+        var sin = $('guSpendInput');
+        var sraw = sin ? sin.value : '';
+        var sres = GU.spend(sraw, '买谷');
+        if (!sres.ok) {
+          if (sres.reason === 'over') {
+            showToast('超额了：还剩 ' + money(sres.leftCents / 100) + '，这笔要 ' +
+              money(sres.needCents / 100) + '。想要就先调高额度，别在冲动时调。', 'danger');
+          } else if (sres.reason === 'amount') {
+            showToast('金额填个数字吧', 'warn');
+          } else {
+            showToast('没存上，检查一下浏览器存储', 'warn');
+          }
+          return;
+        }
+        guUi.jarSpendInput = '';
+        var leftTxt = sres.leftCents === null ? '' : ('，还剩 ' + money(sres.leftCents / 100));
+        showToast('记好了：花 ' + money(sres.log.cents / 100) + leftTxt);
+        repaint();
+        return;
+      }
+    });
+    /* 黑话搜索：边打边筛，只重画列表并把焦点还回输入框 */
+    $('savingsPane').addEventListener('input', function (e) {
+      var t = e.target;
+      if (!t || t.id !== 'guGlossaryInput') { return; }
+      guUi.glossaryQuery = t.value || '';
+      var l = $('svList');
+      if (!l) { return; }
+      var body = $('savingsPane').parentNode;
+      var keep = body ? body.scrollTop : 0;
+      var pos = t.selectionStart;
+      l.innerHTML = savingsListHtml();
+      if (body) { body.scrollTop = keep; }
+      var ni = $('guGlossaryInput');
+      if (ni) {
+        ni.focus();
+        try { ni.setSelectionRange(pos, pos); } catch (err) { /* 老浏览器忽略 */ }
+      }
+    });
+    /* 吃谷罐两个输入框：回车即提交（额度 / 记一笔） */
+    $('savingsPane').addEventListener('keydown', function (e) {
+      var t = e.target;
+      if (!t || (t.id !== 'guQuotaInput' && t.id !== 'guSpendInput')) { return; }
+      if (e.key === 'Enter' || e.keyCode === 13) {
+        e.preventDefault();
+        var btn = t.id === 'guQuotaInput'
+          ? DOC.querySelector('[data-gu-act="jar-quota"]')
+          : DOC.querySelector('[data-gu-act="jar-spend"]');
+        if (btn) { btn.click(); }
+      }
+    });
+
     /* 改金额：回车保存、ESC 取消（ESC 要拦住，否则会把整个面板关掉） */
     $('savingsPane').addEventListener('keydown', function (e) {
       if (!e.target || e.target.id !== 'svEditInput') { return; }
@@ -11961,6 +13384,20 @@
       });
     }
     if ($('wishBody')) { $('wishBody').addEventListener('click', wishPanelClick); }
+    /* 添加区三个监听：值同步（切页签重绘后不丢）/ 焦点位置记忆 / 回车提交 */
+    if ($('wishBody')) {
+      $('wishBody').addEventListener('input', wishPanelInput);
+      $('wishBody').addEventListener('keydown', wishPanelKeydown);
+      /* focusin / focusout 会冒泡（focus / blur 不会），所以能挂在外层委托 */
+      $('wishBody').addEventListener('focusin', function (e) {
+        var t = e.target;
+        if (t && (t.id === 'wishAddTitle' || t.id === 'wishAddAmount')) { wishUi.focus = t.id; }
+      });
+      $('wishBody').addEventListener('focusout', function (e) {
+        var t = e.target;
+        if (t && wishUi.focus === t.id) { wishUi.focus = ''; }
+      });
+    }
     /* 简洁版首页小卡：整卡可点 */
     if ($('spWishCard')) { $('spWishCard').addEventListener('click', openWishSheet); }
 
@@ -11986,6 +13423,23 @@
     if ($('bfCats')) { $('bfCats').addEventListener('click', onBillFilterCap); }
     if ($('bfSources')) { $('bfSources').addEventListener('click', onBillFilterCap); }
     if ($('billFilterBody')) { $('billFilterBody').addEventListener('click', onBillFilterSelectAll); }
+    /* 时间范围：快捷胶囊 + 手动日期框 */
+    if ($('bfTimeQuick')) { $('bfTimeQuick').addEventListener('click', onBfTimeQuick); }
+    if ($('bfFrom')) { $('bfFrom').addEventListener('change', onBfDateInput); }
+    if ($('bfTo')) { $('bfTo').addEventListener('change', onBfDateInput); }
+    /* 账单列表的「展开全部 / 收起」 */
+    if ($('btnBillExpand')) {
+      $('btnBillExpand').addEventListener('click', function () {
+        billListOpen = !billListOpen;
+        renderBillList();
+      });
+    }
+    if ($('btnSpBillExpand')) {
+      $('btnSpBillExpand').addEventListener('click', function () {
+        spListOpen = !spListOpen;
+        renderSimpleList();
+      });
+    }
     if ($('billFilterMask')) {
       $('billFilterMask').addEventListener('click', function (e) {
         if (e.target === $('billFilterMask')) { closeBillFilterSheet(); }
@@ -12570,6 +14024,108 @@
     if (pp && typeof pp.setActive === 'function') {
       pp.setActive(on && skin === 'pro');
     }
+
+    /* 唤回入口与宠物显隐同源刷新：不管是从 × 按钮收起、还是在设置页关掉
+       「桌面宠物」开关，最后都会走到这里，两边状态永远一致。 */
+    syncPetRecall();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 收起 / 唤回萌宠                                                      */
+  /* ------------------------------------------------------------------ */
+
+  var petRecallEl = null;
+  /* 上次画进唤回按钮的是哪只形象：不一致就重绘（换形象 / 管家换装都会走到这） */
+  var petRecallSkin = null;
+
+  /**
+   * 唤回按钮的图标：**跟着当前选中的那只走**，不能永远是阿账。
+   * 三种图形都复用 app.js 里已有的头像函数，不重画第二套：
+   *   azhang → MOOD.moodSvg('cheer')（cheer 比 chill 亲切；class 沿用 pet-recall-ico，
+   *            样式才会命中）
+   *   sprite → mascotBarSpriteHead()
+   *   pro    → mascotBarProHead(AJ.petPro._profile())，配色/帽子/照片脸全跟随
+   * mascot.js 没打进包时退回手画笑脸，别让按钮空着没东西看。
+   * @returns {string} 内联 SVG 字符串
+   */
+  function petRecallIcon() {
+    if (!MOOD || MOOD.missing) {
+      return '<svg class="pet-recall-ico" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="8.4"/>' +
+        '<circle cx="9.2" cy="10.2" r="0.9"/>' +
+        '<circle cx="14.8" cy="10.2" r="0.9"/>' +
+        '<path d="M8.6 14.2a4.2 4.2 0 0 0 6.8 0"/></svg>';
+    }
+    var skin = petSkin();
+    if (skin === 'sprite') { return mascotBarSpriteHead(); }
+    if (skin === 'pro') {
+      var pp = global.AJ && global.AJ.petPro;
+      var prof = (pp && typeof pp._profile === 'function') ? pp._profile() : null;
+      if (prof) { return mascotBarProHead(prof); }
+    }
+    return MOOD.moodSvg('cheer', 'pet-recall-ico', petDisplayName());
+  }
+
+  /** 取（必要时建）右下角那颗唤回按钮 */
+  function petRecallEnsure() {
+    if (petRecallEl) { return petRecallEl; }
+    if (!DOC.body) { return null; }
+    var btn = DOC.createElement('button');
+    btn.type = 'button';
+    btn.id = 'petRecall';
+    btn.setAttribute('aria-label', '唤回萌宠');
+    btn.title = '唤回萌宠';
+    btn.hidden = true;
+    btn.innerHTML = petRecallIcon();
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      petShow();
+    });
+    DOC.body.appendChild(btn);
+    petRecallEl = btn;
+    return btn;
+  }
+
+  /**
+   * 唤回按钮显隐 + 图标跟随当前形象。
+   * 显隐：宠物看不见的时候才出现（与 petEnabled() 反相），这里不看 skin ——
+   *       无论当前选的是哪一形象，收起后都要有回来的路。
+   * 图标：记住上次渲染的 skin，形象一变就重绘，否则按钮里永远是第一次建的那只。
+   *       管家在工坊里换装后由 AJ.onPetProProfileChange 再调一次，重画会重新取 profile。
+   */
+  function syncPetRecall() {
+    /* mascot.js 没打进包时压根没有宠物可唤回，别留个点了没反应的按钮 */
+    if (MOOD.missing) { return; }
+    var btn = petRecallEnsure();
+    if (!btn) { return; }
+    var skin = petSkin();
+    if (skin !== petRecallSkin) {
+      petRecallSkin = skin;
+      btn.innerHTML = petRecallIcon();
+      btn.setAttribute('aria-label', '唤回' + petDisplayName());
+      btn.title = '唤回' + petDisplayName();
+    }
+    btn.hidden = !!petEnabled();
+  }
+
+  /** 收起萌宠：等价于把设置页的「桌面宠物」开关关掉 */
+  function petHide() {
+    getSettings().mascot = getSettings().mascot || {};
+    getSettings().mascot.pet = false;
+    /* persistSettings() 内部会跑 applyAppearance + renderSettingsPage，
+       所以设置页开关的回填不用再单独调一次（重复调会多渲染一遍整个设置页）。 */
+    persistSettings();
+    applyPetVisibility();
+    showToast('萌宠已收起，点右下角小圆可唤回', 'ok');
+  }
+
+  /** 唤回萌宠：等价于把设置页的「桌面宠物」开关打开 */
+  function petShow() {
+    getSettings().mascot = getSettings().mascot || {};
+    getSettings().mascot.pet = true;
+    persistSettings();
+    applyPetVisibility();
+    showToast('萌宠回来了～', 'ok');
   }
 
   /**
@@ -12688,13 +14244,24 @@
   }
 
   /* 供 pet.js 的 ⇄ 按钮调用（pet.js 不感知 app 内部实现，只认这一个出口） */
-  (global.AJ = global.AJ || {}).switchPet = function () { return switchPetSkin(); };
+  /* 支持 AJ.switchPet('pro') 精确指定形象；不传参仍是「切到下一只」——
+     pet.js / petpro.js 的 ⇄ 按钮依赖这个默认语义，别改它。 */
+  (global.AJ = global.AJ || {}).switchPet = function (target) { return switchPetSkin(target); };
+  /* 收起 / 唤回萌宠：两个出口，给 pet.js / petpro.js 的 × 按钮与外部探针共用，
+     本质就是读写 settings.mascot.pet 这一个开关，不新开存储键。 */
+  (global.AJ = global.AJ || {}).petHide = function () { return petHide(); };
+  (global.AJ = global.AJ || {}).petShow = function () { return petShow(); };
   /* pet.js / petpro.js 的本体点击统一路由到这里：连点彩蛋、夜间、睡醒判定都在内 */
   global.AJ.petPoke = petPoke;
   /* petpro.js 工坊保存/重置形象后回调：播报条 + 聊天页头像跟着新形象变（含照片脸） */
   global.AJ.onPetProProfileChange = function () {
     renderMascotBar();
     repaintChatAvatars(petSkin());
+    /* 管家换了装（配色 / 帽子 / 照片脸）后，右下角唤回按钮里的头像也要跟着变，
+       否则按钮里还是旧形象。把「上次画的是谁」清空，下一行 syncPetRecall 就会重画，
+       重画时 profile 会重新从 AJ.petPro._profile() 取。 */
+    petRecallSkin = null;
+    syncPetRecall();
   };
 
   /** 把设置页的「互动反馈」开关同步给 sfx.js（sfx 自带存储兜底，但以设置页为准） */
@@ -13041,11 +14608,14 @@
       '<circle cx="18" cy="25" r="2.1" fill="#fff"/></svg>' +
       '<svg class="aj-prop aj-prop-crown" viewBox="0 0 44 34">' +
       '<path d="M4 28 L6.5 8.5 L15.5 17 L22 4 L28.5 17 L37.5 8.5 L40 28 Z" fill="#FBBF24" stroke="#B45309" stroke-width="2.4" stroke-linejoin="round"/></svg>' +
-      /* 视频同款动作（挥手打招呼）：手臂从身侧举起，带三道动势线 */
-      '<svg class="aj-prop aj-prop-wave" viewBox="0 0 44 56">' +
-      '<path d="M8 52 Q10 30 22 14" fill="none" stroke="#2FA35C" stroke-width="9" stroke-linecap="round"/>' +
-      '<circle cx="25" cy="11" r="8.5" fill="#2FA35C"/>' +
-      '<path d="M19 4.5 l1.2-3.2 M26 3.5 l2.4-2.6 M31.5 6.5 l3-1.8" fill="none" stroke="#2FA35C" stroke-width="3" stroke-linecap="round"/></svg>' +
+      /* 视频同款动作（挥手打招呼）：三道动势弧线沿挥动轨迹依次出现。
+         ⚠ 这里曾经画过「手臂 + 手掌」—— 但阿账本体 PNG 本身已经画着一只手
+            （握着算盘），再外挂一条胳膊就成了「多出一只手」，画风也对不上。
+            所以改为只画动势线，不新增任何肢体。 */
+      '<svg class="aj-prop aj-prop-wave" viewBox="0 0 40 48" aria-hidden="true">' +
+      '<path class="aj-wave-arc" d="M5 43 Q8 25 19 18" fill="none" stroke="#2FA35C" stroke-width="3.2" stroke-linecap="round"/>' +
+      '<path class="aj-wave-arc" d="M13 46 Q17 28 28 22" fill="none" stroke="#2FA35C" stroke-width="3.2" stroke-linecap="round"/>' +
+      '<path class="aj-wave-arc" d="M22 45 Q27 32 36 27" fill="none" stroke="#2FA35C" stroke-width="3.2" stroke-linecap="round"/></svg>' +
       /* 视频同款动作（皱眉拨算盘）：绿框算盘举到身前，珠子来回拨 */
       '<svg class="aj-prop aj-prop-abacus" viewBox="0 0 52 44">' +
       '<rect x="3" y="3" width="46" height="38" rx="7" fill="#DDF2D8" stroke="#2FA35C" stroke-width="3"/>' +
@@ -13068,6 +14638,11 @@
       '<button type="button" class="pet-swap" aria-label="换一只宠物" title="换一只宠物">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true">' +
       '<path d="M4.5 8.5h12M13.5 5.5l3 3-3 3M19.5 15.5h-12M10.5 12.5l-3 3 3 3"/></svg>' +
+      '</button>' +
+      /* × 收起：排在 ⇄ 左边，点了把总开关关掉并露出右下角唤回小圆 */
+      '<button type="button" class="pet-hide" aria-label="收起萌宠" title="收起萌宠">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M6.8 6.8l10.4 10.4M17.2 6.8L6.8 17.2"/></svg>' +
       '</button>';
     DOC.body.appendChild(petEl);
 
@@ -13083,6 +14658,20 @@
       swapBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         switchPetSkin();
+      });
+    }
+
+    /* 收起按钮：同样是 petEl 的子节点，不拦事件就会被当成「拖拽 / 戳一戳」吃掉 */
+    var hideBtn = petEl.querySelector('.pet-hide');
+    if (hideBtn) {
+      var hideStop = function (e) { e.stopPropagation(); };
+      hideBtn.addEventListener('pointerdown', hideStop);
+      hideBtn.addEventListener('pointerup', hideStop);
+      hideBtn.addEventListener('pointercancel', hideStop);
+      hideBtn.addEventListener('keydown', hideStop);
+      hideBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        petHide();
       });
     }
 
@@ -13175,16 +14764,45 @@
   function init() {
     loadState();
     loadSavingsDb();
+    /* 给「凑单搭子」(dazai.js) 一个受控出口：它算完价要把实付写进账本，
+       但不能直接摸本文件的内部函数，所以只暴露这三个必要能力。 */
+    global.AJ_BRIDGE = {
+      startFlow: startFlow,
+      toast: showToast,
+      today: function () { return ENG.formatDate(new Date()); }
+    };
     /* 闲置打盹判定：页面上任何按下都算「有动静」（惊醒 + 重新计 2 分钟） */
     DOC.addEventListener('pointerdown', function () { armPetIdle(); petWake(); }, true);
     armPetIdle();
     PIGGY.load();
+    PIGGY.load();
+    /* 吃谷指南（gu.js）是独立存储键：老账本没有这个 key 时 load() 返回空库且不写盘 */
+    if (GU && !GU.missing) { GU.load(); }
     /* 心愿单是独立存储键：没这个 key 的老账本 load() 返回空库且不写盘 */
     if (WISH && !WISH.missing) { WISH.load(); }
     if (!savingsReady()) { degradeSavingsUi(); }
     if (!storageOK) { showStorageTip(); }
     applyAppearance();
+    var autoSimple = false;
+    /* 未手动选过时，每次启动都按当下宽度重算：窄屏 → 简洁版，宽屏 → 回到完整版。
+       双向重算才能让「换个宽度又自动调整回来」成立 —— 之前只判窄屏且不说 state 改回去，
+       导致窄屏切出来的 simple 一旦落盘就再也回不到 full（用户其实从没选过）。
+       仍然不打 uiModePicked，所以用户一旦在设置里显式选过就永远以他的选择为准。 */
+    if (state && !state.uiModePicked) {
+      var wantMode = isNarrowPhone() ? 'simple' : 'full';
+      if (state.uiMode !== wantMode) {
+        state.uiMode = wantMode;
+        autoSimple = (wantMode === 'simple');
+      }
+    }
     applyUiMode();
+    /* 自动切过去时给一句轻提示，避免用户以为界面「少了东西就是坏了」。
+       手动切换走 setUiMode() 自带的 toast，不重复弹；defer 到 applyUiMode 之后。 */
+    if (autoSimple) {
+      global.setTimeout(function () {
+        showToast('窄屏已默认进入简洁版（设置 → 界面 可切回完整版）', 'ok');
+      }, 0);
+    }
     var ring = $('ringBar');
     if (ring) {
       ring.style.strokeDasharray = RING_C + ' ' + RING_C;
@@ -13210,6 +14828,13 @@
     renderChatPeerName();   /* 上次选的是精灵/管家时，首帧标题与欢迎语就用对应名字 */
     // 默认视图按 UI 类型分流：简洁版进「记账」首页，完整版进聊天（修复简洁版刷新后落空白）
     switchView(getUiMode() === 'simple' ? 'shome' : 'chat');
+    /* 好友点开审批链接（?dz=xxx）时，直接落到「搭子」视图。
+       简洁版外壳里没有这个面板，所以这里强制切完整版外壳（只改 DOM 属性，
+       不写回用户设置），否则好友会被路由到首页、根本看不到待审批的单子。 */
+    if (global.DAZAI && global.DAZAI.isFriend()) {
+      DOC.body.setAttribute('data-ui-mode', 'full');
+      switchView('dazai');
+    }
     initCloud();
     renderSceneChips();
     maybeProactiveHint();

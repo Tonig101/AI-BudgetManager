@@ -105,7 +105,8 @@ def parse_yx(raw_items):
             "reviews": sv,
             "reviews_label": "销量",  # 前端显示"N 销量"而不是"N 条评价"
             "url": ("https://you.163.com/item/detail?itemId=" + sku) if sku else "",
-            "image": "",
+            # 商品图：严选接口里 listPicUrl 是列表缩略图（约 1:1），primaryPicUrl 是主图，两个都试
+            "image": (it.get("listPicUrl") or it.get("primaryPicUrl") or ""),
             "page": None,
         })
     return out
@@ -257,6 +258,10 @@ def parse_mm(html):
         mall_name = mall.group(1).strip() if mall else "慢慢买"
         plat = _norm_mall(mall_name)
         rev_n = int(rev.group(1)) if rev else None
+        # 商品图：卡片里 itemCover 区第一张 img 就是商品主图（京东图床 img*.360buyimg.com）
+        m_cover = re.search(r'itemCover__\w+">.*?<img[^>]*\bsrc="([^"]+)"', b, re.S)
+        if not m_cover:
+            m_cover = re.search(r'<img[^>]*\bsrc="([^"]+)"', b)
         out.append({
             "sku": "",
             "source": "慢慢买比价",
@@ -270,7 +275,7 @@ def parse_mm(html):
             "reviews": rev_n,
             "reviews_label": "评论",
             "url": ti.group(2).strip(),    # cu.manmanbuy.com 优惠详情，点击跳真实购买页
-            "image": "",
+            "image": (m_cover.group(1).strip() if m_cover else ""),
             "price_label": "到手价",
             "page": None,
         })
@@ -326,7 +331,12 @@ BOOK_STRONG = ["出版", "编著", "丛书", "开本", "译著", "新华书店",
                "青少版", "青少年版", "初中版", "高中版", "小学版",
                "分级阅读", "拼音版", "插图版", "修订版", "典藏版", "纪念版",
                "珍藏版", "双语版", "汉英对照", "双语读本",
-               "书籍", "图鉴", "鉴赏", "揭秘", "购买指南", "宝典", "百科"]
+               "书籍", "图鉴", "鉴赏", "揭秘", "购买指南", "宝典", "百科",
+               # 应试教辅专有词：当当上「背记充电宝」「超级充电宝」这类教辅系列名
+               # 会把商品关键词当书名用，靠这些词才认得出来（正经货品标题不会出现）
+               "中考", "高考", "小升初", "真题", "模拟卷", "必背", "考纲", "押题",
+               "古诗文", "文言文", "完形填空", "阅读理解", "专项训练", "同步练习",
+               "五年中考", "三年模拟", "曲一线", "星火英语", "黄冈", "期末冲刺"]
 BOOK_WEAK = ["图书", "教材", "教程", "大全", "全彩", "手册", "全书", "指南",
              "无师自通", "一看即会", "附光盘", "精装", "平装", "工艺学", "科普",
              "使用与维护", "速成", "新手学", "从入门到精通", "从零开始", "技巧",
@@ -334,7 +344,8 @@ BOOK_WEAK = ["图书", "教材", "教程", "大全", "全彩", "手册", "全书
              "暂无", "正版", "入门", "零基础", "教学视频", "摄影", "修图", "剪映",
              "育儿", "自控力", "修养", "精通", "编导", "签名版", "典藏版", "纪念版",
              "当当自营", "精装版", "口袋书", "连环画", "字帖", "试卷", "教辅",
-             "秘本", "偏方", "土方", "秘方", "养育", "家长", "真传", "吃透"]
+             "秘本", "偏方", "土方", "秘方", "养育", "家长", "真传", "吃透",
+             "童话", "言情", "玄幻", "修仙", "重生", "甜宠", "暗恋", "漫画"]
 BOOK_RE = [
     re.compile(r"978-?\d{10}"),                      # ISBN
     re.compile(r"(?<!\d)\d{13}(?!\d)"),               # 13 位条码
@@ -370,10 +381,12 @@ def is_book(title):
             return True          # ISBN
     if any(w in t for w in BOOK_STRONG):
         return True              # "出版社""丛书""中文版"这类百货标题不会写
-    if (re.search(r"[\s\u3000]著[\s\u3000]*$", t)
-            or re.search(r"[\s\u3000]编(?:\s*著)?[\s\u3000]*$", t)
+    # 署名位：作者名后面跟「著/编」，原规则只认标题结尾那个，漏掉了一堆
+    # 「…夏白鹿 著 写给大家的充电宝」这种书名把关键词塞在副标题里的（当当常见堆砌）。
+    # 放宽为「前后都是空格分隔」——" 著 " 是署名位，"著名"不会命中。
+    if (re.search(r"[\s\u3000](?:著|编著|主编|编)(?=[\s\u3000]|$)", t)
             or re.search(r"[\s\u3000]编著", t)):
-        return True              # "...抑郁？ 著" / "曾凡静 编" 这类署名位
+        return True
     return sum(1 for w in BOOK_WEAK if w in t) >= 2
 
 
@@ -506,7 +519,9 @@ def _finish(meta, items, want=8):
         seen.add(key)
         it["capacity_ml"] = capacity_ml(it["title"])
         it.update(facets(it["title"]))
-        it.pop("image", None)  # 不存外链图片，页面内零外链
+        # 商品图保留（前端缩略图用）；没有就留空串，前端显示占位块而不是假图
+        if not isinstance(it.get("image"), str):
+            it["image"] = ""
         if it["capacity_ml"]:
             it["unit_price_per_100ml"] = round(it["price"] / it["capacity_ml"] * 100, 2)
         uniq.append(it)
@@ -640,19 +655,33 @@ def scrape(keyword, pages=(1, 2), want=8):
                 else (m["errors"][0]["error"] if m["errors"] else "该平台未返回结果")
         per_source.append({"meta": m, "items": its})
 
-    # 提纯后不足 2 条的源说明"这个平台没这个品类"，不再拿 1 条配件充数
+    # 提纯后不足 2 条的源说明"这个平台没这个品类"，不再拿 1 条配件充数。
+    # 当当是书店，搜数码百货时常把关键词当书名用（搜"充电宝"回来一堆
+    # 「背记充电宝」教辅），所以它只当**补位**：先让严选/慢慢买把真货铺满，
+    # 主源凑不满 want 条时才用它补，书就不会挤到列表前排。
+    BOOKSTORE = {"当当网"}
     order = sorted(
         [i for i in range(len(per_source)) if len(per_source[i]["items"]) >= 2],
         key=lambda i: -len(per_source[i]["items"]))
-    picked, i = [], 0
-    maxlen = max([len(p["items"]) for p in per_source] or [0])
-    while i < maxlen and len(picked) < want:
-        for idx in order:
-            if i < len(per_source[idx]["items"]):
-                picked.append(per_source[idx]["items"][i])
-                if len(picked) >= want:
-                    break
-        i += 1
+    primary = [i for i in order if per_source[i]["meta"]["source"] not in BOOKSTORE]
+    backup = [i for i in order if per_source[i]["meta"]["source"] in BOOKSTORE]
+
+    picked = []
+
+    def _interleave(group):
+        """组内轮流各取一条，保证每个平台都有代表出镜。"""
+        i, maxlen = 0, max([len(per_source[x]["items"]) for x in group] or [0])
+        while i < maxlen and len(picked) < want:
+            for idx in group:
+                if i < len(per_source[idx]["items"]):
+                    picked.append(per_source[idx]["items"][i])
+                    if len(picked) >= want:
+                        break
+            i += 1
+
+    _interleave(primary)
+    if len(picked) < want:
+        _interleave(backup)          # 主源不够才轮到书店补位
 
     meta = _new_meta(keyword)
     srcs = []

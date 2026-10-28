@@ -152,8 +152,89 @@
     { word: '金额', score: 60 }
   ];
 
-  var MERCHANT_HINTS = ['店', '餐厅', '超市', '咖啡', '食堂', '小吃', '便利店', '餐', '奶茶', '药房', '书店', '水果', '烘焙'];
+  /* 行业线索 + 常见门店品牌名：小票出现这些词的行优先当作「商户名行」 */
+  var MERCHANT_HINTS = [
+    '店', '餐厅', '超市', '咖啡', '食堂', '小吃', '便利店', '餐', '奶茶', '药房', '书店', '水果', '烘焙',
+    '肯德基', '麦当劳', '塔斯汀', '华莱士', '德克士', '必胜客', '达美乐', '海底捞',
+    '瑞幸', '库迪', '喜茶', '蜜雪', '茶百道', '古茗', '益禾堂', 'CoCo', 'coco',
+    '好想来', '赵一鸣', '绝味', '正新', '沙县', '兰州拉面', '汉堡王', '萨莉亚',
+    '老乡鸡', '乡村基', '南城香', '米村拌饭', '沪上阿姨', '沃尔玛', '大润发', '好特卖'
+  ];
   var MERCHANT_PREFIX = /^(商户名称|商户|收款方|商家|店铺|收款单位)\s*[:：]\s*/;
+
+  /**
+   * 品牌别名表：标准名 -> 识别别名。用于把 OCR 小票/账单文本归一到标准品牌，
+   * 覆盖第三层 51 个纯文本品牌；命中结果挂在 parseReceipt().brand。
+   * 支付渠道（微信/支付宝/云闪付/银联）另由 extractPayMethod 识别为支付方式，
+   * 此处仅做品牌名存在性标注，两者不冲突。
+   */
+  var BRAND_ALIASES = {
+    '汉堡王': ['汉堡王', 'Burger King'],
+    '萨莉亚': ['萨莉亚'],
+    '老乡鸡': ['老乡鸡'],
+    '乡村基': ['乡村基'],
+    '南城香': ['南城香'],
+    '米村拌饭': ['米村拌饭'],
+    '沙县': ['沙县'],
+    '兰州拉面': ['兰州拉面', '兰州牛肉面'],
+    '星巴克': ['星巴克', 'Starbucks'],
+    '奈雪': ['奈雪'],
+    '霸王茶姬': ['霸王茶姬'],
+    '沪上阿姨': ['沪上阿姨'],
+    '好特卖': ['好特卖'],
+    '沃尔玛': ['沃尔玛', 'Walmart'],
+    '大润发': ['大润发'],
+    '正新鸡排': ['正新鸡排', '正新'],
+    '绝味': ['绝味', '周黑鸭'],
+    '淘宝': ['淘宝'],
+    '天猫': ['天猫'],
+    '京东': ['京东', 'JD'],
+    '拼多多': ['拼多多'],
+    '唯品会': ['唯品会'],
+    '得物': ['得物'],
+    '1688': ['1688'],
+    '闲鱼': ['闲鱼'],
+    '抖音': ['抖音'],
+    '小红书': ['小红书'],
+    'B站': ['B站', 'bilibili', '哔哩哔哩'],
+    '美团': ['美团'],
+    '饿了么': ['饿了么', '饿了吗'],
+    '大众点评': ['大众点评', '点评'],
+    '滴滴': ['滴滴'],
+    '高德': ['高德'],
+    '12306': ['12306'],
+    '哈啰': ['哈啰', '哈罗'],
+    '美团单车': ['美团单车'],
+    '青桔': ['青桔'],
+    '菜鸟': ['菜鸟'],
+    '名创优品': ['名创优品', 'MINISO'],
+    '优衣库': ['优衣库', 'UNIQLO'],
+    '爱奇艺': ['爱奇艺'],
+    '腾讯视频': ['腾讯视频'],
+    '网易云': ['网易云', '网易云音乐'],
+    'Steam': ['Steam', 'steam'],
+    '知网': ['知网', 'CNKI'],
+    '微软': ['微软', 'Microsoft'],
+    '苹果': ['苹果']
+  };
+  /* 支付渠道（微信/支付宝/云闪付/银联）不进本表：由 extractPayMethod 识别为支付方式，
+     避免最长匹配时支付词挤掉商户品牌名。 */
+
+  /** 在文本中命中最长匹配的品牌标准名；未命中返回空串。 */
+  function matchBrand(text) {
+    var s = String(text || '');
+    var best = '', bestLen = 0;
+    var std, i, alts;
+    for (std in BRAND_ALIASES) {
+      alts = BRAND_ALIASES[std];
+      for (i = 0; i < alts.length; i++) {
+        if (alts[i] && s.indexOf(alts[i]) !== -1 && alts[i].length > bestLen) {
+          best = std; bestLen = alts[i].length;
+        }
+      }
+    }
+    return best;
+  }
 
   /**
    * 抽取金额。
@@ -341,6 +422,7 @@
       merchant: merchantInfo.merchant,
       date: dateInfo.date,
       payMethod: payMethod,
+      brand: matchBrand(normalized),
       confidence: confidence,
       dateWarn: dateWarn,
       label: amountInfo.label,
@@ -873,6 +955,8 @@
     formatDay: formatDay,
     CRED_KEY: CRED_KEY,
     parseReceipt: parseReceipt,
+    matchBrand: matchBrand,
+    BRAND_ALIASES: BRAND_ALIASES,
     extractAmount: extractAmount,
     extractMerchant: extractMerchant,
     extractDate: extractDate,

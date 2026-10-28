@@ -118,11 +118,48 @@ _SEARCH_CACHE = {}
 _SEARCH_LOCK = threading.Lock()
 SEARCH_TTL = 600
 
+# 一次抓多少条进缓存——前端每页只显示 8 条，但要多抓些才翻得动页。
+# 实测：want=30 与 want=8 的抓取耗时几乎一样（都是约 5 秒，抓取量由 pages 决定，
+# want 只是决定从已解析结果里留多少条），所以多留不吃亏，翻页才能是瞬时的。
+SEARCH_SCAN = 30
+
+
+def _page_of(data, offset, limit):
+    """从整份抓取结果里切出第 offset 页；meta 带上分页信息，前端据此画翻页条。
+
+    缓存里始终存「整份」，切片只发生在返回前，所以同一关键词翻多少页都不会重复抓站。
+    """
+    out = copy.deepcopy(data)
+    all_items = out.get('items') or []
+    total = len(all_items)
+    page_items = all_items[offset:offset + limit]
+    out['items'] = page_items
+    meta = out.setdefault('meta', {})
+    meta['offset'] = offset
+    meta['limit'] = limit
+    meta['total'] = total
+    meta['has_more'] = (offset + limit) < total
+    out['ok'] = bool(page_items)
+    if not page_items:
+        out['error'] = ('这一页没有商品了，本次一共抓到 %d 条' % total) if total \
+            else '没抓到相关商品'
+    return out
+
+
+def _slice_hit(entry, offset, limit):
+    """缓存命中：先切片（_page_of 内部已深拷贝），再标上「来自缓存」与缓存了多久。"""
+    out = _page_of(entry['data'], offset, limit)
+    meta = out.setdefault('meta', {})
+    meta['from_cache'] = True
+    meta['cache_age_sec'] = int(max(0, time.time() - entry['at']))
+    return out
+
 
 @app.get('/api/deals/search')
 def real_search(keyword: str = Query(..., min_length=1, max_length=40),
                 pages: int = Query(2, ge=1, le=3),
-                limit: int = Query(8, ge=1, le=20),
+                limit: int = Query(8, ge=1, le=50),
+                offset: int = Query(0, ge=0, le=200),
                 fresh: int = Query(0, ge=0, le=1)):
     kw = keyword.strip()
     if not kw:
@@ -133,33 +170,31 @@ def real_search(keyword: str = Query(..., min_length=1, max_length=40),
         return JSONResponse(status_code=500, content={'ok': False,
             'error': '抓取模块加载失败：%r' % e})
 
-    ckey = (kw, pages, limit)
+    # 缓存按「关键词 + 抓几页」存整份结果，offset/limit 只决定切哪一页返回，
+    # 所以同一关键词翻页是瞬时的，不会为第 2 页再打一遍电商站点。
+    ckey = (kw, pages)
     now = time.time()
     if not fresh:
         with _SEARCH_LOCK:
             hit = _SEARCH_CACHE.get(ckey)
-        if hit and now - hit[0] < SEARCH_TTL:
-            cached = copy.deepcopy(hit[1])
-            cached.setdefault('meta', {})['from_cache'] = True
-            cached['meta']['cache_age_sec'] = int(now - hit[0])
-            cached['ok'] = bool(cached.get('items'))
-            return cached
+        if hit and now - hit['at'] < SEARCH_TTL:
+            return _slice_hit(hit, offset, limit)
 
     try:
-        data = S.scrape(kw, pages=tuple(range(1, pages + 1)), want=limit)
+        data = S.scrape(kw, pages=tuple(range(1, pages + 1)), want=SEARCH_SCAN)
     except Exception as e:  # noqa: BLE001
         return JSONResponse(status_code=502, content={'ok': False,
             'error': '抓取电商站点失败：%s: %s' % (type(e).__name__, e)})
     if data.get('items'):
         with _SEARCH_LOCK:
-            _SEARCH_CACHE[ckey] = (now, copy.deepcopy(data))
+            _SEARCH_CACHE[ckey] = {'at': now, 'data': copy.deepcopy(data)}
     if not data.get('items'):
         errs = (data.get('meta') or {}).get('errors') or []
         return JSONResponse(status_code=200, content={'ok': False,
             'error': '没抓到与「%s」相关的商品（站点可能改版或临时风控）' % kw,
             'meta': data.get('meta'), 'errors': errs})
-    data['ok'] = True
-    return data
+    return _page_of(data, offset, limit)
+
 
 
 @app.get('/api/deals/merchants')
@@ -545,6 +580,177 @@ async def ask(req: Request):
             messages.append({'role': 'tool', 'tool_call_id': c.get('id'),
                              'content': json.dumps(result, ensure_ascii=False)})
     return {'reply': '工具调用轮次超限，请简化问题再试。', 'mode': 'llm', 'trace': trace}
+
+
+# ==================================================================
+# 凑单搭子 · 审批宝（跨设备分享与表决）
+# ------------------------------------------------------------------
+# 前端 dazai.js 生成的审批单写到这里，好友换设备打开链接也能读到、
+# 表决，发起人再拉一次就能看到意见。只存审批单本身，不碰账本数据。
+# ==================================================================
+
+import sqlite3
+
+_DAZAI_DB = os.path.join(_DIR, 'dazai.db')
+_DAZAI_LOCK = threading.Lock()
+
+
+def _dazai_conn():
+    conn = sqlite3.connect(_DAZAI_DB, timeout=10)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _dazai_init():
+    with _DAZAI_LOCK:
+        conn = _dazai_conn()
+        try:
+            conn.executescript(
+                '''
+                CREATE TABLE IF NOT EXISTS dazai_shares (
+                    id          TEXT PRIMARY KEY,
+                    from_name   TEXT,
+                    items_json  TEXT NOT NULL,
+                    total       REAL,
+                    created_at  TEXT
+                );
+                CREATE TABLE IF NOT EXISTS dazai_votes (
+                    share_id    TEXT NOT NULL,
+                    by_name     TEXT NOT NULL,
+                    votes_json  TEXT,
+                    comments_json TEXT,
+                    created_at  TEXT,
+                    PRIMARY KEY (share_id, by_name)
+                );
+                '''
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+_dazai_init()
+
+
+@app.put('/api/dazai/share/{share_id}')
+async def dazai_put_share(share_id: str, request: Request):
+    """写入/更新一张审批单（发起人分享时调用）。"""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse(status_code=400, content={'ok': False, 'error': '请求体不是合法 JSON'})
+
+    items = body.get('items') or []
+    if not items:
+        return JSONResponse(status_code=400, content={'ok': False, 'error': '审批单里没有商品'})
+
+    sid = (share_id or '').strip()
+    if not sid or len(sid) > 48:
+        return JSONResponse(status_code=400, content={'ok': False, 'error': '分享 id 不合法'})
+
+    total = body.get('total')
+    if total is None:
+        total = sum(float(i.get('price') or 0) * (i.get('qty') or 1) for i in items)
+
+    with _DAZAI_LOCK:
+        conn = _dazai_conn()
+        try:
+            conn.execute(
+                'INSERT INTO dazai_shares (id, from_name, items_json, total, created_at) '
+                'VALUES (?,?,?,?,?) '
+                'ON CONFLICT(id) DO UPDATE SET from_name=excluded.from_name, '
+                'items_json=excluded.items_json, total=excluded.total, created_at=excluded.created_at',
+                (sid, body.get('from_name') or '好友', json.dumps(items, ensure_ascii=False),
+                 float(total), time.strftime('%Y-%m-%dT%H:%M:%S'))
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return {'ok': True, 'share_id': sid, 'items': len(items)}
+
+
+@app.get('/api/dazai/share/{share_id}')
+def dazai_get_share(share_id: str):
+    """读一张审批单（好友打开链接时调用）。"""
+    conn = _dazai_conn()
+    try:
+        row = conn.execute('SELECT * FROM dazai_shares WHERE id=?', (share_id,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return JSONResponse(status_code=404, content={'ok': False, 'error': '这张审批单不存在或已失效'})
+    return {
+        'ok': True,
+        'share': {
+            'id': row['id'],
+            'from_name': row['from_name'],
+            'items': json.loads(row['items_json'] or '[]'),
+            'total': row['total'],
+            'created_at': row['created_at'],
+        }
+    }
+
+
+@app.get('/api/dazai/share/{share_id}/votes')
+def dazai_get_votes(share_id: str):
+    """读某张审批单的全部好友表决（发起人刷新时调用）。"""
+    conn = _dazai_conn()
+    try:
+        sh = conn.execute('SELECT * FROM dazai_shares WHERE id=?', (share_id,)).fetchone()
+        rows = conn.execute(
+            'SELECT * FROM dazai_votes WHERE share_id=? ORDER BY created_at DESC', (share_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+    if not sh:
+        return JSONResponse(status_code=404, content={'ok': False, 'error': '这张审批单不存在或已失效'})
+    return {
+        'ok': True,
+        'share': {
+            'id': sh['id'],
+            'from_name': sh['from_name'],
+            'items': json.loads(sh['items_json'] or '[]'),
+            'total': sh['total'],
+        },
+        'votes': [
+            {
+                'by_name': r['by_name'],
+                'votes': json.loads(r['votes_json'] or '{}'),
+                'comments': json.loads(r['comments_json'] or '{}'),
+                'created_at': r['created_at'],
+            }
+            for r in rows
+        ],
+    }
+
+
+@app.post('/api/dazai/share/{share_id}/vote')
+async def dazai_post_vote(share_id: str, request: Request):
+    """好友提交逐件表决 + 留言。同一名字重复提交视为覆盖（改主意）。"""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse(status_code=400, content={'ok': False, 'error': '请求体不是合法 JSON'})
+
+    by_name = (body.get('by_name') or '').strip()[:24] or '匿名好友'
+    conn = _dazai_conn()
+    try:
+        if not conn.execute('SELECT 1 FROM dazai_shares WHERE id=?', (share_id,)).fetchone():
+            return JSONResponse(status_code=404, content={'ok': False, 'error': '这张审批单不存在或已失效'})
+        conn.execute(
+            'INSERT INTO dazai_votes (share_id, by_name, votes_json, comments_json, created_at) '
+            'VALUES (?,?,?,?,?) '
+            'ON CONFLICT(share_id, by_name) DO UPDATE SET votes_json=excluded.votes_json, '
+            'comments_json=excluded.comments_json, created_at=excluded.created_at',
+            (share_id, by_name,
+             json.dumps(body.get('votes') or {}, ensure_ascii=False),
+             json.dumps(body.get('comments') or {}, ensure_ascii=False),
+             time.strftime('%Y-%m-%dT%H:%M:%S'))
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {'ok': True, 'by_name': by_name}
 
 
 if __name__ == '__main__':

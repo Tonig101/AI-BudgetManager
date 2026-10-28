@@ -486,6 +486,11 @@
       '<button type="button" class="pet-swap" aria-label="换一只宠物" title="换一只宠物">' +
       '<svg viewBox="0 0 24 24" aria-hidden="true">' +
       '<path d="M4.5 8.5h12M13.5 5.5l3 3-3 3M19.5 15.5h-12M10.5 12.5l-3 3 3 3"/></svg>' +
+      '</button>' +
+      /* × 收起：排在 ⇄ 左边，走 app.js 的 AJ.petHide()（关开关 + 露出右下角唤回小圆） */
+      '<button type="button" class="pet-hide" aria-label="收起萌宠" title="收起萌宠">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M6.8 6.8l10.4 10.4M17.2 6.8L6.8 17.2"/></svg>' +
       '</button>';
     DOC.body.appendChild(root);
     bubble = root.querySelector('.pm-mascot-bubble');
@@ -513,6 +518,18 @@
       swap.addEventListener('click', function (e) {
         e.stopPropagation();
         if (global.AJ && typeof global.AJ.switchPet === 'function') { global.AJ.switchPet(); }
+      });
+    }
+    var hide = root.querySelector('.pet-hide');
+    if (hide) {
+      /* 同样只认 AJ.petHide 这一个出口；单独跑本模块（没有 app.js）时静默跳过 */
+      hide.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      hide.addEventListener('pointerup', function (e) { e.stopPropagation(); });
+      hide.addEventListener('pointercancel', function (e) { e.stopPropagation(); });
+      hide.addEventListener('keydown', function (e) { e.stopPropagation(); });
+      hide.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (global.AJ && typeof global.AJ.petHide === 'function') { global.AJ.petHide(); }
       });
     }
     if (settings.pos) { applyUserPos(settings.pos.left, settings.pos.top, true); }

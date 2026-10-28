@@ -39,6 +39,36 @@
     return b.length - a.length;
   });
 
+  /**
+   * 量词剔除规则。**data.js 的 QUANTIFIERS 是唯一真源**，STOP_WORDS 里一个量词都不放。
+   *
+   * 量词绝不能进 STOP_WORDS 做全串替换，否则会啃掉名词：
+   * 盲盒→盲、盒饭→饭、双人餐→人餐、串串→空。只有两种形态才算量词：
+   *   ① 紧跟在数量后面（3杯 / 一盒 / 2个）—— 成对剔除；
+   *   ② 被空格或首尾围住的孤立量词（"苹果 个"）—— 单独剔除。
+   * 于是 3杯奶茶 → 奶茶、一盒吧唧 → 吧唧，而 盲盒 / 盒饭 原样保留。
+   *
+   * 数字既认阿拉伯数字（含小数，全角已归一化过），也认中文数字（一盒 / 两份 / 三顿），
+   * 中间允许夹空白（"3 杯"）。正则模块加载时编译一次。
+   */
+  var QUANTIFIERS = (DATA.QUANTIFIERS || []).filter(function (q) {
+    return typeof q === 'string' && q;
+  });
+  var QUANT_ALT = QUANTIFIERS.join('|');
+  var RE_NUM_QUANT = QUANT_ALT
+    ? new RegExp('(?:\\d+(?:\\.\\d{1,2})?|[零〇一二两三四五六七八九十百千万几半]+)\\s*(?:' + QUANT_ALT + ')', 'g')
+    : null;
+  var RE_LONE_QUANT = QUANT_ALT
+    ? new RegExp('(^|\\s)(?:' + QUANT_ALT + ')(?=\\s|$)', 'g')
+    : null;
+  var QUANT_MAP = {};
+  for (var qi = 0; qi < QUANTIFIERS.length; qi++) { QUANT_MAP[QUANTIFIERS[qi]] = true; }
+  /**
+   * 无差别剔除的停用词：量词一律摘出去交给上面两条带上下文的规则。
+   * 即使 data.js 的 STOP_WORDS 以后又把量词放回来，这里也能兜住，不会再啃名词。
+   */
+  var STOP_HARD = STOP_SORTED.filter(function (w) { return !QUANT_MAP[w]; });
+
   /* ------------------------------------------------------------------ */
   /* 通用工具                                                            */
   /* ------------------------------------------------------------------ */
@@ -529,6 +559,9 @@
     // 先整体抹掉"数字 + 非金额单位"的时间/数量表达（12点 / 3号线 / 30分钟 / 20岁），
     // 避免备注里残留孤零零的"点""号线"
     t = t.replace(/\d+(?:\.\d{1,2})?\s*(?:点钟|点|号线|号|分钟|小时|个月|岁|折|楼|层)/g, ' ');
+    // 数量 + 量词整体剔除，必须排在「抹掉数字」之前：
+    // 否则 "3个苹果" 先被抹成 " 个苹果"，剩下孤零零的 "个" 就再也配不上数量了。
+    if (RE_NUM_QUANT) { t = t.replace(RE_NUM_QUANT, ' '); }
     t = t.replace(/\d+(?:\.\d{1,2})?/g, ' ');
     t = t.replace(/[零〇一二两三四五六七八九十百千]+(?:元|块钱|块|毛|角)/g, ' ');
     t = t.replace(/[，。；、,!！?？~～|]+/g, ' ');
@@ -539,9 +572,11 @@
         break;
       }
     }
-    for (i = 0; i < STOP_SORTED.length; i++) {
-      t = t.split(STOP_SORTED[i]).join(' ');
+    for (i = 0; i < STOP_HARD.length; i++) {
+      t = t.split(STOP_HARD[i]).join(' ');
     }
+    // 残留的孤立量词再剔一次（"苹果 个" → "苹果"），名词内部的量词字不受影响
+    if (RE_LONE_QUANT) { t = t.replace(RE_LONE_QUANT, '$1'); }
     t = t.replace(/\s+/g, ' ').trim();
     t = t.replace(/^[的与及]+/, '').trim();
     // 清掉残留的孤立中文数字（如 "一 鞋" -> "鞋"）
