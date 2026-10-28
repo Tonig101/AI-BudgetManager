@@ -1247,6 +1247,9 @@
     _tierOf: tierOf,
     _profile: profile,
     _hatSvg: hatSVG,           /* 播报条头像复用同一顶帽子（app.js 按 profile 参数化缩放） */
+    _charSvg: function () {    /* 首次选宠弹窗展示真实形象（默认白萝卜管家） */
+      try { return charSVG(profile()); } catch (e) { return ''; }
+    },
     _extractPalette: extractPalette
   };
 })(typeof window !== 'undefined' ? window : this);

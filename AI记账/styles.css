@@ -279,7 +279,7 @@ h3 {
   background: #fff;
 }
 
-/* 特大字号 + 双列窄列宽时，标题「账小助 · 在线」/「撤回上一步」不允许折行，
+/* 特大字号 + 双列窄列宽时，标题「阿账 · 在线」/「撤回上一步」不允许折行，
    否则两行文字会撑破 44px 行高、上下溢出并与聊天内容重叠 —— 这正是「调大字号后错乱」的成因 */
 .chat-head > span {
   white-space: nowrap;
@@ -4065,6 +4065,39 @@ h3 {
   color: var(--text-2);
 }
 
+/* FAQ 改成按钮后：整行可点，点开是详情弹窗（不再原地展开） */
+button.set-faq {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  text-align: left;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+button.set-faq:last-child { border-bottom: 0; }
+
+button.set-faq::after {
+  content: "›";
+  flex: 0 0 auto;
+  font-size: 16px;
+  font-weight: 400;
+  color: #C3CAD3;
+}
+
+button.set-faq:hover { background: var(--line-2); }
+button.set-faq:active { background: var(--green-soft); }
+button.set-faq:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+
 /* 意见反馈 */
 .set-textarea {
   flex: 0 0 100%;
@@ -5068,13 +5101,15 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
 
 /* ---------- 理财学院：详情弹窗（点击条目整卡弹出） ---------- */
 
-.academy-modal-head {
+.academy-modal-head,
+.doc-head {
   display: flex;
   align-items: flex-start;
   gap: 10px;
 }
 
-.academy-modal-ico {
+.academy-modal-ico,
+.doc-ico {
   flex: 0 0 auto;
   width: 38px;
   height: 38px;
@@ -5087,7 +5122,8 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
   font-size: 19px;
 }
 
-.academy-modal-tt {
+.academy-modal-tt,
+.doc-tt {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
@@ -5096,18 +5132,21 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
   gap: 6px 8px;
 }
 
-.academy-modal-tt h4 {
+.academy-modal-tt h4,
+.doc-tt h4 {
   flex: 0 1 auto;
   margin: 0;
   font-size: 14.5px;
   line-height: 1.4;
 }
 
-.academy-modal-body {
+.academy-modal-body,
+.doc-body {
   margin-top: 10px;
 }
 
-.academy-modal .am-intro {
+.academy-modal .am-intro,
+.doc-body .am-intro {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.7;
@@ -5125,7 +5164,8 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
   color: var(--green-ink);
 }
 
-.academy-modal .am-p {
+.academy-modal .am-p,
+.doc-body .am-p {
   margin: 0;
   font-size: 12px;
   line-height: 1.75;
@@ -5158,6 +5198,305 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
 /* 弹窗里的资源区：与列表里的 .coach-res 同一套视觉，这里只调与正文的间距 */
 .academy-modal-body .coach-res {
   margin-top: 14px;
+}
+
+/* ---------- 看板详情弹窗：通用文档件（学习资源 / 诊断 / 恩格尔 / 成就） ---------- */
+
+/* 正文区域：内容长的弹窗内部滚动，弹窗本体不超过一屏 */
+.doc-body {
+  max-height: 62vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
+/* 还没滚到底：底部渐隐，明确告诉用户「还有」 */
+.doc-body.is-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+}
+
+/* 顶部小标签：视频课 / 免费 / 建议 40 分钟 */
+.doc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.doc-chip {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* 三格数字条（恩格尔 / 任一概览） */
+.doc-stat {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.doc-stat > div {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 10px;
+  background: var(--line-2);
+  text-align: center;
+}
+
+.doc-stat b {
+  display: block;
+  font-size: 14px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.doc-stat small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+/* 分档表（恩格尔） */
+.doc-bands {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.doc-band {
+  display: grid;
+  grid-template-columns: 54px 52px 1fr;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--line-2);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.doc-band-range {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.doc-band-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.doc-band-note {
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+.doc-band.is-now {
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+
+.doc-band.is-now .doc-band-name,
+.doc-band.is-now .doc-band-range {
+  color: var(--green-ink);
+}
+
+.doc-band.is-now .doc-band-note { color: var(--green-ink); opacity: 0.8; }
+
+.doc-band-you {
+  display: none;
+}
+
+/* 诊断规则卡 */
+.doc-rule {
+  margin-top: 9px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--line-2);
+  border-left: 3px solid var(--line);
+}
+
+.doc-rule.is-on.is-high { border-left-color: #EF5350; background: rgba(239, 83, 80, 0.07); }
+.doc-rule.is-on.is-mid { border-left-color: #FF8A3D; background: rgba(255, 138, 61, 0.08); }
+.doc-rule.is-on.is-low { border-left-color: #F2C200; background: rgba(242, 194, 0, 0.08); }
+
+.doc-rule-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-rule-head b {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.doc-state {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(120, 130, 140, 0.14);
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.doc-state.is-high { background: rgba(239, 83, 80, 0.15); color: #C62828; }
+.doc-state.is-mid { background: rgba(255, 138, 61, 0.18); color: #B25108; }
+.doc-state.is-low { background: rgba(242, 194, 0, 0.2); color: #8A6D00; }
+
+.doc-rule-fact {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.doc-rule-rule,
+.doc-rule-act {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-3);
+}
+
+.doc-rule-rule span,
+.doc-rule-act span {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(120, 130, 140, 0.13);
+  font-size: 9.5px;
+  line-height: 14px;
+  color: var(--text-2);
+}
+
+/* 成就里程碑 */
+.doc-ach {
+  margin-top: 11px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--line-2);
+}
+
+.doc-ach-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-ach-ico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  color: var(--green-ink);
+}
+
+.doc-ach-ico svg { width: 18px; height: 18px; }
+
+.doc-ach-head b {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.doc-ach-val {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--green-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.doc-ach-bar {
+  height: 5px;
+  margin-top: 7px;
+  border-radius: 999px;
+  background: rgba(120, 130, 140, 0.16);
+  overflow: hidden;
+}
+
+.doc-ach-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+  transition: width 0.3s ease;
+}
+
+.doc-ach-next {
+  margin-top: 5px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.doc-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.doc-mark {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(120, 130, 140, 0.12);
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.doc-mark.is-got {
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-weight: 500;
+}
+
+/* 可点卡片（恩格尔 / 成就）的指示 */
+.card-link { cursor: pointer; transition: border-color 0.16s ease, box-shadow 0.16s ease; }
+.card-link:hover { border-color: var(--green); }
+.card-link:active { box-shadow: inset 0 0 0 1px var(--green); }
+.card-link:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.card-more {
+  margin-left: 3px;
+  font-size: 13px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.card-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.card-head-right .btn-mini {
+  padding: 0 8px;
+  height: 22px;
+  line-height: 22px;
+  font-size: 11px;
 }
 
 /* ---------- 理财学院：知识卡学习资源区 ---------- */
@@ -5284,6 +5623,7 @@ a.coach-res-item:active { background: var(--green-soft); }
 .card-learn[hidden] { display: none; }
 
 .learn-item {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5346,12 +5686,14 @@ a.coach-res-item:active { background: var(--green-soft); }
 /* 箭头固定宽度并顶部对齐：文字换行时箭头不被挤压，也不会跑到行中间 */
 .learn-go {
   flex: 0 0 auto;
-  align-self: flex-start;
-  margin-top: 1px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--green-ink);
+  align-self: center;
+  padding-right: 2px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-3);
 }
+
+.learn-item:hover .learn-go { color: var(--green-ink); }
 
 /* ---------- 聊天里的「💡 理财教练说」卡片 ---------- */
 .coach-say {
@@ -5655,6 +5997,38 @@ a.coach-res-item:active { background: var(--green-soft); }
 [data-theme="dark"] .coach-lesson-tag { color: #7BE3AE; }
 
 [data-theme="dark"] .academy-modal-ico { background: rgba(7, 193, 96, 0.16); }
+
+[data-theme="dark"] .doc-ico { background: rgba(7, 193, 96, 0.16); }
+
+[data-theme="dark"] .doc-chip { background: rgba(7, 193, 96, 0.18); color: #7BE3AE; }
+
+[data-theme="dark"] .doc-state { background: rgba(255, 255, 255, 0.08); color: var(--text-3); }
+[data-theme="dark"] .doc-state.is-high { background: rgba(239, 83, 80, 0.22); color: #FF9A97; }
+[data-theme="dark"] .doc-state.is-mid { background: rgba(255, 138, 61, 0.2); color: #FFB27A; }
+[data-theme="dark"] .doc-state.is-low { background: rgba(242, 194, 0, 0.2); color: #E8CB55; }
+
+[data-theme="dark"] .doc-rule.is-on.is-high { background: rgba(239, 83, 80, 0.12); }
+[data-theme="dark"] .doc-rule.is-on.is-mid { background: rgba(255, 138, 61, 0.12); }
+[data-theme="dark"] .doc-rule.is-on.is-low { background: rgba(242, 194, 0, 0.1); }
+
+[data-theme="dark"] .doc-rule-rule span,
+[data-theme="dark"] .doc-rule-act span { background: rgba(255, 255, 255, 0.09); }
+
+[data-theme="dark"] .doc-stat > div,
+[data-theme="dark"] .doc-band,
+[data-theme="dark"] .doc-rule,
+[data-theme="dark"] .doc-ach { background: rgba(255, 255, 255, 0.05); }
+
+[data-theme="dark"] .doc-band.is-now { background: rgba(7, 193, 96, 0.16); }
+[data-theme="dark"] .doc-band.is-now .doc-band-name,
+[data-theme="dark"] .doc-band.is-now .doc-band-range,
+[data-theme="dark"] .doc-band.is-now .doc-band-note { color: #7BE3AE; }
+
+[data-theme="dark"] .doc-ach-val { color: #7BE3AE; }
+[data-theme="dark"] .doc-ach-bar { background: rgba(255, 255, 255, 0.12); }
+[data-theme="dark"] .doc-mark { background: rgba(255, 255, 255, 0.08); }
+[data-theme="dark"] .doc-mark.is-got { background: rgba(7, 193, 96, 0.2); color: #7BE3AE; }
+[data-theme="dark"] .doc-ach-ico { color: #7BE3AE; }
 
 [data-theme="dark"] .am-sec h5 { color: #7BE3AE; }
 
@@ -6303,6 +6677,35 @@ svg.di-emoji {
 }
 .rs-copy:hover { border-color: var(--green); color: var(--green-ink); }
 .rs-how-note { color: var(--text-3); font-size: 11.5px; }
+
+
+/* ---------- 多源跨平台 ---------- */
+.rs-cross {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); font-size: 12px; color: var(--text-2);
+}
+.rs-cross b { color: var(--text); font-weight: 600; }
+.rs-cross-sep { color: var(--text-3); padding: 0 2px; }
+.rs-chip.is-plat {
+  background: var(--green-soft); color: var(--green-ink);
+  border-color: transparent; font-weight: 600;
+}
+
+
+/* ---------- 提纯提示 ---------- */
+.rs-stats .rs-drop { color: var(--text-3); }
+.rs-stats .rs-drop b { color: var(--text-2); }
+.rs-stats .rs-cache {
+  background: var(--line-2); border-radius: 999px; padding: 1px 8px; color: var(--text-3);
+}
+.rs-nomatch {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px; border: 1px dashed var(--line); border-radius: 10px;
+  background: var(--card); font-size: 12px; color: var(--text-3); line-height: 1.5;
+}
+.rs-nomatch b { color: var(--text-2); font-weight: 600; }
+.rs-nomatch svg { width: 14px; height: 14px; flex: none; opacity: .7; }
 
 /* ---------- 比价结果 ---------- */
 .dcz-result { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
@@ -8866,6 +9269,54 @@ body[data-view="spiggy"] #panelSimplePiggy { display: flex; }
   100%{opacity:0; transform:translateY(-15px) scale(1.05)}
 }
 
+/* ===== 视频同款动作（挥手打招呼 / 皱眉拨算盘）=====
+   载体仍是道具层：阿账本体是一张整图，手臂/算盘以「顶出」的方式出现在身侧。 */
+
+/* 挥手：手臂从身体右侧举起，前后摆动；身体随之左右轻晃 */
+.aj-prop-wave{width:44px; height:56px; left:auto; right:-14px; top:-2px; transform-origin:14% 92%; filter:drop-shadow(0 2px 4px rgba(14,32,22,.18));}
+[data-act="wave"] .aj-prop-wave{animation:aj-prop-wave 1.6s ease both;}
+@keyframes aj-prop-wave{
+  0%{opacity:0; transform:rotate(30deg) scale(.6)}
+  16%{opacity:1; transform:rotate(-6deg) scale(1.06)}
+  30%{transform:rotate(28deg)}
+  44%{transform:rotate(-14deg)}
+  58%{transform:rotate(26deg)}
+  72%{transform:rotate(-10deg)}
+  86%{opacity:1; transform:rotate(18deg)}
+  100%{opacity:0; transform:rotate(6deg) scale(.96)}
+}
+[data-act="wave"] .aj-pet-body{animation:aj-act-wave 1.6s ease-in-out both;}
+@keyframes aj-act-wave{
+  0%,100%{transform:rotate(0)}
+  25%{transform:rotate(-4deg)}
+  50%{transform:rotate(4deg)}
+  75%{transform:rotate(-3deg)}
+}
+
+/* 皱眉拨算盘：绿框算盘从下方举到身前，珠子来回拨；身体微微压扁前倾（发愁） */
+.aj-prop-abacus{width:52px; height:44px; top:auto; bottom:-10px; margin-left:-26px; filter:drop-shadow(0 3px 6px rgba(7,193,96,.28));}
+[data-act="calc"] .aj-prop-abacus{animation:aj-prop-abacus 1.9s cubic-bezier(.34,1.4,.6,1) both;}
+@keyframes aj-prop-abacus{
+  0%{opacity:0; transform:translateY(24px) scale(.5) rotate(-10deg)}
+  20%{opacity:1; transform:translateY(0) scale(1.06) rotate(2deg)}
+  32%{transform:translateY(0) scale(1) rotate(0)}
+  82%{opacity:1; transform:translateY(0) scale(1) rotate(0)}
+  100%{opacity:0; transform:translateY(12px) scale(.96)}
+}
+.aj-prop-abacus .aj-ab-bead{animation:aj-abacus-bead .42s ease-in-out infinite alternate;}
+.aj-prop-abacus .aj-ab-bead.b2{animation-delay:.12s}
+@keyframes aj-abacus-bead{
+  from{transform:translateX(-6px)}
+  to{transform:translateX(6px)}
+}
+[data-act="calc"] .aj-pet-body{animation:aj-act-calc 1.9s ease-in-out both;}
+@keyframes aj-act-calc{
+  0%,100%{transform:translateY(0) scale(1,1)}
+  18%{transform:translateY(4px) scale(1.06,.9)}
+  45%{transform:translateY(3px) scale(1.04,.94) rotate(-2deg)}
+  70%{transform:translateY(3px) scale(1.04,.94) rotate(2deg)}
+}
+
 /* 彩纸（目标达成）6 片，四散 */
 .aj-confetti{position:absolute; left:50%; top:44%; width:6px; height:10px; border-radius:1.5px; opacity:0;}
 .aj-pet-prop i:nth-of-type(1){--cx:-32px; --cy:-34px; --cr:-42deg; background:#07C160;}
@@ -9410,6 +9861,36 @@ body:has(.modal-mask:not([hidden])) .mascot {
 .pet-pick-list-3 .pet-pick-card small {
   font-size: 10.5px;
   line-height: 1.45;
+}
+
+/* 卡片里放三只的真实形象（不再是通用线条图标） */
+.ppc-ico.ppc-art {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: var(--green-soft);
+  overflow: hidden;
+}
+
+.ppc-ico.ppc-art svg {
+  width: 92%;
+  height: 92%;
+}
+
+/* 阿账：moodSvg 的 mico 体系是描边风，保持 currentColor */
+.ppc-ico.ppc-art svg.mico {
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+/* 精灵/管家：整图自带配色，别让通用图标的描边样式把线条染灰 */
+.ppc-ico.ppc-art svg:not(.mico) {
+  stroke: none;
+}
+
+.pet-pick-list-3 .ppc-ico.ppc-art {
+  width: 56px;
+  height: 56px;
 }
 
 .pet-pick-card {
@@ -10134,3 +10615,13 @@ button.set-row { cursor: pointer; }
 @media (min-width: 860px) and (max-width: 1080px) {
   .pm-mascot { right: 388px; }
 }
+
+/* ===== 买谷指南 / 二次元触发（省钱图谱第11类联动） ===== */
+.gu-guide { margin: 6px 0 2px; border: 1px solid #e6e8ee; border-radius: 12px; overflow: hidden; background: #fff; }
+.gu-q { padding: 9px 12px; border-bottom: 1px solid #f0f1f5; }
+.gu-q:last-of-type { border-bottom: none; }
+.gu-q-title { font-weight: 600; color: #2B313B; font-size: 13.5px; margin-bottom: 3px; }
+.gu-q-body { color: #55607a; font-size: 12.5px; line-height: 1.55; }
+.gu-foot { padding: 9px 12px; background: #f7f8fb; color: #6b7488; font-size: 12px; }
+.gu-buynote { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 2px; padding: 10px 12px; border: 1px solid #ffe2c2; background: #fff8f0; border-radius: 12px; font-size: 12.5px; color: #8a5a1e; line-height: 1.55; }
+.gu-buynote svg { flex: none; margin-top: 1px; }

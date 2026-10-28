@@ -6,6 +6,8 @@
  *   nlp.js   -> window.AJ.nlp
  *   engine.js-> window.AJ.engine
  *   coach.js -> window.AJ.coach（理财专家模式）
+ *   analysis.js -> window.AJ.analysis（CSV 账单解析）
+ *   xlsx.js -> window.AJ.xlsx（Excel 工作表转 CSV）
  */
 (function (global) {
   'use strict';
@@ -15,6 +17,7 @@
   var NLP = global.AJ.nlp;
   var ENG = global.AJ.engine;
   var ANA = global.AJ.analysis;
+  var XLSX = global.AJ.xlsx;
   var OCR = global.AJ.ocr;
   var COACH = global.AJ.coach;
   var INTENT = global.AJ.intent;
@@ -214,7 +217,7 @@
       /* C11：system prompt 增加「intent」输出字段与「clarify」动作，
          口径与 intent.js 的 7 个枚举完全一致，便于本地直接合并（mergeVerdict）。
          关键约束：疑问句不是 record；record 缺金额必须 clarify，禁止编造金额。 */
-      var system = '你是"账小助"，面向大学生的校园记账 AI 助手。' +
+      var system = '你是"' + petDisplayName() + '"，面向大学生的校园记账 AI 助手。' +
         '先判断用户这句话的意图，再决定动作。意图只能是这 7 个之一：' +
         'record(记账) / query(查询) / howto(问怎么做) / advice(求建议) / dataop(改删撤) / chitchat(闲聊) / unknown。' +
         '关键规则：① 疑问句（怎么办 / 怎么 / 吗 / 多少）一律不是 record；' +
@@ -886,7 +889,7 @@
       av.setAttribute('data-mood', mk);
       av.setAttribute('tabindex', '0');
       av.setAttribute('role', 'img');
-      av.setAttribute('aria-label', '账小助，表情：' + (meta.name || mk) + '，点击可和它聊聊');
+      av.setAttribute('aria-label', petDisplayName(skinAv) + '，表情：' + (meta.name || mk) + '，点击可和它聊聊');
       if (skinAv === 'sprite') {
         av.innerHTML = mascotBarSpriteHead();
       } else if (skinAv === 'pro') {
@@ -924,6 +927,10 @@
     var avs = list.querySelectorAll('.avatar.ai');
     for (var i = 0; i < avs.length; i++) {
       var el = avs[i];
+      /* 名字也跟着形象走：换成精灵后 aria 里不该还叫「阿账」 */
+      var mkAria = el.getAttribute('data-mood') || 'chill';
+      var metaAria = MOOD.MOOD_META[mkAria] || {};
+      el.setAttribute('aria-label', petDisplayName(skin) + '，表情：' + (metaAria.name || mkAria) + '，点击可和它聊聊');
       if (skin === 'sprite') {
         el.innerHTML = mascotBarSpriteHead();
       } else if (skin === 'pro') {
@@ -1229,10 +1236,69 @@
         if (bigSpend && bigSpend.hit) { html += bigSpend.html; }
       }
       addAIMessage(html);
+      /* 账本联动：购物 + 备注/商家含谷 → 弹正版确认提示（防买到祖国版） */
+      if (bill.type !== 'income' && bill.category === '购物' &&
+          /谷|吧唧|立牌|流麻|谷子|盲盒|抽赏|周边|痛包|海景/.test(bill.note || bill.merchant || '')) {
+        addAIMessage(guBuyNoteHtml());
+      }
       if (bill.type === 'income') {
         maybeAskCycleReset(bill);
       }
     }
+  }
+
+  /* ============ 买谷指南 / 二次元触发词（省钱图谱第11类联动） ============ */
+  var GU_KEYWORDS = /买谷|吃谷|谷子|吧唧|立牌|流麻|拍立得|镭射票|棉花娃娃|盲抽|抽赏|抽盒|拼团|痛包|二次元|周边|海景谷|出谷|回血|卖谷|闲置/;
+  var GU_GUIDE_CMDS = /买谷指南|吃谷注意|吃谷攻略|怎么买谷|谷子怎么|吃谷指南/;
+  /** 二次元词命中但明显是记账句 → 不拦截，交给正常记账流 */
+  function guIsBookkeeping(raw) {
+    return /^\d/.test(raw) ||
+      /(记|花|付|支出|买了|开销|消费)\s*[\d¥]/.test(raw) ||
+      /记一笔|记一笔记|支出|花了|付了/.test(raw);
+  }
+  /** 返回 true 表示已本地处理（拦截），调用方应 return */
+  function guIntercept(raw) {
+    if (GU_GUIDE_CMDS.test(raw)) { addAIMessage(buyGuideAnswer()); return true; }
+    if (GU_KEYWORDS.test(raw) && !guIsBookkeeping(raw)) { addAIMessage(guQuickNote(raw)); return true; }
+    return false;
+  }
+  /** 结构化买谷指南问答（模块6）：5 问一句话结论 + 展开 */
+  function buyGuideAnswer() {
+    var items = [
+      ['怎么判断正版？', '有授权/中文标识、能出示授权书才放心；标「祖国版/工作室出品/尾单/散货」一律按盗版。'],
+      ['拼团怎么不被跑路？', '只走平台担保、团长≥3次成功开团、公开凭证物流、规模≤50人预售≤6月；说「未成年不能闲鱼所以私转」的直接拉黑。'],
+      ['盲盒能抽吗？', '抽前过3问：热冷查了吗/概率公示了吗/二手出掉意愿？两问答不上就先别抽，去闲鱼收确认款。'],
+      ['闲鱼收二手注意什么？', '只走平台担保、要实物图+对光视频、看评价、先验货再确认收货。'],
+      ['热谷冷谷怎么查？', '买前搜「角色名+谷」看闲鱼近期成交均价，热谷加价、冷谷常低于发行价。']
+    ];
+    var html = aiBubble(ic('bulb', 'bico-brand', '买谷指南') + '<b>买谷避坑指南</b>（消协/监管口径，防损不省钱）') +
+      '<div class="gu-guide">';
+    for (var i = 0; i < items.length; i++) {
+      html += '<div class="gu-q"><div class="gu-q-title">' + esc(items[i][0]) + '</div>' +
+        '<div class="gu-q-body">' + esc(items[i][1]) + '</div></div>';
+    }
+    html += '<div class="gu-foot">想系统看 → 打开 <b>省钱图谱 → 吃谷避坑</b>，可打卡防坑清单。说「买谷指南」随时调出本速览。</div>';
+    html += '</div>';
+    return html;
+  }
+  /** 二次元词轻提示：按关键词给盲抽/拼团/出谷/通用对应劝导 */
+  function guQuickNote(raw) {
+    var tip;
+    if (/盲抽|抽赏|抽盒|盲盒/.test(raw)) {
+      tip = '想抽盲盒/抽赏前先过3问：这个角色热冷查了吗？隐藏款概率公示了吗？抽到不想要的款愿花精力出二手吗？两问答不上就先别抽——去闲鱼直接收确认款更划算。';
+    } else if (/拼团|跟团/.test(raw)) {
+      tip = '拼团是跑路重灾区：只走平台担保（闲鱼链接），不接受微信/支付宝私转；团长要有≥3次成功开团记录。任何「未成年不能闲鱼所以私转」的都是话术，直接拉黑。';
+    } else if (/出谷|回血|卖谷|卖了|闲置/.test(raw)) {
+      tip = '把不想要的谷卖掉叫「出谷/回血」，是正向现金流，值得鼓励！卖出后在记账里选「收入 → 其他/闲置回血」，金额填实际到手；回血的钱建议进吃谷罐或存钱罐，形成买谷-回血闭环。';
+    } else {
+      tip = '买谷前先对渠道：官方旗舰店/授权谷店闭眼入，闲鱼只走平台担保，私转和「祖国版/尾单/散货」一律按盗版处理。想系统学 → 说「买谷指南」或打开省钱图谱→吃谷避坑。';
+    }
+    return aiBubble(ic('alert', 'bico-warn', '吃谷提醒') + tip);
+  }
+  /** 账本联动：购物 + 备注/商家含谷 → 正版确认提示卡 */
+  function guBuyNoteHtml() {
+    return '<div class="gu-buynote">' + ic('alert', 'bico-warn', '买谷确认') +
+      '<span>这笔买谷的？确认一下是不是<b>官方渠道</b>，别买到「祖国版 / 尾单 / 散货」——这些一律按盗版处理，质量无保障还难售后。渠道分级见 <b>省钱图谱 → 吃谷避坑</b>。</span></div>';
   }
 
   /** 【余额概览】卡片：本周期收入 / 支出 / 余额 + 日月馒头额度 */
@@ -1862,6 +1928,334 @@
     }
   }
 
+  /* ================================================================== */
+  /* 看板「详细信息」弹窗族（学习资源 / 消费诊断 / 恩格尔 / 成就）           */
+  /* ================================================================== */
+
+  /**
+   * 详情弹窗正文的「还有内容」提示。
+   * 正文超过可视高度时在底部加一层渐隐，滚到底自动去掉——
+   * 否则内容被硬切断，用户会以为弹窗就这么长。
+   * @param {HTMLElement} box #modalBox
+   */
+  function bindDocScroll(box) {
+    var body = box ? box.querySelector('.doc-body') : null;
+    if (!body) { return; }
+    var update = function () {
+      var more = body.scrollHeight - body.clientHeight - body.scrollTop > 6;
+      body.classList.toggle('is-more', more);
+    };
+    body.addEventListener('scroll', update, { passive: true });
+    update();
+  }
+
+  /** 弹窗骨架：图标 + 标题 + 标签 + 可滚动正文（.doc-* 与 .am-* 共用一套排版） */
+  function docModalHtml(opts) {
+    var o = opts || {};
+    return '<div class="doc-head">' +
+      '<span class="doc-ico">' + (o.icon || '') + '</span>' +
+      '<div class="doc-tt"><h4>' + esc(o.title || '') + '</h4>' +
+      (o.tag ? '<span class="coach-lesson-tag">' + esc(o.tag) + '</span>' : '') +
+      '</div></div>' +
+      '<div class="doc-body">' + (o.body || '') + '</div>';
+  }
+
+  /** 分节正文：与理财学院知识卡共用 .am-* 组件，避免两套排版 */
+  function docSectionsHtml(sections) {
+    return academyDetailHtml({ detail: sections || [] });
+  }
+
+  /** 小标签行（视频课 / 免费 / 建议 40 分钟…） */
+  function docChipsHtml(list) {
+    if (!list || !list.length) { return ''; }
+    var out = '';
+    for (var i = 0; i < list.length; i++) {
+      out += '<span class="doc-chip">' + esc(list[i]) + '</span>';
+    }
+    return '<div class="doc-chips">' + out + '</div>';
+  }
+
+  /**
+   * 学习资源详情弹窗。
+   * 整行点击进这里看「是什么 / 为什么推给你 / 怎么看 / 看哪几集」，
+   * 弹窗底部再给一次「打开原页面」，避免详情变成绕路。
+   * @param {number} idx learnResourceCache 下标（渲染顺序）
+   */
+  function openLearnResourceModal(idx) {
+    var r = learnResourceCache[idx];
+    if (!r) { return; }
+    var iconName = r.type === 'up' ? 'user' : (r.type === 'course' ? 'cap' : 'play');
+    var href = safeHttpUrl(r.url);
+    var body = (r.desc ? '<p class="am-intro">' + esc(r.desc) + '</p>' : '') +
+      docChipsHtml(r.meta) +
+      docSectionsHtml(r.detail);
+    var box = openModal(docModalHtml({
+      icon: ic(iconName, null, null),
+      title: r.label,
+      tag: r.tag,
+      body: body
+    }) + '<div class="modal-actions">' +
+      (href ? '<button type="button" class="btn-ok" data-act="learn-open">打开原页面</button>' : '') +
+      '<button type="button" class="btn-cancel" data-act="modal-cancel">' +
+      (href ? '先不看' : '我知道了') + '</button>' +
+      '</div>');
+    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
+    var openBtn = box.querySelector('[data-act="learn-open"]');
+    if (openBtn && href) {
+      openBtn.addEventListener('click', function () {
+        global.open(href, '_blank', 'noopener');
+        closeModal();
+      });
+    }
+  }
+
+  /**
+   * 消费诊断的 4 条规则口径。
+   * build() 只返回「已触发」的规则，这里把没触发的也列出来并讲清阈值——
+   * 「为什么没报」和「为什么报了」同样重要，否则用户只会觉得在瞎猜。
+   */
+  function diagRuleRows() {
+    var st = getSettings();
+    var ov = getOverview();
+    var input = diagInput(ov);
+    var hit = {};
+    var list = diagList(ov);
+    var i;
+    for (i = 0; i < list.length; i++) { hit[list[i].code] = list[i]; }
+
+    var dailyCap = Number(st.dailyCap) || 0;
+    var alertRatio = Number(st.alertRatio);
+    if (!(alertRatio > 0 && alertRatio <= 1)) { alertRatio = 0.8; }
+    var passedDays = Math.max(1, ov.cycle.passedDays);
+    var expense = Number(ov.cycleAgg.expense) || 0;
+    var dailyAvg = passedDays > 0 ? expense / passedDays : 0;
+    var smallThr = Math.max(10, Math.min(dailyAvg * 0.5, 100));
+
+    var rows = [];
+
+    rows.push({
+      code: 'dailyOver',
+      title: '单日超支',
+      on: !!hit.dailyOver,
+      level: hit.dailyOver ? hit.dailyOver.level : '',
+      rule: dailyCap > 0
+        ? '一天花超 ' + money(dailyCap) + ' 记一条；超 3 天以上算「需要注意」——偶发一笔可能是买教材，连着超就是习惯问题。'
+        : '你还没设单日上限，所以这条规则不生效。在「设置 · 预算」里填一个数就能开。',
+      fact: hit.dailyOver
+        ? '本周期有 ' + hit.dailyOver.days + ' 天超过单日上限，最多的一天花了 ' + money(hit.dailyOver.amount) + '。'
+        : (dailyCap > 0 ? '本周期没有单日超过 ' + money(dailyCap) + ' 的记录。' : '单日上限未设置，暂不统计。'),
+      action: hit.dailyOver ? DIAG_META.dailyOver.action : ''
+    });
+
+    rows.push({
+      code: 'wantRatio',
+      title: '非必需占比偏高',
+      on: !!hit.wantRatio,
+      level: hit.wantRatio ? hit.wantRatio.level : '',
+      rule: '「想要」类开销占总支出达到 ' + Math.round(alertRatio * 100) + '%，且金额超过 100 元才提示——几十块的非必需不值得专门提醒。',
+      fact: hit.wantRatio
+        ? '本周期非必需花了 ' + money(hit.wantRatio.amount) + '，占总支出 ' + hit.wantRatio.ratio + '%。'
+        : '本周期非必需消费没有同时满足「≥ ' + Math.round(alertRatio * 100) + '%」和「> 100 元」。',
+      action: hit.wantRatio ? DIAG_META.wantRatio.action : ''
+    });
+
+    rows.push({
+      code: 'cycleUp',
+      title: '环比涨太快',
+      on: !!hit.cycleUp,
+      level: hit.cycleUp ? hit.cycleUp.level : '',
+      rule: '和上一个同长度周期比，总支出涨过 30% 提示，涨过 80% 升级为「需要注意」。',
+      fact: hit.cycleUp
+        ? '这周期比上周期多花 ' + hit.cycleUp.ratio + '%，共 ' + money(hit.cycleUp.amount) + '。'
+        : (input.prevExpense > 0
+          ? '上周期花了 ' + money(input.prevExpense) + '，这周期没超过它的 1.3 倍。'
+          : '上周期没有支出记录，没法比较，本条不判定。'),
+      action: hit.cycleUp ? DIAG_META.cycleUp.action : ''
+    });
+
+    rows.push({
+      code: 'smallFreq',
+      title: '小额高频',
+      on: !!hit.smallFreq,
+      level: hit.smallFreq ? hit.smallFreq.level : '',
+      rule: '单笔不超过 ' + money(Math.round(smallThr)) + '（日均的一半，10-100 元之间）的支出，累计到 5 笔就提示——奶茶零食这类，单笔不起眼、加起来最贵。',
+      fact: hit.smallFreq
+        ? hit.smallFreq.count + ' 笔小额加起来 ' + money(hit.smallFreq.amount) + '。'
+        : '本周期没有累计到 5 笔的「小额」支出。',
+      action: hit.smallFreq ? DIAG_META.smallFreq.action : ''
+    });
+
+    return rows;
+  }
+
+  /** 消费诊断弹窗：4 条规则全列出来，触发/正常都要给依据 */
+  function openDiagAllModal() {
+    var rows = diagRuleRows();
+    var onCount = 0;
+    var i;
+    for (i = 0; i < rows.length; i++) { if (rows[i].on) { onCount++; } }
+
+    var body = '<p class="am-intro">诊断只用你的账本数据算，不联网、不猜。下面 4 条规则是全部判定口径：' +
+      (onCount ? '本期触发 ' + onCount + ' 条。' : '本期一条都没触发。') + '</p>';
+
+    for (i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var badge = r.on
+        ? '<span class="doc-state is-' + esc(r.level) + '">' + (r.level === 'high' ? '需要注意' : '留意') + '</span>'
+        : '<span class="doc-state">正常</span>';
+      body += '<div class="doc-rule' + (r.on ? ' is-on is-' + esc(r.level) : '') + '">' +
+        '<div class="doc-rule-head"><b>' + (i + 1) + '. ' + esc(r.title) + '</b>' + badge + '</div>' +
+        '<p class="doc-rule-fact">' + esc(r.fact) + '</p>' +
+        '<p class="doc-rule-rule"><span>判定口径</span>' + esc(r.rule) + '</p>' +
+        (r.action ? '<p class="doc-rule-act"><span>建议</span>' + esc(r.action) + '</p>' : '') +
+        '</div>';
+    }
+
+    var box = openModal(docModalHtml({
+      icon: ic('abacus', null, null),
+      title: '消费诊断 · 全部 ' + rows.length + ' 项',
+      tag: onCount ? onCount + ' 项需要留意' : '本期正常',
+      body: body
+    }) + '<div class="modal-actions">' +
+      '<button type="button" class="btn-ok" data-act="modal-cancel">我知道了</button>' +
+      '</div>');
+    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
+  }
+
+  /** 恩格尔系数弹窗：讲清阈值、你落在哪、怎么压下去 */
+  function openEngelModal() {
+    var ov = getOverview();
+    var pct = Math.round(ov.engel.percent);
+    var food = ENG.round2(ov.cycleAgg.byCategory['餐饮'] || 0);
+    var expense = ENG.round2(ov.cycleAgg.expense);
+    var passedDays = Math.max(1, ov.cycle.passedDays);
+
+    var bands = [
+      { lo: 0, hi: 30, name: '最富裕', note: '吃只占很小一块，选择空间大' },
+      { lo: 30, hi: 40, name: '富裕', note: '常见于食堂为主、开销分散的学生账本' },
+      { lo: 40, hi: 50, name: '小康', note: '正常区间，留意别往外卖倾斜' },
+      { lo: 50, hi: 60, name: '温饱', note: '吃占一半，其他开销被挤压' },
+      { lo: 60, hi: 999, name: '贫困', note: '吃占大头，抗风险能力弱' }
+    ];
+    var bandRows = '';
+    for (var i = 0; i < bands.length; i++) {
+      var b = bands[i];
+      var inBand = pct >= b.lo && pct < b.hi;
+      bandRows += '<div class="doc-band' + (inBand ? ' is-now' : '') + '">' +
+        '<span class="doc-band-range">' + (b.hi > 100 ? '≥ ' + b.lo : b.lo + '-' + b.hi) + '%</span>' +
+        '<span class="doc-band-name">' + esc(b.name) + '</span>' +
+        '<span class="doc-band-note">' + esc(b.note) + '</span>' +
+        (inBand ? '<span class="doc-band-you">你在这</span>' : '') +
+        '</div>';
+    }
+
+    var body = '<p class="am-intro">恩格尔系数 = 餐饮支出 ÷ 总支出。它衡量的是「吃的钱占了多大比例」，' +
+      '比例越低，可自由支配的空间越大。</p>' +
+      '<div class="doc-stat">' +
+      '<div><b>' + pct + '%</b><small>本期餐饮占比</small></div>' +
+      '<div><b>' + money(food) + '</b><small>餐饮支出</small></div>' +
+      '<div><b>' + money(expense) + '</b><small>总支出</small></div>' +
+      '</div>' +
+      '<div class="am-sec"><h5>国际通用分档</h5>' +
+      '<div class="doc-bands">' + bandRows + '</div>' +
+      '<p class="am-p">这套分档是 19 世纪的家计标准，按家庭收入算的。学生食堂便宜、开销种类少，' +
+      '数字天然偏低——所以只看趋势，别拿它给自己贴标签。</p></div>' +
+      docSectionsHtml([
+        { h: '为什么这条要提醒你', p: '餐饮是唯一「每天都在发生」的支出，也是最容易被外卖和小额高频抬起来的一项。' +
+          '它一旦超过一半，其他开销（学习、社交、储蓄）就会被挤掉，而单笔金额都不大，很难自己察觉。' },
+        { h: '三步把它压下去', steps: [
+          '先分清「吃饭」和「吃爽」：食堂两荤一素算前者，外卖加奶茶算后者；',
+          '把「吃爽」控制在每周 2 次以内，其余时间去食堂（一餐差 10 元以上）；',
+          '充值式的早餐券 / 食堂储值卡能锁定消费，比每次扫码更容易压住冲动。'
+        ] },
+        { h: '算给你看', p: '外卖一餐 28 元，食堂两荤一素 12 元，一顿差 16 元。' +
+          '一周 5 顿外卖换成食堂，省 80 元；一个月 320 元，一学期就是 1280 元——够一台入门平板。' },
+        { h: '口径说明', p: '本周期已过 ' + passedDays + ' 天，占比按「餐饮支出 ÷ 本期总支出」实时计算，' +
+          '不含收入、不含存钱罐转入。换周期或记账后数字会立刻变。' }
+      ]);
+
+    var box = openModal(docModalHtml({
+      icon: ic('pie', null, null),
+      title: '恩格尔系数 · ' + pct + '%',
+      tag: pct >= 60 ? '偏高' : (pct >= 50 ? '留意' : '健康区间'),
+      body: body
+    }) + '<div class="modal-actions">' +
+      '<button type="button" class="btn-ok" data-act="modal-cancel">我知道了</button>' +
+      '</div>');
+    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
+  }
+
+  /** 成就弹窗：把三个数字拆成可追的里程碑，而不是三个孤零零的数 */
+  function openAchieveModal() {
+    var bills = state.bills.length;
+    var blocked = Number(state.blockedCount) || 0;
+    var saved = Number(state.savedMoney) || 0;
+
+    var groups = [
+      { title: '累计记账笔数', icon: 'receipt', cur: bills, marks: [10, 50, 100, 300, 500], unit: '笔' },
+      { title: '冷静期拦下', icon: 'clock', cur: blocked, marks: [1, 3, 5, 10, 20], unit: '次' },
+      { title: '省下的钱', icon: 'piggy', cur: saved, marks: [50, 200, 500, 1000, 2000], unit: '元', money: true }
+    ];
+
+    var html = '<p class="am-intro">这三个数字不是评分，是你自己攒出来的记录：笔数代表习惯，' +
+      '冷静期代表克制，省下的钱是结果。</p>';
+
+    for (var g = 0; g < groups.length; g++) {
+      var grp = groups[g];
+      var next = null;
+      var reached = 0;
+      var marks = '';
+      for (var m = 0; m < grp.marks.length; m++) {
+        var mk = grp.marks[m];
+        var got = grp.cur >= mk;
+        if (got) { reached++; } else if (next === null) { next = mk; }
+        marks += '<span class="doc-mark' + (got ? ' is-got' : '') + '">' +
+          (got ? '✓ ' : '') + (grp.money ? '¥' + mk : mk) + '</span>';
+      }
+      var prev = reached > 0 ? grp.marks[reached - 1] : 0;
+      var ratio = next === null ? 1 : Math.max(0, Math.min(1, (grp.cur - prev) / (next - prev)));
+      var fmt = function (v) { return grp.money ? '¥' + v : v + ' ' + grp.unit; };
+      var nextLine = next === null
+        ? '里程碑全部达成 · 共 ' + reached + ' 项'
+        : '下一档 ' + fmt(next) + ' · 还差 ' + (grp.money ? '¥' + (next - grp.cur) : (next - grp.cur) + ' ' + grp.unit) +
+          ' · 已达成 ' + reached + '/' + grp.marks.length;
+
+      html += '<div class="doc-ach">' +
+        '<div class="doc-ach-head"><span class="doc-ach-ico">' + ic(grp.icon, null, null) + '</span>' +
+        '<b>' + esc(grp.title) + '</b>' +
+        '<span class="doc-ach-val">' + (grp.money ? money(grp.cur) : grp.cur + ' ' + grp.unit) + '</span></div>' +
+        '<div class="doc-ach-bar"><i style="width:' + (ratio * 100).toFixed(1) + '%"></i></div>' +
+        '<div class="doc-ach-next">' + esc(nextLine) + '</div>' +
+        '<div class="doc-marks">' + marks + '</div>' +
+        '</div>';
+    }
+
+    html += '<div class="am-sec"><h5>怎么攒得快一点</h5>' +
+      '<ul class="am-list">' +
+      '<li>每天睡前补记一笔：笔数里程碑最容易推进，也最能暴露漏记；</li>' +
+      '<li>想买的东西先丢进「心愿单」，48 小时后还想要再买——拦下的每一笔都记进「冷静期」；</li>' +
+      '<li>打卡省钱动作时填真实金额，省下的钱才会准。</li>' +
+      '</ul></div>';
+
+    var box = openModal(docModalHtml({
+      icon: ic('medal', null, null),
+      title: '我的成就',
+      tag: '已解锁 ' + (function () {
+        var n = 0;
+        for (var i = 0; i < groups.length; i++) {
+          for (var j = 0; j < groups[i].marks.length; j++) {
+            if (groups[i].cur >= groups[i].marks[j]) { n++; }
+          }
+        }
+        return n;
+      })() + ' 项',
+      body: html
+    }) + '<div class="modal-actions">' +
+      '<button type="button" class="btn-ok" data-act="modal-cancel">我知道了</button>' +
+      '</div>');
+    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
+  }
+
   /** 专家问答入口：「怎么省钱」 */
   function showSaveMoneyGuide() {
     addAIMessage('<div class="bubble ai coach-bubble">' + COACH.saveMoneyAnswer() + '</div>');
@@ -2025,27 +2419,36 @@
    * 数据来自 COACH.learningResources()（单一数据源，不复制链接）；
    * 一旦所有地址都不合法（safeHttpUrl 返回空串）就整卡隐藏，不留空壳。
    */
+  /** 看板「理财课」卡里可点开的资源（与渲染时同一份顺序，供弹窗按索引取用） */
+  var learnResourceCache = [];
+
   function renderLearnCard() {
     var card = $('learnCard');
     var box = $('learnMini');
     if (!card || !box) { return; }
-    var list = (COACH && typeof COACH.learningResources === 'function')
+    var all = (COACH && typeof COACH.learningResources === 'function')
       ? COACH.learningResources()
       : [];
+    var list = [];
     var rows = '';
-    for (var i = 0; i < list.length; i++) {
-      var r = list[i];
+    var i;
+    for (i = 0; i < all.length; i++) {
+      var r = all[i];
       var href = safeHttpUrl(r.url);
       if (href === '') { continue; }
-      rows += '<a class="learn-item" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' +
+      list.push(r);
+      var idx = list.length - 1;
+      /* 整行是「详情」入口：点开看完整讲解，弹窗里再给「打开原页面」 */
+      rows += '<div class="learn-item" role="button" tabindex="0" data-learn="' + idx + '">' +
         '<span class="learn-main">' +
         '<span class="learn-label">' + esc(r.label) + '</span>' +
         (r.desc ? '<span class="learn-desc">' + esc(r.desc) + '</span>' : '') +
         '</span>' +
         (r.type === 'up' ? '<span class="learn-badge">主页</span>' : '') +
-        '<span class="learn-go" aria-hidden="true">↗</span>' +
-        '</a>';
+        '<span class="learn-go" aria-hidden="true">›</span>' +
+        '</div>';
     }
+    learnResourceCache = list;
     box.innerHTML = rows;
     card.hidden = (rows === '');
   }
@@ -2654,7 +3057,8 @@
   function renderAchievement() {
     var box = $('achieveCard');
     box.innerHTML = '' +
-      '<div class="card-head"><h3>我的成就</h3><span class="hint">一点一点攒出来的</span></div>' +
+      '<div class="card-head"><h3>我的成就<span class="card-more" aria-hidden="true">›</span></h3>' +
+      '<span class="hint">里程碑</span></div>' +
       '<div class="achieve-grid">' +
       '  <div><b>' + state.bills.length + '</b><small>累计记账笔数</small></div>' +
       '  <div><b>' + state.blockedCount + '</b><small>冷静期拦下</small></div>' +
@@ -4097,7 +4501,7 @@
     /* 状态三：题量选择 */
     box.innerHTML =
       '<div class="persona-intro">' + ic('dna', 'p-ico', null) +
-      '<span>我是<b>账小助</b>：先挑个题量，答完再结合你的真实账单，' +
+      '<span>我是<b>阿账</b>：先挑个题量，答完再结合你的真实账单，' +
       '看看你是 🐿️ 仓鼠、🦁 狮子、🦊 狐狸还是 🐨 考拉。' +
       '出结果时我会给你三条具体的做法，不是一句「少花点」。</span></div>' +
       personaLenHtml();
@@ -4327,7 +4731,7 @@
 
     box.innerHTML =
       '<div class="persona-intro">' + ic('dna', 'p-ico', null) +
-      '<span>我是<b>账小助</b>：答一套小题，结合你的真实账单，' +
+      '<span>我是<b>阿账</b>：答一套小题，结合你的真实账单，' +
       '看看你是 🐿️ 仓鼠、🦁 狮子、🦊 狐狸还是 🐨 考拉，并给你三条具体做法。</span></div>' +
       '<div class="persona-actions">' +
       '<button type="button" class="btn-mini primary" data-pact="open">开始测试</button>' +
@@ -4454,6 +4858,7 @@
     var box = $('modalBox');
     box.innerHTML = html;
     mask.hidden = false;
+    bindDocScroll(box);
     return box;
   }
 
@@ -5339,6 +5744,11 @@
     $('rowSetDeleteAccount').addEventListener('click', confirmDeleteAccount);
 
     /* ---- 帮助与反馈 / 关于 ---- */
+    $('setFaqList').addEventListener('click', function (e) {
+      var row = (e.target && e.target.closest) ? e.target.closest('[data-faq]') : null;
+      if (!row) { return; }
+      openFaqModal(row.getAttribute('data-faq'));
+    });
     $('btnSetFeedback').addEventListener('click', submitSettingsFeedback);
     $('btnSetCheckUpdate').addEventListener('click', function () {
       showToast('已是最新版本（演示）· ' + APP_VERSION);
@@ -5411,6 +5821,139 @@
       '<div class="modal-actions">' +
       '<button type="button" class="btn-ok" data-act="modal-cancel">我知道了</button>' +
       '</div>');
+  }
+
+  /* ================================================================== */
+  /* 帮助与反馈：FAQ 详情弹窗                                              */
+  /* ================================================================== */
+
+  /**
+   * FAQ 内容。每条 = 一句话结论 + 若干分节（步骤 / 清单 / 说明），
+   * 与理财学院知识卡共用 .am-* 排版；答案写「怎么做」而不是「有这功能」。
+   */
+  var FAQ_DOCS = [
+    {
+      id: 'start',
+      icon: 'spark',
+      q: '新手怎么用？',
+      tag: '上手',
+      intro: '三种记账方式，按你手上有的东西选一种就行：说一句话、截个图、或者把整月账单导进来。',
+      detail: [
+        { h: '方式一：说一句话（最快）', steps: [
+          '点底部输入框，直接打「中午食堂 15」「打车 23」，事由和金额一句话说完；',
+          '商家名会被识别成分类：食堂 / 外卖 → 餐饮，地铁 / 打车 → 交通，打印 / 教材 → 学习；',
+          '记错了点聊天顶部的「↩ 撤回上一步」，那笔会从账本里彻底移除。'
+        ] },
+        { h: '方式二：截屏记账', steps: [
+          '点顶部相机图标，选图 / 拖进来 / 直接 Ctrl+V 粘贴；',
+          '识别结果先给你确认，金额、分类、日期都能改；',
+          '确认后才写入账本——识别错了不会直接污染数据。'
+        ] },
+        { h: '方式三：导入整月账单', p: '点顶部「导入账单」，支持微信 / 支付宝导出的 CSV 与 .xlsx。具体导出路径见下一条 FAQ。' },
+        { h: '第一次用，建议先做这三件事', list: [
+          '在「设置 · 预算」把总预算填成本期生活费，否则「日均可用」没有意义；',
+          '确认发钱日（默认 1 号）——周期从这天起算，改它会影响所有统计；',
+          '先记满 3 天再看板：只有 1-2 笔时图表基本是空的，容易误判成「没生效」。'
+        ] },
+        { h: '遇到问题先看这两点', list: [
+          '记不上：检查金额是不是纯数字，别带「元」「块」以外的符号；',
+          '看不到图表：空账本不画图，先记一笔再回看板。'
+        ] }
+      ]
+    },
+    {
+      id: 'edit',
+      icon: 'pencil',
+      q: '怎么修改 / 删除账单？',
+      tag: '数据',
+      intro: '目前支持「撤回最近一笔」，不支持逐笔改金额——这是演示版本有意做的简化。',
+      detail: [
+        { h: '撤销误记', steps: [
+          '在聊天页顶部点「↩ 撤回上一步」；',
+          '每次撤掉最近的一笔，连点可以连续往回撤；',
+          '撤回是彻底移除，不是标记删除，撤完那笔不会再出现在任何统计里。'
+        ] },
+        { h: '想改某一笔的具体做法', steps: [
+          '如果是刚记错的：先撤回，再用正确金额重记一次；',
+          '如果是很早以前的：直接补记一笔正确金额，把错的那笔留在账本里当记录（本版本不支持定点删除）；',
+          '想彻底重来：设置 →「清空缓存」不会动账本，需要用「注销账号」清空全部数据——务必先导出。'
+        ] },
+        { h: '在哪里核对已有记录', list: [
+          '完整版：看板「本月账单流水」，可按分类 / 关键词筛；',
+          '简洁版：「明细」屏按月查看；',
+          '账单分析：能看分类占比、Top10 大额、高频商户。'
+        ] },
+        { h: '为什么不做逐笔编辑', p: '逐笔编辑会牵动预算、诊断、图表三处口径，演示版本优先保证「记一笔」和「看趋势」两条主链路稳定。' +
+          '真需要精细管理时，建议导出 CSV 在表格里改，再导入回来。' }
+      ]
+    },
+    {
+      id: 'import',
+      icon: 'download',
+      q: '怎么导入微信 / 支付宝账单？',
+      tag: '导入',
+      intro: '先从微信 / 支付宝把账单导出成 CSV，再回到应用里导入；导入前可以预览和按月份筛选。',
+      detail: [
+        { h: '第一步：导出原始账单', steps: [
+          '微信：「我 · 服务 · 钱包 · 账单 · 常见问题 · 下载账单」，选「用于个人对账」，账单会发到邮箱（CSV，压缩包需解压）；',
+          '支付宝：「我的 · 账单 · 右上角「…」· 开具交易流水证明」，选时间范围，同样发到邮箱；',
+          '菜单名会随版本变化，找不到就在 App 内搜「账单 下载」。'
+        ] },
+        { h: '第二步：导入', steps: [
+          '点顶部「导入账单」（或设置里的导入入口）；',
+          '选 CSV 或 .xlsx；PDF 和老版 .xls 请先用 Excel 另存为 .xlsx 或 CSV；',
+          '支持多选文件，导入前会先解析并预览，可以按月份筛选、剔除不需要的行；',
+          '点确认后才写入账本——预览阶段随时可以退出，不会留下脏数据。'
+        ] },
+        { h: '重复导入会怎样', p: '应用不会自动去重：同一份账单导两次，就会有两份记录。' +
+          '建议导入前在预览里按月份筛掉已经导入过的区间。' },
+        { h: '导入失败的常见原因', list: [
+          '编码不对：用 Excel「另存为 → CSV UTF-8」，否则中文会乱码；',
+          '表头被删：第一行需要是列名（时间 / 金额 / 商户…）；',
+          '金额列带符号：预览里会显示解析结果，带「¥」「,」的行可能需要手工修正。'
+        ] }
+      ]
+    },
+    {
+      id: 'undo',
+      icon: 'check',
+      q: '「撤回」和「值不值」是什么？',
+      tag: '概念',
+      intro: '一个是删掉记错的账，一个是给花出去的钱打「事后评价」，两个功能各管一头。',
+      detail: [
+        { h: '撤回：删掉记错的那笔', list: [
+          '入口在聊天页顶部「↩ 撤回上一步」；',
+          '只作用于最近一笔，撤完即从账本和所有统计里消失；',
+          '预算是实时的，撤回后「剩余 / 日均可用」会立刻回涨。'
+        ] },
+        { h: '值不值：给支出打个自评', steps: [
+          '每笔记完后，气泡里会出现「值 / 一般 / 不值」三个小按钮；',
+          '点一下打标，再点同一项可以取消；',
+          '统计结果在「账单分析 · 值不值自评」里，会算出「不值」的笔数和金额占比。'
+        ] },
+        { h: '这个标签有什么用', p: '它回答的是「钱花得开不开心」，而不是「花得多不多」。' +
+          '连续几周「不值」占比高，说明问题不在预算太少，而在下单太快——这时候该用的是「剁手冷静法」。' },
+        { h: '两个功能的关系', p: '撤回管「记错了」，值不值管「花错了」。前者修数据，后者修习惯。' }
+      ]
+    }
+  ];
+
+  /** FAQ 详情弹窗：与看板详情弹窗共用 .doc-* 骨架 */
+  function openFaqModal(id) {
+    var doc = null;
+    for (var i = 0; i < FAQ_DOCS.length; i++) {
+      if (FAQ_DOCS[i].id === id) { doc = FAQ_DOCS[i]; break; }
+    }
+    if (!doc) { return; }
+    var box = openModal(docModalHtml({
+      icon: ic(doc.icon, null, null),
+      title: doc.q,
+      tag: doc.tag,
+      body: '<p class="am-intro">' + esc(doc.intro) + '</p>' + docSectionsHtml(doc.detail)
+    }) + '<div class="modal-actions">' +
+      '<button type="button" class="btn-ok" data-act="modal-cancel">我知道了</button>' +
+      '</div>');
+    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
   }
 
   /** 估算非账本缓存占用（主账本 key 不计入；UTF-16 粗估 2 字节/字符） */
@@ -5684,7 +6227,7 @@
         amount: ENG.round2(amount),
         category: DATA.INCOME_CATEGORY,
         source: source,
-        note: note || (source + '到账'),
+        note: note || source,
         motivation: '刚需',
         want: false,
         type: 'income'
@@ -5696,17 +6239,26 @@
   }
 
   /**
-   * 是否要追问「这笔是新的生活费到账吗」。
-   * 条件：收入 && 金额 ≥ 300 &&（来源是生活费 或 备注含 生活费/到账/打钱/给我转）
-   * 且同一笔只问一次（askedCycle）。
+   * 是否要追问「这笔钱要不要算进本周期可用额度」。
+   * 条件：收入 && 金额 ≥ 300，同一笔只问一次（askedCycle）。
+   * 注意：不再限定「生活费 / 到账」措辞——那会让「入账2000」「兼职800」这类
+   * 收入永远不触发追问，用户就看不到剩余额度有任何变化（2026-10-27 用户反馈「只问一遍」）。
    */
   function shouldAskCycleReset(bill) {
     if (!bill || bill.type !== 'income') { return false; }
     if (bill.askedCycle) { return false; }
-    if (Number(bill.amount) < 300) { return false; }
-    var note = String(bill.note || '');
+    return Number(bill.amount) >= 300;
+  }
+
+  /**
+   * 这笔收入是不是「新一轮生活费」：是 → 重置周期并结转上期余额；
+   * 否（兼职 / 奖学金 / 退款 / 其他进账）→ 不重置周期，只把金额加进本周期预算。
+   */
+  function isLivingExpenseIncome(bill) {
+    if (!bill) { return false; }
     if (bill.source === '生活费') { return true; }
-    return /生活费|到账|打钱|给我转/.test(note);
+    var note = String(bill.note || '') + ' ' + String(bill.title || '');
+    return /生活费|这个月的钱|这个月|家用|爸妈给(?:的)?|打钱|给我转/.test(note);
   }
 
   /** 入账后追问（大白话），同一笔只问一次 */
@@ -5715,12 +6267,35 @@
     bill.askedCycle = true;
     saveState();
 
+    var isLife = isLivingExpenseIncome(bill);
+    var beforeOverview = getOverview();
+    var beforeRemaining = ENG.round2(beforeOverview.budgetState.remaining);
+    /* beforeRemaining 已经扣过一次存钱罐余额；life 重算时 getOverview 会再扣一次，
+       必须把存钱罐加回来，否则存钱罐被扣两次 → 大额存钱罐 + 小额生活费入账时剩余额度会下降。
+       rollover = 上期可结转的现金（含存钱罐），这样重算后剩余 = 入账 + 旧剩余 - 新周期支出 ≥ 旧剩余。 */
+    var piggyRoll = ENG.round2(beforeOverview.piggyBalance || 0);
+    var rollover = ENG.round2(Math.max(0, beforeRemaining + piggyRoll));
+    var nextTotal = ENG.round2(ENG.round2(bill.amount) + rollover);
+    var todayStr = ENG.formatDate(new Date());
+    var nextCycle = ENG.getCycle(new Date(), state.budget.payday, null, todayStr);
+    var nextDaily = ENG.round2(nextTotal / nextCycle.remainingDays);
+    var title = isLife
+      ? '这笔 ' + money(bill.amount) + ' 是新的生活费到账吗？'
+      : '这笔 ' + money(bill.amount) + '（' + esc(bill.source || '其他') + '）要不要加进本周期的可用额度？';
+    var text = isLife
+      ? '要不要<b>从现在起重新算一个周期</b>？重算后 = ' + money(bill.amount) +
+        ' + 上期结余 ' + money(rollover) + ' = ' + money(nextTotal) +
+        '，日均 ' + money(nextDaily) + '。'
+      : '加上后周期不动，剩余从 ' + money(beforeRemaining) + ' 变成 ' +
+        money(ENG.round2(beforeRemaining + ENG.round2(bill.amount))) + '。';
+    var yesText = isLife ? '要，从现在重新算' : '要，加进可用额度';
+
     var html = '' +
-      '<div class="ask-card" data-bill="' + esc(bill.id) + '">' +
-      '  <div class="ask-title">这笔 ' + money(bill.amount) + ' 是新的生活费到账吗？</div>' +
-      '  <div class="ask-text">要不要<b>从现在起重新算一个周期</b>？（就是把预算也换成这笔钱，日均重新算一遍）</div>' +
+      '<div class="ask-card" data-bill="' + esc(bill.id) + '" data-kind="' + (isLife ? 'life' : 'extra') + '">' +
+      '  <div class="ask-title">' + title + '</div>' +
+      '  <div class="ask-text">' + text + '</div>' +
       '  <div class="ask-actions">' +
-      '    <button type="button" class="btn-mini primary" data-act="cycle-yes" data-bill="' + esc(bill.id) + '">要，从现在重新算</button>' +
+      '    <button type="button" class="btn-mini primary" data-act="cycle-yes" data-bill="' + esc(bill.id) + '">' + yesText + '</button>' +
       '    <button type="button" class="btn-mini" data-act="cycle-no" data-bill="' + esc(bill.id) + '">不用，只记这一笔</button>' +
       '  </div>' +
       '</div>';
@@ -5739,17 +6314,38 @@
       addAIMessage(aiBubble('行，这笔只当流水记着，预算没动。'));
       return;
     }
+    var isLife = isLivingExpenseIncome(bill);
+    var beforeOverview = getOverview();
+    var beforeRemaining = ENG.round2(beforeOverview.budgetState.remaining);
+    /* beforeRemaining 已经扣过一次存钱罐余额；life 重算时 getOverview 会再扣一次，
+       必须把存钱罐加回来，否则存钱罐被扣两次 → 大额存钱罐 + 小额生活费入账时剩余额度会下降。
+       rollover = 上期可结转的现金（含存钱罐），这样重算后剩余 = 入账 + 旧剩余 - 新周期支出 ≥ 旧剩余。 */
+    var piggyRoll = ENG.round2(beforeOverview.piggyBalance || 0);
+    var rollover = ENG.round2(Math.max(0, beforeRemaining + piggyRoll));
     var todayStr = ENG.formatDate(new Date());
-    // 起点不能晚于今天，否则 getCycle 会忽略（回退发钱日）
-    var start = bill.date > todayStr ? todayStr : bill.date;
-    state.budget.cycleStart = start;
-    state.budget.total = ENG.round2(bill.amount);
+    if (isLife) {
+      /* 新一轮生活费：从今天起算，并把未花完的上期额度结转过来 */
+      state.budget.cycleStart = todayStr;
+      state.budget.total = ENG.round2(ENG.round2(bill.amount) + rollover);
+    } else {
+      /* 兼职 / 奖学金 / 退款这类额外进账：周期不动，预算加上这笔钱 */
+      state.budget.total = ENG.round2(ENG.round2(state.budget.total) + ENG.round2(bill.amount));
+    }
     saveState();
     var ov = getOverview();
     renderAll();
-    addAIMessage(aiBubble('好，新一轮开始：' + money(state.budget.total) + ' 从 ' +
-      esc(ov.cycle.start) + ' 用到 ' + esc(ov.cycle.end) + '，还有 ' + ov.cycle.remainingDays +
-      ' 天，日均 ' + money(ov.budgetState.dailyAllowance) + '。'));
+    addAIMessage(aiBubble(isLife
+      ? '好，新一轮从今天开始，含上期结余 ' + money(rollover) + '，一共 ' +
+        money(state.budget.total) + '，从 ' + esc(ov.cycle.start) + ' 用到 ' +
+        esc(ov.cycle.end) + '，还有 ' + ov.cycle.remainingDays + ' 天，日均 ' +
+        money(ov.budgetState.dailyAllowance) + '。'
+      : '好，本周期预算加上这笔 ' + money(bill.amount) + '，现在是 ' + money(state.budget.total) +
+        '，剩余从 ' + money(beforeRemaining) + ' 变成 ' + money(ov.budgetState.remaining) +
+        '，日均可用 ' + money(ov.budgetState.dailyAllowance) + '。'));
+    /* 重算后立刻补一张最新【余额概览】：聊天里那张旧卡是入账瞬间的快照，
+       不会自己刷新——不补的话用户会以为「入账后其他数据没变化」（2026-10-27 用户反馈）。
+       ov 是 saveState() 之后取的，已是重算后的数据。 */
+    addAIMessage(balanceOverviewHtml(ov));
   }
 
   /** 恢复按发钱日推算 */
@@ -5761,6 +6357,8 @@
     var ov = getOverview();
     addAIMessage(aiBubble('已经恢复按发钱日 ' + state.budget.payday + ' 号算周期：' +
       esc(ov.cycle.start) + ' ~ ' + esc(ov.cycle.end) + '，还剩 ' + ov.cycle.remainingDays + ' 天。'));
+    /* 同上：补一张恢复后的最新概览，避免旧快照误导 */
+    addAIMessage(balanceOverviewHtml(ov));
   }
 
   /* ================================================================== */
@@ -5872,7 +6470,88 @@
       '</div>';
   }
 
-  /** 把文件读成 ArrayBuffer 再交给 analysis.parseFile（解码在纯函数里完成） */
+  var XLS_OLD_REASON = '.xls 是老版 Excel 格式，暂不支持。请在 Excel 里「另存为」选择「Excel 工作簿(*.xlsx)」或「CSV UTF-8」再导入。';
+  var XLSX_BROWSER_REASON = '当前浏览器不支持解压 Excel，请换用 Chrome / Edge，或把文件另存为 CSV 再导入。';
+  var XLSX_DAMAGED_REASON = '这个 Excel 文件打不开（可能已损坏或加密），请在 Excel 里打开后另存为 CSV 再导入。';
+
+  /** 统一构造 analysis.buildRows 能接受的失败文件元数据。 */
+  function importParseFailure(name, reason) {
+    return {
+      name: name || '未命名文件',
+      ok: false,
+      reason: reason || '解析失败',
+      records: [],
+      skipped: 0
+    };
+  }
+
+  /** 浏览器原生 raw DEFLATE；xlsx.js 只接收注入函数，不感知 DOM / Web API。 */
+  function inflateRaw(u8) {
+    if (typeof global.DecompressionStream === 'function') {
+      try {
+        var ds = new global.DecompressionStream('deflate-raw');
+        var stream = new Blob([u8]).stream().pipeThrough(ds);
+        return new Response(stream).arrayBuffer().then(function (buf) {
+          return new Uint8Array(buf);
+        });
+      } catch (error) {
+        return Promise.reject(new Error(XLSX_BROWSER_REASON));
+      }
+    }
+    return Promise.reject(new Error(XLSX_BROWSER_REASON));
+  }
+
+  /** 把 xlsx.js 的内部原因收敛为三类可操作提示，避免把 ZIP 术语抛给普通用户。 */
+  function xlsxUserReason(reason) {
+    var text = String(reason || '');
+    if (text.indexOf('当前浏览器不支持解压 Excel') !== -1) { return XLSX_BROWSER_REASON; }
+    return XLSX_DAMAGED_REASON;
+  }
+
+  /**
+   * 单文件解析入口：现代 Excel 先转 CSV 文本，其他文件仍走 analysis.js 原二进制路径。
+   * 始终返回 Promise<文件元数据>，并把同步异常 / 异步解压失败都收敛为失败元数据。
+   */
+  function parseBillImportFile(file, bytes) {
+    var name = file && file.name ? String(file.name) : '未命名文件';
+    if (/\.xls$/i.test(name)) {
+      return Promise.resolve(importParseFailure(name, XLS_OLD_REASON));
+    }
+    var isWorkbook = /\.(xlsx|xlsm)$/i.test(name) ||
+      (XLSX && typeof XLSX.isXlsx === 'function' && XLSX.isXlsx(bytes, name));
+    if (!isWorkbook) {
+      try {
+        return Promise.resolve(ANA.parseFile({ name: name, bytes: bytes }));
+      } catch (error) {
+        return Promise.resolve(importParseFailure(name,
+          '解析失败：' + (error && error.message ? error.message : '未知错误')));
+      }
+    }
+    if (!XLSX || typeof XLSX.toCsvText !== 'function') {
+      return Promise.resolve(importParseFailure(name, XLSX_DAMAGED_REASON));
+    }
+    var converted;
+    try {
+      converted = XLSX.toCsvText(bytes, inflateRaw);
+    } catch (error) {
+      return Promise.resolve(importParseFailure(name, xlsxUserReason(error && error.message)));
+    }
+    return Promise.resolve(converted).then(function (result) {
+      if (!result || !result.ok) {
+        return importParseFailure(name, xlsxUserReason(result && result.reason));
+      }
+      try {
+        return ANA.parseFile({ name: name, text: result.text });
+      } catch (error) {
+        return importParseFailure(name,
+          'Excel 已读取，但账单内容解析失败：' + (error && error.message ? error.message : '未知错误'));
+      }
+    }).catch(function (error) {
+      return importParseFailure(name, xlsxUserReason(error && error.message));
+    });
+  }
+
+  /** 把 CSV / TXT / XLSX 文件读成 ArrayBuffer，再交给统一账单解析入口。 */
   function handleAnalysisFiles(fileList) {
     var files = Array.prototype.slice.call(fileList || []);
     if (files.length === 0) { return; }
@@ -5917,14 +6596,14 @@
     files.forEach(function (file, index) {
       var reader = new FileReader();
       reader.onload = function () {
-        var parsed;
-        try {
-          parsed = ANA.parseFile({ name: file.name, bytes: reader.result });
-        } catch (e) {
-          parsed = { name: file.name, ok: false, reason: '解析失败：' + (e && e.message ? e.message : '未知错误'), records: [], skipped: 0 };
-        }
-        metas[index] = parsed;
-        done();
+        parseBillImportFile(file, reader.result).then(function (parsed) {
+          metas[index] = parsed;
+          done();
+        }, function (error) {
+          metas[index] = importParseFailure(file.name,
+            '解析失败：' + (error && error.message ? error.message : '未知错误'));
+          done();
+        });
       };
       reader.onerror = function () {
         metas[index] = { name: file.name, ok: false, reason: '读取文件失败', records: [], skipped: 0 };
@@ -5954,7 +6633,7 @@
   function analysisFailCard(data, statusEl) {
     if (!data || !data.files || data.files.length === 0) {
       if (statusEl) {
-        statusEl.textContent = '还没有导入文件。导出账单时请选择「CSV（用做个人对账）」，不要用 PDF / Excel。';
+        statusEl.textContent = '还没有导入文件。支持 CSV / Excel（.xlsx）；PDF 和老版 .xls 不支持，请先另存为 .xlsx 或 CSV。';
       }
       // 分析页（导入模式）与顶栏导入页的拖拽区、状态行已有引导，
       // 这里不再重复渲染「还没有可分析的账单文件」大卡片，避免整页冗余。
@@ -5987,8 +6666,8 @@
       '<div class="pf-emoji"><svg viewBox="0 0 24 24"><use href="#i-sad"/></svg></div>' +
       '<div class="pf-title">这份文件没能解析出账单记录</div>' +
       lines +
-      '<p class="pf-tip">常见原因：① 导出时选了 <b>PDF / Excel</b>，请改选 <b>CSV</b>；' +
-      '② 微信/支付宝需选「用做个人对账」的明细；③ 文件编码异常。' +
+      '<p class="pf-tip">常见原因：① 文件是 <b>PDF / 老版 .xls</b>，请先另存为 <b>.xlsx 或 CSV UTF-8</b>；' +
+      '② 微信/支付宝需选「用做个人对账」的明细；③ 文件已损坏、加密或编码异常。' +
       '如果还有问题，把文件前 2 行发给我，我帮你适配格式。</p>' +
       '</div>';
   }
@@ -6582,7 +7261,7 @@
   function clearAnalysis() {
     analysisData = null;
     var statusEl = $('analysisStatus');
-    if (statusEl) { statusEl.textContent = '还没有导入文件。导出账单时请选择「CSV」，不要用 PDF。'; }
+    if (statusEl) { statusEl.textContent = '还没有导入文件。支持 CSV / Excel（.xlsx）；PDF 和老版 .xls 不支持，请先另存为 .xlsx 或 CSV。'; }
     var fileInput = $('analysisFile');
     if (fileInput) { fileInput.value = ''; }
     var toolbar = $('analysisToolbar');
@@ -6606,7 +7285,7 @@
     $('importMask').hidden = true;
   }
 
-  /** 把用户选择的文件读成二进制后交给 analysis.parseFile（解码在纯函数里完成） */
+  /** 把用户选择的 CSV / TXT / XLSX 交给统一解析入口，再预览并入账本。 */
   function handleImportFiles(fileList) {
     var files = Array.prototype.slice.call(fileList || []);
     if (files.length === 0) { return; }
@@ -6648,14 +7327,14 @@
     files.forEach(function (file, index) {
       var reader = new FileReader();
       reader.onload = function () {
-        var parsed;
-        try {
-          parsed = ANA.parseFile({ name: file.name, bytes: reader.result });
-        } catch (e) {
-          parsed = { name: file.name, ok: false, reason: '解析失败：' + (e && e.message ? e.message : '未知错误'), records: [], skipped: 0 };
-        }
-        metas[index] = parsed;
-        done();
+        parseBillImportFile(file, reader.result).then(function (parsed) {
+          metas[index] = parsed;
+          done();
+        }, function (error) {
+          metas[index] = importParseFailure(file.name,
+            '解析失败：' + (error && error.message ? error.message : '未知错误'));
+          done();
+        });
       };
       reader.onerror = function () {
         metas[index] = { name: file.name, ok: false, reason: '读取文件失败', records: [], skipped: 0 };
@@ -7253,13 +7932,27 @@
   };
   var DEAL_PLATFORMS = ['网易严选', '当当', '淘宝', '天猫', '京东', '拼多多', '抖音', '唯品会', '美团', '饿了么', '线下门店'];
   /** 真实搜索快照的排序状态：price=价格升序 / reviews=评价降序 */
+  /* 抓取来源名 → 比价表里的平台名（统一叫法，也避免下拉框里没有这个值） */
+  var PLAT_ALIAS = { '网易严选': '网易严选', '当当网': '当当', '当当': '当当' };
+
+  /** 缓存年龄说人话：别丢个"170 秒"给用户猜 */
+  function cacheAgeText(sec) {
+    var s = Number(sec) || 0;
+    if (s < 60) { return '刚刚抓的'; }
+    if (s < 3600) { return Math.round(s / 60) + ' 分钟前的抓取'; }
+    return Math.round(s / 3600) + ' 小时前的抓取';
+  }
   var realSort = 'price';
   /* 在线抓取：用户搜什么就抓什么。realLive 有值就优先用它，没有才退回内置快照 */
   var realLive = null;
   var realBusy = false;
   var realStatus = '';
   var REAL_LIVE_KEY = 'ai_jizhang_real_search_v1';
-  var REAL_API_BASES = ['http://127.0.0.1:8010', 'http://localhost:8010'];
+  /* 在线抓取的后端地址：页面若由 deals_api.py 托管（http/https 打开），同源地址最优先；
+     file:// 直接打开时只能走 127.0.0.1:8010（跨域已由后端 CORS 放行） */
+  var REAL_API_BASES = (global.location && (global.location.protocol === 'http:' || global.location.protocol === 'https:'))
+    ? ['', 'http://127.0.0.1:8010', 'http://localhost:8010']
+    : ['http://127.0.0.1:8010', 'http://localhost:8010'];
 
   function dealsNow() { return new Date(); }
   function dealsReady() { return DEALS && typeof DEALS.compareOffers === 'function'; }
@@ -7415,7 +8108,7 @@
         ' 元，通常 ' + esc(band.channel) + ' 更便宜。</p>';
     }
     html += '<p class="deals-note">口径：到手价 = 标价 × 需买件数 + 运费 − 券；规格不同的只能比折合单价。' +
-      '上面「真实搜索结果」是电商平台（网易严选主源/当当备源）的真实搜索结果（抓取时间见卡片），价格随后变动，下单前请以站点实时价为准。</p>';
+      '上面「真实搜索结果」是电商平台（网易严选 / 慢慢买聚合的京东·天猫·淘宝 / 当当）的真实搜索结果（抓取时间见卡片），价格随后变动，下单前请以站点实时价为准。</p>';
     return html;
   }
 
@@ -7499,13 +8192,42 @@
 
     var pages = (m.pages_scraped || []).length;
     html += '<div class="rs-stats">' +
-      '<span>翻了 <b>' + pages + '</b> 页</span>' +
+      '<span>抓了 <b>' + pages + '</b> 个结果页</span>' +
       '<span>解析 <b>' + (m.total_parsed || 0) + '</b> 条</span>' +
       '<span>关键词相关 <b>' + (m.relevant || 0) + '</b> 条</span>' +
+      (m.dropped ? '<span class="rs-drop">剔除 <b>' + m.dropped + '</b> 条不相关</span>' : '') +
       '<span>取前 <b>' + items.length + '</b> 条</span>' +
       (m.price_range ? '<span>价格带 <b>¥' + m.price_range[0] + '–' + m.price_range[1] + '</b></span>' : '') +
       (m.shop_count ? '<span><b>' + m.shop_count + '</b> 家店</span>' : '') +
+      (m.from_cache ? '<span class="rs-cache">' + cacheAgeText(m.cache_age_sec) + '</span>' : '') +
       '</div>';
+
+    /* 多源概览：用「实际展示出来的条目」统计，保证与下方列表、价格带口径一致 */
+    var srcs = (m.sources || []).map(function (x) {
+      var ps = items.filter(function (it) { return it.source === x.name; })
+        .map(function (it) { return it.price; });
+      return {
+        name: x.name, host: x.host, note: x.note, count: ps.length,
+        price_range: ps.length ? [Math.min.apply(null, ps), Math.max.apply(null, ps)] : null,
+      };
+    }).filter(function (x) { return x.count; });
+    var multiSrc = srcs.length >= 2;
+    if (multiSrc) {
+      html += '<div class="rs-cross">' + ic('scale', null, '跨平台');
+      srcs.forEach(function (x, xi) {
+        html += (xi ? '<span class="rs-cross-sep">vs</span>' : '') +
+          '<b>' + esc(x.name) + '</b> ' + x.count + '条' +
+          (x.price_range ? ' ¥' + DEALS.fmt(x.price_range[0]) + '–' + DEALS.fmt(x.price_range[1]) : '');
+      });
+      html += '</div>';
+    }
+    /* 有平台没这个品类就直说，不拿配件/图书凑数 */
+    (m.sources || []).forEach(function (x) {
+      if (!x.count && x.note) {
+        html += '<div class="rs-nomatch">' + ic('info', null, '说明') +
+          '<b>' + esc(x.name) + '</b>：' + esc(x.note) + '</div>';
+      }
+    });
 
     var groups = realGroupList(d.items);
     if (groups.length) {
@@ -7530,6 +8252,8 @@
     var hasMat = d.items.some(function (x) { return x.material && x.material !== '材质未标注'; });
     items.forEach(function (it, i) {
       var chips = '';
+      var plat = it.platform || it.source;
+      if (multiSrc && plat) { chips += '<span class="rs-chip is-plat">' + esc(plat) + '</span>'; }
       if (it.material && it.material !== '材质未标注') { chips += '<span class="rs-chip">' + esc(it.material) + '</span>'; }
       else if (hasMat) { chips += '<span class="rs-chip is-mute">材质未标注</span>'; }
       if (it.target && it.target !== '通用') { chips += '<span class="rs-chip">' + esc(it.target) + '</span>'; }
@@ -7547,7 +8271,8 @@
         '<span class="rs-rev">' + (it.reviews === null ? '无数据' : it.reviews + (it.reviews_label ? ' ' + it.reviews_label : ' 条评价')) + '</span>' +
         '<span class="rs-pg">第 ' + (it.page || 1) + ' 页</span>' +
         '</div></div>' +
-        '<div class="rs-price"><b>¥' + DEALS.fmt(it.price) + '</b><small>标价</small></div>' +
+        '<div class="rs-price"><b>¥' + DEALS.fmt(it.price) + '</b><small>' +
+        (it.price_label || '标价') + '</small></div>' +
         '<button type="button" class="rs-fill" data-real-fill="' + esc(it.sku) + '">填入比价</button>' +
         '</div>';
     });
@@ -7555,26 +8280,34 @@
 
     html += '<p class="deals-note">数据来源：' + esc(m.source) + '（' + esc(m.source_host) + '）公开搜索结果，' +
       '关键词「' + esc(m.keyword) + '」，抓取时间 ' + esc(m.scraped_at) + '，翻 ' + pages + ' 页共解析 ' +
-      (m.total_parsed || 0) + ' 条，取相关且字段完整的前 ' + items.length + ' 条。' +
+      (m.total_parsed || 0) + ' 条' +
+      (m.dropped ? '，其中 <b>' + m.dropped + '</b> 条因是图书/周边配件/蹭词被判定不相关已剔除' : '') +
+      '，取相关且字段完整的前 ' + items.length + ' 条。' +
       '价格与销量/评价数为抓取当时的页面展示值，会随促销和库存变动，下单前以站点实时价为准。' +
       (hasMat ? '「材质未标注」表示标题里没写 304/316，不代表质量好坏。' : '') + '</p>';
 
     html += '<details class="rs-how"' + (isLive ? '' : ' open') + '><summary>数据怎么来的 · 想搜别的词怎么办</summary>' +
       (isLive
-        ? '<p>这份结果是刚才在线抓的：你在上面输入关键词，页面请求本机后端 <code>/api/deals/search</code>，' +
-          '后端先真实请求<strong>网易严选</strong>搜索接口（<code>you.163.com</code>，综合电商，搜什么出什么品类），' +
-          '没有相关商品时降级请求当当搜索页，逐条抓标题、价格、店铺、销量/评价数，没有任何人工填写或模拟数据，' +
+          ? '<p>这份结果是刚才在线抓的：你在上面输入关键词，页面请求本机后端 <code>/api/deals/search</code>，' +
+          '后端<strong>并发</strong>真实请求三个源：<strong>网易严选</strong>搜索接口（<code>you.163.com</code>，综合电商，搜什么出什么品类）、' +
+          '<strong>慢慢买比价</strong>（<code>s.manmanbuy.com</code>，比价聚合站，免登录直出<strong>京东/天猫/淘宝</strong>等平台的真实到手价）、' +
+          '以及<strong>当当</strong>搜索页（百货/图书），逐条抓标题、价格、店铺、销量/评价数，没有任何人工填写或模拟数据，' +
           '实际来源见上方来源条。</p>' +
-          '<p class="rs-how-note">京东、淘宝的搜索结果页需要登录或有风控校验，抓不到，所以选了这两个免登录站点。</p>'
-        : '<p>这条快照由 <code>deals_scrape.py</code> 直接请求电商平台搜索接口' +
-          '（主源网易严选 <code>you.163.com</code>，备源当当搜索页）解析得到，逐条抓标题、价格、店铺、销量/评价数，' +
+          '<p>三个源<strong>同时并发</strong>抓，结果合并去重后交替展示，所以每个平台都有代表出镜。' +
+          '抓回来的原始结果会再过一遍<strong>提纯</strong>：出版物（ISBN/出版社/丛书等）、' +
+          '周边配件（电脑包、支架、清洁工具、充电器这类"沾边但不是本体"）、蹭词结果都会被剔除，' +
+          '剔除量如实写在上方统计条里。剔完不足 2 条的平台会直接说明"没这个品类"，不拿配件凑数。</p>' +
+          '<p class="rs-how-note">京东、淘宝的搜索结果页需要登录或有风控校验直抓不到，所以京东/天猫/淘宝的报价经慢慢买比价聚合站中转获取——' +
+          '同样是页面当时真实展示的到手价，下单前以站点实时价为准。</p>'
+          : '<p>这条快照由 <code>deals_scrape.py</code> 直接请求电商平台搜索接口' +
+          '（主源网易严选 <code>you.163.com</code>、比价聚合源慢慢买 <code>s.manmanbuy.com</code> 取京东/天猫/淘宝报价、备源当当搜索页）解析得到，逐条抓标题、价格、店铺、销量/评价数，' +
           '没有任何人工填写或模拟数据。想搜别的词，在上方输入关键词点「搜同款」；' +
           '浏览器直接抓电商接口会被跨域（CORS）拦住，需要本机先跑：</p>' +
           '<code class="rs-cmd" id="rsCmd">python deals_api.py</code>' +
           '<button type="button" class="rs-copy" data-real-copy="1">复制命令</button>' +
           '<p class="rs-how-note">后端起来后回这里输入关键词即可在线抓取；也可以不改代码直接' +
           '<code>python deals_scrape.py 关键词 deals_real.json && python rebundle.py</code> 更新内置快照。' +
-          '京东、淘宝的搜索结果页需要登录或有风控校验，抓不到，所以这里只取当当这个免登录站点。</p>') +
+          '京东/天猫/淘宝经慢慢买比价聚合站中转获取真实到手价（免登录、无风控）。</p>') +
       '</details>';
 
     html += '</div>';
@@ -7694,7 +8427,7 @@
     for (var i = 0; i < d.items.length; i++) { if (String(d.items[i].sku) === String(sku)) { it = d.items[i]; break; } }
     if (!it) { return; }
     syncDealForm();
-    var plat = (d.meta && d.meta.source) || '网易严选';
+    var plat = PLAT_ALIAS[it.source] || it.source || (d.meta && d.meta.source) || '网易严选';
     var spec = (it.material && it.material !== '材质未标注' ? it.material + ' ' : '') +
       (it.target && it.target !== '通用' ? it.target + '款 ' : '') + d.meta.keyword;
     var row = null;
@@ -10201,7 +10934,7 @@
       /* 云端真就绪才插「正在确认」气泡，否则不要闪一下再消失 */
       var thinkingRow = null;
       if (cloudReady && typeof global.AJ === 'object' && typeof global.AJ.ask === 'function') {
-        addAIMessage(aiBubble('账小助正在确认…'));
+        addAIMessage(aiBubble('阿账正在确认…'));
         thinkingRow = chatListEl().lastElementChild;
       }
       askForVerdict(raw, res, function (verdict) {
@@ -10229,6 +10962,8 @@
       chips[i].classList.toggle('active', chips[i].getAttribute('data-cmd') === raw);
     }
     switchView('chat');
+    /* 买谷指南 / 二次元触发词拦截：命中则本地直接给结构化回答或轻提示，不走后端记账流 */
+    if (guIntercept(raw)) { return; }
     // 改为请求后端；后端不可用或返回 fallback 时，sendToAssistant 内部回退到本地逻辑
     sendToAssistant(raw);
   }
@@ -10615,8 +11350,11 @@
         var yes = name === 'cycle-yes';
         var askCard = act.closest ? act.closest('.ask-card') : null;
         if (askCard) {
-          askCard.innerHTML = '<div class="ask-done">' +
-            (yes ? '已选择：从现在重新算周期' : '已选择：只记这一笔') + '</div>';
+          var kind = askCard.getAttribute('data-kind');
+          var doneText = yes
+            ? (kind === 'life' ? '已选择：从现在重新算周期' : '已选择：加进本周期可用额度')
+            : '已选择：只记这一笔';
+          askCard.innerHTML = '<div class="ask-done">' + doneText + '</div>';
         }
         resolveCycleReset(billId, yes);
         return;
@@ -10725,6 +11463,34 @@
     /* 看板「理财课 · 视频」卡的「全部 ›」：进理财学院并定位到学院区。
        按钮是静态节点（不会被 innerHTML 重建），只绑一次，不存在重复绑定。 */
     $('btnLearnAll').addEventListener('click', openAcademy);
+
+    /* ---- 看板信息块的详情弹窗 ----
+       理财课整行进弹窗（右侧 ↗ 仍是一步直达）；诊断 / 恩格尔 / 成就各开自己的详情。 */
+    $('learnMini').addEventListener('click', function (e) {
+      var row = (e.target && e.target.closest) ? e.target.closest('[data-learn]') : null;
+      if (!row) { return; }
+      e.preventDefault();
+      openLearnResourceModal(Number(row.getAttribute('data-learn')));
+    });
+    $('learnMini').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') { return; }
+      var row = (e.target && e.target.closest) ? e.target.closest('[data-learn]') : null;
+      if (!row) { return; }
+      e.preventDefault();
+      openLearnResourceModal(Number(row.getAttribute('data-learn')));
+    });
+    if ($('btnDiagAll')) { $('btnDiagAll').addEventListener('click', openDiagAllModal); }
+    /* 恩格尔 / 成就：整卡可点，键盘 Enter / 空格同效 */
+    [['engelCard', openEngelModal], ['achieveCard', openAchieveModal]].forEach(function (pair) {
+      var el = $(pair[0]);
+      if (!el) { return; }
+      el.addEventListener('click', pair[1]);
+      el.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') { return; }
+        e.preventDefault();
+        pair[1]();
+      });
+    });
     $('btnAskCoach').addEventListener('click', showAskCoachIntro);
     /* 专家面板「‹ 返回」：桌面端无底部导航，靠它回到进入专家前的视图 */
     $('btnCoachBack').addEventListener('click', goBackView);
@@ -11242,9 +12008,32 @@
 
   function addWelcome() {
     var ov = getOverview();
-    addAIMessage(aiBubble(ic('chat', 'bico-brand', '打招呼') + '你好呀，我是账小助<br>一句话就能记账，试试「中午食堂 15」。<br>想省钱 / 搞钱，去底部「理财专家」找我，剁手前也可以先让我把把关。'));
+    var body = addAIMessage(aiBubble(ic('chat', 'bico-brand', '打招呼') + '你好呀，我是' + petDisplayName() +
+      '<br>一句话就能记账，试试「中午食堂 15」。<br>想省钱 / 搞钱，去底部「理财专家」找我，剁手前也可以先让我把把关。'));
+    /* 标记欢迎行：切换形象时就地改名，别让历史欢迎语还写着上一只的名字 */
+    if (body && body.parentNode) { body.parentNode.setAttribute('data-welcome', '1'); }
     addAIMessage(aiBubble('当前周期 ' + esc(ov.cycle.start) + ' ~ ' + esc(ov.cycle.end) + '，总预算 ' +
       money(state.budget.total) + '，已花 ' + money(ov.cycleAgg.expense) + '。' + ov.sentence));
+  }
+
+  /**
+   * 聊天页「助手名字」跟随当前萌宠形象：顶部「X · 在线」+ 已有欢迎语气泡 + 头像 aria。
+   * 静态 HTML 里默认写的是「阿账 · 在线」，用户上次选的是精灵/管家时，
+   * 首帧和每次切换都要按存储值纠正（2026-10 用户反馈「切换萌宠也要改名」）。
+   */
+  function renderChatPeerName() {
+    var name = petDisplayName();
+    var head = $('chatPeerName');
+    if (head) { head.textContent = name + ' · 在线'; }
+    var list = chatListEl();
+    if (!list) { return; }
+    var rows = list.querySelectorAll('.msg-row[data-welcome]');
+    for (var i = 0; i < rows.length; i++) {
+      var body = rows[i].querySelector('.msg-body');
+      if (body) {
+        body.innerHTML = body.innerHTML.replace(/你好呀，我是[^<]*/, '你好呀，我是' + name);
+      }
+    }
   }
 
   /* ================================================================== */
@@ -11273,6 +12062,15 @@
    */
   var PET_SKIN_ORDER = ['azhang', 'sprite', 'pro'];
   var PET_SKIN_NAME = { azhang: '阿账', sprite: '存钱罐精灵', pro: '记账小管家' };
+
+  /**
+   * 当前宠物的显示名（聊天页标题 / 欢迎语 / AI 头像 aria / 系统提示共用）。
+   * 切换形象时这些地方都要跟着改名，否则换成精灵还叫「阿账」。
+   * @param {string} [skin] 不传就按当前形象
+   */
+  function petDisplayName(skin) {
+    return PET_SKIN_NAME[skin || petSkin()] || '阿账';
+  }
 
   /**
    * 当前宠物形象：'azhang' | 'sprite' | 'pro'。
@@ -11448,9 +12246,11 @@
       piggy_in: 'save', goal_in: 'save', goal_done: 'done',
       piggy_out: 'out',
       impulse_flag: 'mad', cooldown_block: 'stop',
-      poke: 'poke'
+      poke: 'poke', wave: 'wave'
     };
     var a = map[kind] || 'bill';
+    /* 视频同款动作：大额支出 / 预算紧张 → 皱眉拨算盘（比单纯起跳更贴「心疼这笔钱」） */
+    if (a === 'bill' && act && (act.big || act.tight)) { a = 'calc'; }
     petEl.setAttribute('data-act', a);
 
     var gain = petEl.querySelector('.aj-prop-gain');
@@ -11528,6 +12328,7 @@
         if (nToday === 5) { a.line = '今天第 5 笔啦，记账小能手！'; }
         else if (nToday === 10) { a.line = '第 10 笔！你是把记账刻进 DNA 了吧？'; }
         else if (bs && !bs.isOver && bs.status === 'tight' && petBudgetNudgeOk(ov)) {
+          a.tight = true;   /* 预算紧张：阿账改演「皱眉拨算盘」 */
           a.line = '预算有点紧了，接下来收着点花哦～';
         }
       }
@@ -11597,6 +12398,25 @@
     }, 1800);
   }
 
+  /**
+   * 每日首次见面：挥手打招呼（视频同款动作）。
+   * lastWave 记在设置里，同一天重开应用不再重复挥；精灵/管家有自己的 greet，不参与。
+   */
+  function petDailyWave() {
+    if (!petEnabled() || petSkin() !== 'azhang' || !petEl || MOOD.missing) { return; }
+    var st = getSettings();
+    st.mascot = st.mascot || {};
+    var d = new Date();
+    var today = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    if (st.mascot.lastWave === today) { return; }
+    st.mascot.lastWave = today;
+    persistSettings();
+    petWake();
+    petApplyMood('cheer');
+    petPlayAct('wave', null);
+    petSay('你好呀，今天也一起好好记账吧～', PET_TINT['cheer'] || '#07C160');
+  }
+
   /** 进入攒钱/理财页面打个招呼（5 分钟每页最多一次；管家有自己的 setScene('learn')，不重复） */
   var petViewHiAt = {};
 
@@ -11616,6 +12436,7 @@
       var sp = global.AJ && global.AJ.petSprite;
       if (sp && typeof sp.say === 'function') { sp.say(line, 'income'); }
     } else if (petEl && !MOOD.missing) {
+      petPlayAct('wave', null);   /* 问好也是挥手 */
       petApplyMood('save');
       petSay(line, PET_TINT['save'] || '#07C160');
     }
@@ -11684,6 +12505,8 @@
     petPlayAct(kind, act);
     var key = (typeof MOOD.actionMood === 'function' && MOOD.actionMood(kind)) || 'cheer';
     petApplyMood(key);
+    /* 大额支出 / 预算紧张：皱眉发愁脸 + 拨算盘动作（petPlayAct 里 bill→calc） */
+    if (act && (act.big || act.tight)) { petApplyMood('nervous'); }
     if (act && act.big) { petFx('burst'); }
     else if (kind === 'piggy_in' || kind === 'goal_in' || kind === 'goal_done' || kind === 'income_logged') { petFx('coins'); }
     else if (kind === 'cooldown_block') { petFx('burst'); }
@@ -11786,6 +12609,7 @@
     renderSettingsPage();     /* 同步设置页里「宠物形象」的勾选（自定义入口常驻，不参与） */
     renderMascotBar();        /* 播报条头像跟着换形象 */
     repaintChatAvatars(next); /* 聊天页已有 AI 头像的图案也跟着换（情绪底色保留） */
+    renderChatPeerName();     /* 聊天页标题 / 欢迎语 / 头像 aria 跟着改名 */
     petGreet(next);
     if (!quiet) { showToast('已换成' + (PET_SKIN_NAME[next] || '阿账'), 'ok'); }
     return next;
@@ -11899,6 +12723,7 @@
       renderSettingsPage();
       setupFloatingPet();
       applyPetVisibility();
+      renderChatPeerName();   /* 首次选完就把聊天页名字换成它 */
       /* 选完给一声反馈，让用户确认「它醒了」—— 精灵/管家走专属招呼语，
          不用 poke 的随机文案（会抽到「戳我干什么」这种反问，当欢迎语不合适） */
       var sp0 = global.AJ && global.AJ.petSprite;
@@ -11908,7 +12733,22 @@
       else if (cur === 'pro' && pp0 && typeof pp0.greet === 'function') { pp0.greet(); }
       else if (cur === 'pro' && pp0 && typeof pp0.react === 'function') { pp0.react('income'); }
       else { petSfx('income'); }
+      if (cur === 'azhang') { setTimeout(function () { petPlayAct('wave', null); }, 600); }
       showToast((PET_SKIN_NAME[cur] || '阿账') + '已就位，右下角戳戳看', 'ok');
+    }
+
+    /** 卡片里的真实形象：阿账走 moodSvg，精灵/管家直接用各自模块的形象 SVG（缺模块时退回通用图标） */
+    function petPickArt(skin) {
+      var sp, pp;
+      if (skin === 'azhang') {
+        return (typeof MOOD.moodSvg === 'function') ? MOOD.moodSvg('cheer', 'mico', '阿账') : ic('user', '', '');
+      }
+      if (skin === 'sprite') {
+        sp = global.AJ && global.AJ.petSprite;
+        return (sp && sp._svg) ? sp._svg : ic('piggy', '', '');
+      }
+      pp = global.AJ && global.AJ.petPro;
+      return (pp && typeof pp._charSvg === 'function' && pp._charSvg()) || ic('spark', '', '');
     }
 
     var box = openModal(
@@ -11916,18 +12756,19 @@
       '  <h4>选个小伙伴陪你记账</h4>' +
       '  <p class="pet-pick-sub">它会住在右下角，记账、存钱、超支时都有反应。' +
       '随时能在「设置 · 宠物形象」里更换。</p>' +
-      /* 三列：390px 视口下每列约 103px，见 styles.css 的 .pet-pick-list-3 */
+      /* 三列：390px 视口下每列约 103px，见 styles.css 的 .pet-pick-list-3。
+         卡片里放三只的真实样子，不再用通用图标 */
       '  <div class="pet-pick-list pet-pick-list-3">' +
       '    <button type="button" class="pet-pick-card active" data-skin="azhang">' +
-      '      <span class="ppc-ico">' + ic('user', '', '') + '</span>' +
+      '      <span class="ppc-ico ppc-art">' + petPickArt('azhang') + '</span>' +
       '      <b>阿账</b><small>9 种心情<br>顶部播报预算</small>' +
       '    </button>' +
       '    <button type="button" class="pet-pick-card" data-skin="sprite">' +
-      '      <span class="ppc-ico">' + ic('piggy', '', '') + '</span>' +
+      '      <span class="ppc-ico ppc-art">' + petPickArt('sprite') + '</span>' +
       '      <b>存钱罐精灵</b><small>6 种表情<br>随手就能拖</small>' +
       '    </button>' +
       '    <button type="button" class="pet-pick-card" data-skin="pro">' +
-      '      <span class="ppc-ico">' + ic('spark', '', '') + '</span>' +
+      '      <span class="ppc-ico ppc-art">' + petPickArt('pro') + '</span>' +
       '      <b>记账小管家</b><small>自定义形象<br>小猪绕身</small>' +
       '    </button>' +
       '  </div>' +
@@ -12068,7 +12909,9 @@
     pokeStreak: petPokeStreak, // 连点计数 / 冷却窗口
     nap: petNap,               // 立刻触发打盹（不用等 2 分钟）
     isNight: isPetNight,
-    billsToday: billsTodayCount
+    billsToday: billsTodayCount,
+    playAct: petPlayAct,       // 直接驱动动作（挥手/拨算盘等，探针验证动画挂载）
+    react: petReact            // 完整链路：enrichAct 台词 → 变脸 → 动作（探针验证大额→拨算盘）
   };
 
   /**
@@ -12198,6 +13041,23 @@
       '<circle cx="18" cy="25" r="2.1" fill="#fff"/></svg>' +
       '<svg class="aj-prop aj-prop-crown" viewBox="0 0 44 34">' +
       '<path d="M4 28 L6.5 8.5 L15.5 17 L22 4 L28.5 17 L37.5 8.5 L40 28 Z" fill="#FBBF24" stroke="#B45309" stroke-width="2.4" stroke-linejoin="round"/></svg>' +
+      /* 视频同款动作（挥手打招呼）：手臂从身侧举起，带三道动势线 */
+      '<svg class="aj-prop aj-prop-wave" viewBox="0 0 44 56">' +
+      '<path d="M8 52 Q10 30 22 14" fill="none" stroke="#2FA35C" stroke-width="9" stroke-linecap="round"/>' +
+      '<circle cx="25" cy="11" r="8.5" fill="#2FA35C"/>' +
+      '<path d="M19 4.5 l1.2-3.2 M26 3.5 l2.4-2.6 M31.5 6.5 l3-1.8" fill="none" stroke="#2FA35C" stroke-width="3" stroke-linecap="round"/></svg>' +
+      /* 视频同款动作（皱眉拨算盘）：绿框算盘举到身前，珠子来回拨 */
+      '<svg class="aj-prop aj-prop-abacus" viewBox="0 0 52 44">' +
+      '<rect x="3" y="3" width="46" height="38" rx="7" fill="#DDF2D8" stroke="#2FA35C" stroke-width="3"/>' +
+      '<line x1="12" y1="8" x2="12" y2="36" stroke="#2FA35C" stroke-width="2"/>' +
+      '<line x1="26" y1="8" x2="26" y2="36" stroke="#2FA35C" stroke-width="2"/>' +
+      '<line x1="40" y1="8" x2="40" y2="36" stroke="#2FA35C" stroke-width="2"/>' +
+      '<line x1="6" y1="15" x2="46" y2="15" stroke="#2FA35C" stroke-width="2"/>' +
+      '<line x1="6" y1="28" x2="46" y2="28" stroke="#2FA35C" stroke-width="2"/>' +
+      '<g class="aj-ab-bead"><ellipse cx="18" cy="28" rx="5" ry="4" fill="#07C160"/></g>' +
+      '<g class="aj-ab-bead b2"><ellipse cx="33" cy="15" rx="5" ry="4" fill="#07C160"/></g>' +
+      '<ellipse cx="34" cy="28" rx="5" ry="4" fill="#4CC97E"/>' +
+      '<ellipse cx="18" cy="15" rx="5" ry="4" fill="#4CC97E"/></svg>' +
       '<i class="aj-confetti"></i><i class="aj-confetti"></i><i class="aj-confetti"></i>' +
       '<i class="aj-confetti"></i><i class="aj-confetti"></i><i class="aj-confetti"></i>' +
       '<span class="aj-prop-gain"></span>' +
@@ -12347,6 +13207,7 @@
        否则刷新后设置页显示的是错的（旧实现只在「打开设置页/切换形象」时刷新）。 */
     renderSettingsPage();
     addWelcome();
+    renderChatPeerName();   /* 上次选的是精灵/管家时，首帧标题与欢迎语就用对应名字 */
     // 默认视图按 UI 类型分流：简洁版进「记账」首页，完整版进聊天（修复简洁版刷新后落空白）
     switchView(getUiMode() === 'simple' ? 'shome' : 'chat');
     initCloud();
@@ -12354,6 +13215,7 @@
     maybeProactiveHint();
     maybeWishReview();
     maybePickPetSkin();   /* 没选过宠物形象 → 弹一次，选过直接跳过 */
+    setTimeout(petDailyWave, 1500);   /* 每天第一次见面：挥手打招呼 */
   }
 
   if (DOC.readyState === 'loading') {

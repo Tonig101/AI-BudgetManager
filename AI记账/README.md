@@ -11,9 +11,10 @@
 | --- | --- |
 | 演示（推荐） | 直接双击 `AI记账.html`，用 `file://` 打开 |
 | 本地服务器 | 可选，`python -m http.server` 后用 `http://localhost:8000` 打开 |
-| 单元测试 | `node -e "require('./nlp.js'); require('./engine.js'); require('./analysis.js'); require('./ocr.js'); require('./coach.js'); require('./deals.js'); require('./savings_data.js'); require('./savings.js'); require('./persona.js'); require('./mascot.js')"` |
+| 单元测试 | `node -e "require('./nlp.js'); require('./engine.js'); require('./analysis.js'); require('./xlsx.js'); require('./ocr.js'); require('./coach.js'); require('./deals.js'); require('./savings_data.js'); require('./savings.js'); require('./persona.js'); require('./mascot.js')"` |
 | 纯 Node 断言（无需依赖） | `node _test_persona.js`（1974 项：四画像触发 / 平分决胜 / 缺字段兜底 / 残缺 res 自愈 / 报告格式 / QUIZ 完整性 / 分点建议 / UI 契约——persona 用到的 icon id 必须在 AI记账.src.html 的 sprite 里定义，且新功能卡片与简洁版菜单入口都置顶）。注：历史记录提到的 `_test_savings.js`（64 项）与 `_test_savings_ui.js`（103 项）**不在当前交付内**，磁盘上已不存在，请勿作为回归门槛 |
 | 账单筛选单测 | `node _test_billfilter.js`（70 项：DEFAULTS 空筛选全显 / 只选支出分类 / 只选收入来源 / 支出+收入并集 / 金额 min·max 边界（含等于、空不限）/ 备注关键词大小写·trim / isActive 空·非空真假 / normalize 非法输入不抛异常 / CATS·SOURCES 与 DATA 一致 / §10 筛选入口 UI 契约——两版按钮必须「图标+span」、`.btn-filter.active` 必须有实心绿底、`.bf-bar[hidden]` 必须显式 display:none） |
+| Excel 导入单测 | `node _test_xlsx.js`（91 项：ZIP 中央目录与 local header 偏移 / stored + deflate / sharedStrings 富文本与实体 / worksheet 缺格 / CSV 转义 / 损坏与加密边界 / 真实三行 xlsx → CSV → `analysis.parseFile` 端到端产出 2 条账单） |
 | 阿账 IP 形象单测 | `node _test_mascot.js`（90 项：resolveMood 三层优先级 / onEvent 事件映射与 TTL / onMoodChange 订阅 / fillVars 缺值兜底 / poke 防刷节流 + G1→G8 组顺序 + 组内去重 / moodSvg 白名单 / line 确定性 / actionLine 动作回应 / 残缺输入兜底） |
 | 需要 jsdom 的测试 | `npm install --no-save jsdom && node _test_coach.js`（52 项，含简洁版教练可达 + 返回导航回归） |
 | 历史快照（不纳入必跑） | `_qa_verify_coach.js` 是「简洁版教练打不开」那次修复的独立复核脚本，断言写死了改造前的视图名（`chat/coach/dash`），而现行简洁版映射到 `sai/scoach/sbudget`。**保留作为过程证据，不作为回归门槛**；同类回归已由 `_test_coach.js` §11 用现行视图名覆盖。 |
@@ -47,15 +48,17 @@ AI记账/
 │                  入口位置：完整版与简洁版的教练面板均置顶（在「专属建议」之上）；简洁版「我的」页菜单另有一条 #spMenuPersona，点开直接弹窗。
 │                  图标：功能图标一律走线性 SVG sprite（性格用 i-dna，📊/💡/🎯 分别映射 i-bar / i-bulb / i-target，题量按钮 i-clock，进度行 i-clipboard）；
 │                  四只动物 emoji 作为性格形象保留（项目规范：功能图标用线性 SVG，插画形象才用 emoji，见 app.js itemIcon 注释）。
-│                  ⚠️ 新增 sprite 图标必须改 AI记账.src.html（sprite 真源，rebundle 会用它覆盖单文件版），改 AI记账.html 会被静默冲掉。
+│                  ⚠️ 新增 sprite 图标直接改 `AI记账.html` 的 `<defs>`（2026-10-28 变更）：sprite 真源 `AI记账.src.html` 已被外部进程删除且无备份，rebundle.py 不再覆盖 sprite。改完用 `grep -c 'symbol id=' AI记账.html` 复核数量。
 ├── mascot.js      IP 形象「阿账」（v1.6 新增）：9 态情绪状态机（chill/nervous/bankrupt/stop/cheer/mad/save/deadline/sleep，三层优先级 Tier A 瞬时事件 > Tier B 预算常驻 > Tier C 情境装饰）+ 4 事件源（bill_logged/piggy_in/impulse_flag/cooldown_block，唯一 TTL 定时器到期自动回落）+ 戳一戳话术池（8 组 × 3 语气 + 5 条兜底，按 G1→G8 顺序命中、组内最近 3 条去重、3s 防刷）+ moodSvg 内联 SVG 生成 + fillVars 占位符替换（缺值一律 '—'）。
 │                  纯函数、零 DOM、零存储（UMD，可 Node require）；DOM 挂载 / 事件接线 / 设置开关全在 app.js。
-│                  挂载点：① 聊天 AI 消息头像（36px，按发消息当时 mood 定格 = 情绪时间线，可点击 / Enter / Space 戳一戳）；② #quickChips 上方常驻「阿账对话条」.mascot-bar（DOM 常驻只换文本，不丢输入焦点）；③ sprite 新增 #i-mascot-base + 9 情绪 symbol（只改 AI记账.src.html）。
+│                  挂载点：① 聊天 AI 消息头像（36px，按发消息当时 mood 定格 = 情绪时间线，可点击 / Enter / Space 戳一戳）；② #quickChips 上方常驻「阿账对话条」.mascot-bar（DOM 常驻只换文本，不丢输入焦点）；③ sprite 新增 #i-mascot-base + 9 情绪 symbol（直接改 `AI记账.html` 的 `<defs>`）。
 │                  设置页「通用与偏好」有「戳一戳阿账」开关（id=setSwitchPoke，默认开，存 state.settings.mascot.poke；关闭后头像点击完全静默）。
 │                  浮层桌面宠物（v1.7）：body 挂一个可拖动的 .aj-pet（右下角常驻、悬于底部导航之上），形象用生成的基准图素材（白底已抠成透明 PNG，base64 内联在 styles.css 的 .aj-pet-face）；鼠标/触屏可拖、位置存 localStorage(AJ_PET_POS)、点击/Enter 戳一戳；mood 变化自动换光环色与反应动画（记账→bounce、超支→slump、拦截→闪、紧张→颤栗）。设置页「桌面宠物」开关 id=setSwitchPet（默认开，存 mascot.pet）。
 │                  动作回应（v1.8）：浮层宠物不再只说「账本现状」文案，而是由事件源显式调用 petReact(kind, act) 对「刚发生的那个动作」说话——记账（bill_logged/income_logged，带分类/金额/今日笔数）、存钱罐存款（piggy_in）、目标存款（goal_in，用目标已攒金额而非罐内余额）、取出（piggy_out）、冷静期拦截（cooldown_block）、冲动消费（impulse_flag）、目标达成（goal_done）。文案在 mascot.js 的 ACTION_LINES（7 动作 × 3 语气，随机取条），占位符经 act.* 注入；同时撒金币/勾选/警告粒子（.aj-pet-fx，纯 CSS 关键帧，reduced-motion 下关闭）。气泡宽度为 max-content + 视口/手机框双边界钳制（petFitBubble），贴边自动横向偏移、贴顶自动翻到宠物下方（.below）。
 │                  不挡内容的停靠（v1.9）：宠物默认落脚点改成「不压任何内容」——petFrame() 先取落脚框（有底部导航＝手机版式，取导航右缘，框外还有留白时可站到框外，一像素都不占；桌面版式无底部导航，取聊天列输入区右缘，只站列内，否则会压住右侧预算卡），petDefaultPos() 据此算出右下角坐标并悬在输入区之上。站位在框内时 petApplyReserve() 给 .chat-list 写入 --aj-pet-reserve（宠物高 + 18px，实测 122px），列表底部 padding 吃这个变量：滚到底时最新一条消息落在宠物头顶之上，不再被盖住；补空的瞬间若列表本来在底部会重新贴底（否则消息原地不动照样被盖）。宠物停到框外或开关关掉时变量归零，一点空白都不留。气泡新增 .side 变体：宠物左侧空档够宽时气泡贴到左边（那块空档正是它让出来的），尾巴指回宠物，彻底不压消息；放不下才退回上方 / .below。
 ├── billfilter.js  账单筛选：纯函数（零 DOM、零存储、UMD；挂 window.AJ.billFilter）—按支出分类 / 收入来源 / 金额区间 / 备注关键词过滤账单，完整版「本月账单流水」与简洁版「明细」共用同一套筛选语义；含 DEFAULTS / CATS / SOURCES / normalize / isActive / activeCount / match / filter，Node 可 require 单测。UI 层：两版入口按钮是「漏斗图标 + 文字」的 `.btn-filter` 胶囊（未筛浅绿底 / 筛选中实心绿底「筛选·N」），列表上方还有一条 `.bf-bar` 摘要条（筛选条件 + 筛出笔数 + 一键清除），让"正在筛选"一眼可见。
+├── xlsx.js        Excel（.xlsx / .xlsm）最小解析器：纯函数、零依赖、UMD；读取 ZIP 中央目录与工作表 XML，把首个工作表转成 CSV 文本后复用 analysis.js，DEFLATE 解压函数由 Node / 浏览器调用方注入
+├── _test_xlsx.js  Excel 导入单测（91 项，Node 内置 zlib 手写真实 ZIP / xlsx，含 CSV → analysis.parseFile 端到端）
 ├── intent.test.js 意图层单测（154 项断言：信号 / 槽位 / 25 条分类用例 / 反死循环 / 云端裁决合流）
 ├── _test_mascot.js 阿账状态机单测（90 项断言：9 态优先级 / 事件映射 / TTL / 话术组顺序与去重 / 占位符 / 白名单）
 ├── _test_savings.js    省钱图谱数据与引擎单测（64 项断言：数据 / 计算 / 规则 / Markdown 导出）
@@ -68,27 +71,25 @@ AI记账/
 └── README.md      本文件
 ```
 
-加载顺序（`AI记账.html` 末尾，共 19 个内联块，与 `rebundle.py` 的 `LOCAL_JS` 一一对应）：
-`data.js` → `nlp.js` → `engine.js` → `coach.js` → `tone.js` → `deals.js` → `savings_data.js` → `savings.js` → `piggy.js` → `wishlist.js` → `diagnose.js` → `analysis.js` → `ocr.js` → `intent.js` → `cloud-config.js` → `mascot.js` → `persona.js` → `billfilter.js` → `app.js`。
+加载顺序（`AI记账.html` 末尾，共 23 个内联块，与 `rebundle.py` 的 `LOCAL_JS` 一一对应）：
+`data.js` → `nlp.js` → `engine.js` → `coach.js` → `tone.js` → `deals.js` → `savings_data.js` → `savings.js` → `piggy.js` → `wishlist.js` → `diagnose.js` → `analysis.js` → `ocr.js` → `intent.js` → `cloud-config.js` → `mascot.js` → `sfx.js` → `pet.js` → `petpro.js` → `persona.js` → `billfilter.js` → `xlsx.js` → `app.js`。
 
 > 顺序有依赖：`savings.js` 启动时读 `window.AJ.savingsData`，必须排在 `savings_data.js` 之后、`app.js` 之前
 > （`_test_savings_ui.js` 的 G4 会校验这一点）。
 > `intent.js` 只依赖 `data.js` + `nlp.js`，但必须在 `app.js` 之前（`app.js` 顶部取 `global.AJ.intent`）。
-> `persona.js` 是零依赖纯函数，放在 `cloud-config.js` 之后、`billfilter.js` 之前（`app.js` 取 `global.AJ.persona`）；
-> `mascot.js` 同为零依赖纯函数，插在 `persona.js` 之前（会用到 `AJ.tone` 读当前语气，tone.js 排在前面）；
-> `billfilter.js` 是零依赖纯函数，插在 `persona.js` 之后、`app.js` 之前（`app.js` 顶部取 `global.AJ.billFilter`，并供 `renderBillList` / `renderSimpleList` 共用），其图标 `i-filter` 只改 `AI记账.src.html` 的 sprite；
+> `mascot.js` / `sfx.js` / `pet.js` / `petpro.js` 保持现有依赖顺序；`persona.js` 与 `billfilter.js` 随后加载。
+> `xlsx.js` 是零 DOM、零存储纯函数，固定放在 `billfilter.js` 之后、`app.js` 之前（`app.js` 顶部取 `global.AJ.xlsx`）；浏览器解压函数仍只放在 `app.js`。
 > 新增 / 移动 JS 块后必须同步 `rebundle.py` 的 `LOCAL_JS` 列表并跑一次 `python rebundle.py` 验证自检。
-> 注意：mascot 插入后总块数 17→18→19（再插 billfilter），但 `cloud-config.js` 始终在 0 基索引 14（mascot 占据的是
-> persona 原来的索引 15，billfilter 占据 persona 之后的索引）——rebundle.py 的顺序自检按实测核实过的索引 14 校验。
+> 关键索引：`cloud-config.js` 始终为 0 基索引 14；当前基线保留 sfx / pet / petpro 三个既有块，故 `xlsx.js` 为 21、`app.js` 为 22，总计 23 块。
 
-**HTML 结构真源说明（重要）**：磁盘上的 `AI记账.src.html` 是 2026-10-26 重建的「仅 sprite」
-最小模板（文件头注释已声明），**只含图标 sprite，不含任何页面结构**——完整的源模板已随
-历史事故丢失且无备份。因此所有 HTML 结构区域（`<style>` 之外的 markup，包括设置抽屉、
-设置页开关如 `#setSwitchPoke`、`#mascotBar` 相关容器等）**唯一真源就是单文件 `AI记账.html`
-的安全区**：rebundle.py 只覆盖 `<style>` 块 / 18 个 `<script>` 内联块 / icon-sprite SVG 三类，
-这三类之外直接编辑 `AI记账.html` 是安全的。**不要**往 `AI记账.src.html` 里补页面结构碎片
-（它不是整页模板，加了也不生效）；若将来重建完整 src 模板，需把 `AI记账.html` 安全区内容
-整体迁入，并保持 sprite `<defs>` 与本文件一致。
+**HTML 结构与图标真源说明（重要）**：`AI记账.src.html` 在 2026-10-28 已被外部进程删除且无备份
+（同批丢失的还有 `_test_persona.js` / `_test_billfilter.js`）。因此：
+- **页面结构 + 图标 sprite 的唯一真源就是单文件 `AI记账.html`**：图标一律维护在文件内的
+  `<defs>`（当前 64 个 `<symbol id="...">`），新增图标直接改这里，不要去找已不存在的 src 模板。
+- `rebundle.py` 只覆盖唯一的 `<style>` 块与 23 个 `<script>` 内联块（按 `LOCAL_JS` 索引逐一回填
+  并做字节核验），**不再覆盖 / 同步 sprite**；改完跑一次回填并用
+  `grep -c 'symbol id=' AI记账.html` 复核图标数量没有被脚本误伤。
+- 这三类（style / script / sprite `<defs>`）之外直接编辑 `AI记账.html` 也是安全的。
 
 ---
 
@@ -235,9 +236,9 @@ AI记账/
   不传时**行为与 v1 完全一致**（发钱日推算）。设置抽屉里显示「本周期：10-23 ~ 11-22（自定义起点）」并给一个「恢复按发钱日算」按钮清掉 `cycleStart`。
 - CSV 的 `bills.csv` 在末尾追加 `收支` 列（前 6 列顺序不变）。
 
-### 9. 账单分析（导入支付宝 / 微信 / 银行 CSV）
+### 9. 账单分析（导入支付宝 / 微信 / 银行 CSV 或 Excel）
 
-`analysis.js`（`window.AJ.analysis`），纯函数 + UMD。顶部 `📊 账单分析` → 全屏 sheet（不是窄弹窗）。
+`analysis.js`（`window.AJ.analysis`）继续负责全部账单字段识别；`xlsx.js`（`window.AJ.xlsx`）只把 Excel 首个工作表转成 CSV 文本，避免出现第二套字段规则。顶部 `📊 账单分析` → 全屏 sheet（不是窄弹窗）。
 
 **导入格式与解码**
 
@@ -284,7 +285,7 @@ AI记账/
 
 **消费建议**（`insights(report, budgetState)`，3~5 条，每条都带真实算出来的数字）覆盖：恩格尔 > 50%、情绪型占比 > 15%、21:00 后餐饮占比 ≥ 25%、小额（< ¥20）笔数占比 > 30%、订阅年化金额、周末 / 工作日日均 > 2 倍、某分类环比 > 30%、储蓄率 < 10%。语气克制，不下价值判断，不推荐具体产品 / 平台 / 理财。
 
-**交互**：上传区（点击 / 拖拽 / 多选 `.csv` / `.txt`）→ 摘要 → 9 节可折叠报告（默认展开总览与分类）→ 底部 `导出 Markdown` / `把导入记录并入账本`（二次确认，明示会改变预算统计）/ `清空导入`。
+**交互**：上传区（点击 / 拖拽 / 多选 `.csv` / `.txt` / `.xlsx`）→ Excel 工作簿先在本机解压并转为 CSV → 摘要 → 9 节可折叠报告（默认展开总览与分类）→ 底部 `导出 Markdown` / `把导入记录并入账本`（二次确认，明示会改变预算统计）/ `清空导入`。
 **默认只分析不写账本**。分类占比用手写横向条形图，不引第三方图表库。
 
 ### 10. 截屏识别记账（三层降级）

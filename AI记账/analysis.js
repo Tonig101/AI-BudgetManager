@@ -550,21 +550,53 @@
       month = Number(m[2]);
       day = Number(m[3]);
     } else {
-      var compact = s.match(/(\d{4})(\d{2})(\d{2})/);
-      if (compact) {
-        year = Number(compact[1]);
-        month = Number(compact[2]);
-        day = Number(compact[3]);
+      /* 2 位年：YY-MM-DD / YY/MM/DD / YY.MM.DD / YY年MM月DD日。
+         枢轴规则：年份 <= 基准年个位两位 时视为 20xx，否则 19xx。 */
+      var ymd = s.match(/^(\d{1,2})\s*[-/.\u5e74]\s*(\d{1,2})\s*[-/.\u6708]?\s*(\d{1,2})/);
+      if (ymd) {
+        year = Number(ymd[1]);
+        month = Number(ymd[2]);
+        day = Number(ymd[3]);
+        if (year < 100) {
+          year = (year <= (base.getFullYear() % 100)) ? 2000 + year : 1900 + year;
+        }
       } else {
-        var short = s.match(/(\d{1,2})\s*[-/月]\s*(\d{1,2})/);
-        if (short) {
-          year = base.getFullYear();
-          month = Number(short[1]);
-          day = Number(short[2]);
+        /* 紧凑日期 YYYYMMDD：必须是纯 8 位数字（无小数点/分隔符）。 */
+        var compact = /^\d{8}$/.test(s) ? s.match(/(\d{4})(\d{2})(\d{2})/) : null;
+        if (compact) {
+          year = Number(compact[1]);
+          month = Number(compact[2]);
+          day = Number(compact[3]);
+        } else {
+          /* Excel 序列号：单元格以数字存储日期（最常见于真实 .xlsx）。
+             1900 日期系统，基准日 1899-12-30，对 1900-03-01 之后的日期
+             用 (serial - 25569) 天换算 UTC 即可（已含 1900 闰年 bug 修正）。 */
+          var serialMatch = /^(\d{1,5})(?:\.(\d+))?$/.exec(s);
+          if (serialMatch) {
+            var serial = Number(s);
+            if (serial > 0 && serial < 70000) {
+              var d = new Date(Math.round((serial - 25569) * 86400000));
+              if (!isNaN(d.getTime())) {
+                year = d.getUTCFullYear();
+                month = d.getUTCMonth() + 1;
+                day = d.getUTCDate();
+              }
+            }
+          } else {
+            /* 只有 月-日（无年）：用基准年补。 */
+            var short = s.match(/(\d{1,2})\s*[-/月]\s*(\d{1,2})/);
+            if (short) {
+              year = base.getFullYear();
+              month = Number(short[1]);
+              day = Number(short[2]);
+            }
+          }
         }
       }
     }
-    if (!year || month < 1 || month > 12 || day < 1 || day > 31) { return null; }
+    /* 合理性闸门：年份必须在可接受的区间，否则视为无法解析。
+       这样 8239 之类被误读成的荒谬年份不会污染月份选择器，而是整行跳过。 */
+    if (!year || year < 1990 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) { return null; }
 
     var time = '';
     var tm = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);

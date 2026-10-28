@@ -35,10 +35,13 @@ deals_api.py — 省钱雷达 HTTP 服务（给大模型当"工具/连接器"用
 """
 
 import argparse
+import copy
 import json
 import os
 import re
 import sys
+import threading
+import time
 
 try:
     from dotenv import load_dotenv
@@ -104,14 +107,23 @@ def health():
             'real_search': True}
 
 
-# /api/deals/search —— 真实搜索当当网（服务端代理）
-# 浏览器端直接 fetch 当当会被 CORS 拦住，所以由本服务代抓：
-# 前端把关键词传上来，这里真实请求 search.dangdang.com 解析商品列表，
-# 返回逐条 标题/价格/店铺/评价数/链接 + 来源与抓取时间。抓不到就如实报错，不编数据。
+# /api/deals/search —— 真实搜索电商（服务端代理）
+# 浏览器端直接 fetch 电商接口会被 CORS 拦住，所以由本服务代抓：
+# 前端把关键词传上来，这里并发抓网易严选 + 当当，解析后提纯合并返回。
+# 抓不到就如实报错，绝不编数据。
+#
+# 缓存：同一个关键词 10 分钟内复用结果（电商价格不会几分钟一变，
+# 但重复抓取会给对方站点造成压力，也拖慢演示体验）。fresh=1 可强制重抓。
+_SEARCH_CACHE = {}
+_SEARCH_LOCK = threading.Lock()
+SEARCH_TTL = 600
+
+
 @app.get('/api/deals/search')
 def real_search(keyword: str = Query(..., min_length=1, max_length=40),
                 pages: int = Query(2, ge=1, le=3),
-                limit: int = Query(8, ge=1, le=20)):
+                limit: int = Query(8, ge=1, le=20),
+                fresh: int = Query(0, ge=0, le=1)):
     kw = keyword.strip()
     if not kw:
         return JSONResponse(status_code=400, content={'ok': False, 'error': '关键词不能为空'})
@@ -120,11 +132,27 @@ def real_search(keyword: str = Query(..., min_length=1, max_length=40),
     except Exception as e:  # noqa: BLE001
         return JSONResponse(status_code=500, content={'ok': False,
             'error': '抓取模块加载失败：%r' % e})
+
+    ckey = (kw, pages, limit)
+    now = time.time()
+    if not fresh:
+        with _SEARCH_LOCK:
+            hit = _SEARCH_CACHE.get(ckey)
+        if hit and now - hit[0] < SEARCH_TTL:
+            cached = copy.deepcopy(hit[1])
+            cached.setdefault('meta', {})['from_cache'] = True
+            cached['meta']['cache_age_sec'] = int(now - hit[0])
+            cached['ok'] = bool(cached.get('items'))
+            return cached
+
     try:
         data = S.scrape(kw, pages=tuple(range(1, pages + 1)), want=limit)
     except Exception as e:  # noqa: BLE001
         return JSONResponse(status_code=502, content={'ok': False,
-            'error': '抓取当当失败：%s: %s' % (type(e).__name__, e)})
+            'error': '抓取电商站点失败：%s: %s' % (type(e).__name__, e)})
+    if data.get('items'):
+        with _SEARCH_LOCK:
+            _SEARCH_CACHE[ckey] = (now, copy.deepcopy(data))
     if not data.get('items'):
         errs = (data.get('meta') or {}).get('errors') or []
         return JSONResponse(status_code=200, content={'ok': False,

@@ -515,6 +515,7 @@
     getPos: getPos,
     setPos: setPos,
     /* 仅暴露给排障/测试用 */
-    _tierOf: tierOf
+    _tierOf: tierOf,
+    _svg: SPRITE_SVG           /* 首次选宠弹窗展示真实形象（app.js petPickArt） */
   };
 })(typeof window !== 'undefined' ? window : this);
