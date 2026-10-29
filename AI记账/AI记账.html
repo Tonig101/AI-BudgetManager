@@ -12,8 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="AI记账" />
 
-<style>
-/* =========================================================
+<style>/* =========================================================
    AI 校园记账管家 · 全部样式
    浅色主题 / 微信绿主色 / 移动端优先 / 桌面双栏
    ========================================================= */
@@ -169,6 +168,31 @@ h3 {
   font-size: 11px;
   color: var(--text-3);
   white-space: nowrap;
+}
+
+/* 平台身份标识：让评审一眼看出「在 WorkBuddy 平台构建」而非自建站点。
+   用 --green 系变量，academy 肤色段会随之换色，无需另写覆盖。 */
+.brand-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.2px;
+  vertical-align: 1px;
+  white-space: nowrap;
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+/* 欢迎语气泡里的平台署名行（比正文轻一档，不抢主体） */
+.msg-platform {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-3);
 }
 
 .topbar-actions {
@@ -6702,6 +6726,33 @@ svg.di-emoji {
 .rs-time { opacity: 0.8; font-size: 11.5px; }
 .rs-link { margin-left: auto; color: var(--green-ink); font-size: 11.5px; font-weight: 600; text-decoration: underline; white-space: nowrap; }
 
+/* 本次抓取失败、手里是同关键词旧数据：整条换成警示色，绿色只留给真抓到的那一刻 */
+.rs-src.is-stale {
+  background: var(--amber-soft);
+  color: var(--amber-deep);
+}
+.rs-badge.is-stale { background: var(--amber); color: #fff; }
+.rs-src.is-stale .rs-link { color: var(--amber-deep); }
+
+/* 列表上方的过期声明：说清楚「这是哪次的、本次没抓到」 */
+.rs-stale-same {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-sm);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.rs-stale-same svg {
+  width: 15px; height: 15px; flex: 0 0 auto; margin-top: 2px;
+  fill: none; stroke: var(--amber-deep); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+}
+.rs-stale-same b { color: var(--amber-deep); font-weight: 600; }
+
 .rs-stats { display: flex; flex-wrap: wrap; gap: 5px; }
 .rs-stats span {
   padding: 3px 8px;
@@ -12225,6 +12276,7 @@ body[data-view="dazai"] .panel-dazai {
 }
 
 .rs-nb-steps li { margin: 3px 0; }
+.rs-nb-dim { display: inline-block; margin-top: 3px; font-size: 11.5px; opacity: .8; line-height: 1.55; }
 .rs-nb-steps b { color: var(--text); font-weight: 600; }
 
 .rs-nb-retry {
@@ -12397,6 +12449,126 @@ body[data-view="dazai"] .panel-dazai {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+/* ==================================================================
+   智能体思考卡（Agent 轨迹）
+   对话里每一次「大模型规划 → 调用本地工具 → 回复」都会留下这张卡：
+   折叠头是身份与步数，展开后是它想过什么（thought）和真做了哪几步
+   （工具 + 结果的短摘要）。用原生 <details>，零事件绑定。
+   ================================================================== */
+.agent-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  border-top-left-radius: 5px;
+  padding: 9px 12px 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+.agent-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.agent-card > summary::-webkit-details-marker { display: none; }
+.agent-card > summary::marker { content: ''; }
+.agent-card > summary:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.agent-spark {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #B8F5D2 0%, var(--green) 62%, var(--green-deep) 100%);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.agent-card:not(.done) .agent-spark { animation: agentPulse 1.1s ease-in-out infinite; }
+@keyframes agentPulse {
+  0%, 100% { transform: scale(0.86); opacity: 0.72; }
+  50% { transform: scale(1); opacity: 1; }
+}
+.agent-card > summary b {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+.agent-state {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+/* 折叠指示箭头：收起时朝右、展开时朝下（原生 details 没有默认视觉提示） */
+.agent-card > summary::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  margin-left: 2px;
+  border-right: 1.4px solid var(--text-3);
+  border-bottom: 1.4px solid var(--text-3);
+  transform: rotate(-45deg);
+  transition: transform 0.18s ease;
+}
+.agent-card[open] > summary::after { transform: rotate(45deg); }
+.agent-thought {
+  margin-top: 7px;
+  padding-left: 8px;
+  border-left: 2px solid var(--green-soft);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-3);
+}
+.agent-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.agent-steps li { display: flex; align-items: flex-start; gap: 8px; }
+.as-idx {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.as-txt { min-width: 0; }
+.as-txt b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+.as-txt i {
+  display: block;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.agent-steps li.bad .as-idx {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+}
+[data-theme="dark"] .agent-steps li.bad .as-idx {
+  background: rgba(239, 68, 68, 0.2);
+}
 </style>
 <script>
 /* 防闪：在 CSS/JS 加载前先按存档的配色主题预置 data-skin，避免先绿后紫的闪烁 */
@@ -12514,7 +12686,7 @@ body[data-view="dazai"] .panel-dazai {
       <div class="brand">
         <span class="logo">账</span>
         <div class="brand-text">
-          <strong>AI 校园记账管家</strong>
+          <strong>AI 校园记账管家<span class="brand-tag" title="本作品在 WorkBuddy 平台构建，云端大模型由 WorkBuddy 云服务提供">WorkBuddy 构建</span></strong>
           <small>月末防吃土 · 一句话记账</small>
         </div>
       </div>
@@ -13771,7 +13943,7 @@ body[data-view="dazai"] .panel-dazai {
     '餐饮': [
       '食堂', '美团', '饿了么', '黄焖鸡', '麻辣烫', '火锅', '烧烤', '米线', '拉面',
       '面条', '饭团', '便当', '泡面', '早餐', '午餐',
-      '晚餐', '早饭', '午饭', '晚饭', '夜宵', '宵夜', '吃饭', '米饭', '包子', '馒头', '饺子', '馄饨',
+      '晚餐', '早饭', '午饭', '晚饭', '夜宵', '宵夜', '吃饭', '米饭', '饭', '包子', '馒头', '饺子', '馄饨',
       '粥', '饼', '汉堡', '披萨', '炸鸡', '麻辣香锅', '酸菜鱼', '螺蛳粉', '自助',
       '蛋糕', '面包', '食堂饭卡', '饭卡', '肉', '菜', '汤', '面',
       '汉堡王', '萨莉亚', '老乡鸡', '乡村基', '南城香', '米村拌饭', '沙县', '兰州拉面',
@@ -28152,7 +28324,7 @@ window.AJ_CLOUD_CONFIG = {
 };
 </script>
   <!-- WorkBuddy 云服务 SDK（免密钥大模型）：CDN 形式，运行时从 jsdelivr 加载 -->
-  <script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+  <script src="./vendor/workbuddy-cloud-sdk.js"></script>
 <script>/**
  * mascot.js — IP 形象「阿账」情绪状态机 + 戳一戳话术池（纯函数，零 DOM、零存储，UMD）
  *
@@ -34509,14 +34681,41 @@ window.AJ_CLOUD_CONFIG = {
     loadCloudModels();
   }
 
-  /** 拉取模型列表：选第一个启用模型做对话，选第一个支持图片的模型做截图识别。 */
+  /**
+   * 拉取模型列表：选对话模型与截图识别（视觉）模型。
+   *
+   * 2026-10 实测（线上同款 prompt，见 _shot/bench_models.py）：
+   *   auto                45s 超时 / 只吐思考不吐正文 —— 默认模型不可用
+   *   deepseek-v4.1-flash  2.4s（首字 1.7s）
+   *   glm-5.3-flash        2.6s
+   *   minimax-m3.1-flash   4.9s
+   *   hunyuan-chat         3.3s
+   * 所以对话/裁决/智能体统一优先用 flash 档，auto 只在没有其它可用模型时兜底。
+   */
+  var PREFERRED_CHAT_MODELS = ['deepseek-v4.1-flash', 'glm-5.3-flash', 'minimax-m3.1-flash', 'hunyuan-chat'];
+
+  function pickChatModel(enabled) {
+    var byId = {};
+    var i;
+    for (i = 0; i < enabled.length; i++) { byId[enabled[i].id] = enabled[i]; }
+    for (i = 0; i < PREFERRED_CHAT_MODELS.length; i++) {
+      if (byId[PREFERRED_CHAT_MODELS[i]]) { return byId[PREFERRED_CHAT_MODELS[i]]; }
+    }
+    for (i = 0; i < enabled.length; i++) {
+      if (enabled[i].id !== 'auto') { return enabled[i]; }
+    }
+    return enabled[0] || null;
+  }
+
   function loadCloudModels() {
     if (!cloudClient) { return; }
     cloudClient.llm.models.list().then(function (list) {
       cloudModels = Array.isArray(list) ? list : [];
       var enabled = cloudModels.filter(function (m) { return m.disabled !== true; });
-      cloudChatModel = enabled[0] || null;
-      cloudVisionModel = enabled.filter(function (m) { return m.supportsImages === true; })[0] || null;
+      cloudChatModel = pickChatModel(enabled);
+      /* 视觉优先用同一个模型（flash 档普遍支持图片），不支持再退到任意支持图片的模型 */
+      cloudVisionModel = (cloudChatModel && cloudChatModel.supportsImages) ? cloudChatModel
+        : (enabled.filter(function (m) { return m.supportsImages === true; })[0] || null);
       cloudReady = !!cloudChatModel;
       visionAvailable = !!cloudVisionModel;
       if ($('ocrMask') && !$('ocrMask').hidden) {
@@ -34529,6 +34728,962 @@ window.AJ_CLOUD_CONFIG = {
     });
   }
 
+  /* ================================================================== */
+  /* Agent 编排层：把「AI 对话记账」从规则路由升级为智能体               */
+  /*                                                                    */
+  /* 旧链路：本地意图分类（intent.js）主判，云端只在低置信时给「第二意见」*/
+  /* 新链路：自然语言交给大模型规划（要调哪个工具、参数是什么）→ 工具在   */
+  /*         本地真执行（写账本 / 读统计 / 开卡片）→ 结果回灌给模型继续  */
+  /*         推理 → 产出回复。本地规则链路退居「断网 / 超时兜底」。      */
+  /*                                                                    */
+  /* 为什么不用原生 function calling：云服务按 OpenAI 兼容接口透传，模型  */
+  /* 侧是否支持 tools 不可控；这里用「JSON 计划协议」实现同一套 ReAct     */
+  /* 循环，兼容性最好，且每一步都能在界面上讲清楚（评审可解释）。        */
+  /*                                                                    */
+  /* 安全边界（防幻觉 / 防误写）：                                       */
+  /*   1) 金额必须能在用户原话里找到（grounding），否则工具直接报错让模型 */
+  /*      改问，绝不落一笔用户没说的钱；                               */
+  /*   2) 品类只能是 DATA.CATEGORY_KEYS 的枚举，越界归「其他」；         */
+  /*   3) 写入类工具走既有 startFlow / startCoolingFlow，冷静期与业务规则 */
+  /*      5（记账成功卡 + 余额概览 + 一句话建议）全部复用，不绕开；      */
+  /*   4) 单轮最多 AGENT_MAX_CALLS 次调用、AGENT_MAX_ROUNDS 轮；         */
+  /*   5) 首轮就失败（模型不可用 / 超时 / 输出无法解析且无任何副作用）时  */
+  /*      整轮作废，透明回退到本地规则链路，用户不会看到「AI 挂了」。    */
+  /* ================================================================== */
+
+  var AGENT_ENABLED = true;          /* 总开关（?agent=0 可临时关闭，便于对比评测） */
+  var AGENT_MAX_ROUNDS = 3;          /* 规划-执行 最多轮数 */
+  var AGENT_MAX_CALLS = 6;           /* 单轮对话最多工具调用次数 */
+  var AGENT_DEADLINE_MS = 24000;     /* 整轮总预算 */
+  var AGENT_ROUND_MS = 13000;        /* 单轮模型调用预算 */
+  var AGENT_MEMORY_MAX = 6;          /* 跨轮短期记忆条数（user/assistant 各算一条） */
+
+  var agentMemory = [];              /* 最近几轮对话（让「改成 80」「那今天呢」能接上） */
+  var agentTurnLog = [];             /* 最近若干轮的完整轨迹，供现场排障 */
+  global.AJ_AGENT_LOG = function () { return agentTurnLog.slice(); };
+  /** 现场排查用：`AJ_FLOW_DEBUG()` 看冷静期挂起与草稿队列，判断「哪笔没入账」 */
+  global.AJ_FLOW_DEBUG = function () {
+    function tag(d) { return d ? (String(d.note || '?') + ':' + d.amount) : null; }
+    return {
+      pending: pendingBill ? tag(pendingBill) : null,
+      queue: (flow.queue || []).map(tag),
+      committed: (flow.committed || []).map(tag),
+      last: (flow.last || []).map(tag),
+      bills: (state.bills || []).length
+    };
+  };
+  /** 现场排查用：`AJ_AGENT_DEBUG()` 看智能体到底有没有就绪、用的哪个模型 */
+  global.AJ_AGENT_DEBUG = function () {
+    return {
+      enabled: AGENT_ENABLED,
+      ready: agentAvailable(),
+      cloudReady: cloudReady,
+      model: cloudChatModel ? cloudChatModel.id : null,
+      memory: agentMemory.length,
+      turns: agentTurnLog.length
+    };
+  };
+
+  /** 智能体是否可用：需要云端客户端 + 至少一个对话模型 */
+  function agentAvailable() {
+    if (!AGENT_ENABLED) { return false; }
+    try {
+      var q = String((global.location && global.location.search) || '');
+      if (/(?:^|[?&])agent=0(?:[&#]|$)/.test(q)) { return false; }
+    } catch (e) { /* 忽略 */ }
+    return !!(cloudReady && cloudClient && cloudChatModel);
+  }
+
+  /** 本轮用户原话里出现过的金额（写入工具的唯一合法金额来源） */
+  function agentAmountsOf(raw) {
+    var out = [];
+    var list = NLP.findAmounts(raw);
+    var i;
+    for (i = 0; i < list.length; i++) { out.push(NLP.round2(list[i].value)); }
+    return out;
+  }
+
+  /** 金额是否落在「用户真的说过」的范围内（防模型编造数字） */
+  function agentGrounded(amount, ctx) {
+    var a = Number(amount);
+    if (!isFinite(a) || a <= 0) { return false; }
+    var pool = (ctx && ctx.amounts) || [];
+    var i;
+    for (i = 0; i < pool.length; i++) {
+      if (Math.abs(pool[i] - a) < 0.011) { return true; }
+      /* 中文金额「九块九」解析成 9.9，模型可能写成 9.90 / 10 —— 容差 0.1 内也算说过 */
+      if (Math.abs(pool[i] - a) <= 0.1) { return true; }
+    }
+    return false;
+  }
+
+  /**
+   * 「冲动」必须由用户自己的话证明，不能由模型贴标签。
+   * 否则模型给「晚上 AA 聚餐付了 50」加一个 want，就会被冷却期拦下 —— 用户会觉得记账坏了。
+   * 返回 'want' / '情绪' / ''（刚需）。
+   */
+  function agentImpulse(raw) {
+    var s = String(raw || '');
+    if (/冲动|忍不住|剁手|手滑|上头|种草|想买|想入|要不要买|有点想|纠结要不要/.test(s)) { return 'want'; }
+    if (/烦|难过|emo|生气|压力|心情不好|郁闷|焦虑/.test(s)) { return '情绪'; }
+    return '';
+  }
+
+  /** 品类归一：只接受枚举内的值，近似词（如「吃饭」「饭菜」）做一次包含匹配 */
+  function agentCategory(cat, type) {
+    if (type === 'income') { return DATA.INCOME_CATEGORY; }
+    var c = String(cat || '').trim();
+    if (!c) { return '其他'; }
+    if (DATA.CATEGORY_KEYS.indexOf(c) !== -1) { return c; }
+    var i;
+    for (i = 0; i < DATA.CATEGORY_KEYS.length; i++) {
+      var k = DATA.CATEGORY_KEYS[i];
+      if (c.indexOf(k) !== -1 || (k.length > 1 && k.indexOf(c) !== -1)) { return k; }
+    }
+    return '其他';
+  }
+
+  /** 日期归一：只接受 YYYY-MM-DD / 今天 / 昨天 / 前天，其余落今天 */
+  function agentDate(v, ctx) {
+    var s = String(v || '').trim();
+    var today = (ctx && ctx.today) || ENG.formatDate(new Date());
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) { return s; }
+    if (s === '昨天') { return ENG.formatDate(new Date(Date.now() - 864e5)); }
+    if (s === '前天') { return ENG.formatDate(new Date(Date.now() - 2 * 864e5)); }
+    return today;
+  }
+
+  /** 账本快照：给模型「看一眼现在的账」，多数问题不用调工具、一轮就能答 */
+  function agentSnapshot() {
+    var ov = safeOverview();
+    if (!ov) { return {}; }
+    var bs = ov.budgetState || {};
+    var by = ov.cycleAgg.byCategory || {};
+    var pairs = [];
+    var k;
+    for (k in by) {
+      if (Object.prototype.hasOwnProperty.call(by, k) && by[k] > 0) { pairs.push({ cat: k, amount: by[k] }); }
+    }
+    pairs.sort(function (a, b) { return b.amount - a.amount; });
+    var recent = [];
+    var i;
+    for (i = 0; i < state.bills.length && recent.length < 5; i++) {
+      var b = state.bills[state.bills.length - 1 - i];
+      if (!b) { break; }
+      recent.push({ date: b.date, cat: b.category, amount: b.amount, note: b.note, type: b.type });
+    }
+    return {
+      today: ov.todayStr,
+      cycle: ov.cycle.start + '~' + ov.cycle.end,
+      daysLeft: ov.cycle.remainingDays,
+      budgetTotal: state.budget.total,
+      cycleSpent: ENG.round2(ov.cycleAgg.expense),
+      remaining: bs.remaining,
+      dailyAllowance: bs.dailyAllowance,
+      todaySpent: bs.todaySpent,
+      status: bs.status,
+      billCount: state.bills.length,
+      topCategories: pairs.slice(0, 4),
+      recentBills: recent,
+      goals: (state.goals || []).slice(0, 3).map(function (g) { return { name: g.name, target: g.target, saved: g.saved }; })
+    };
+  }
+
+  /* ---------------- 工具集 ---------------- */
+
+  function agentTool(name) {
+    var i;
+    for (i = 0; i < AGENT_TOOLS.length; i++) {
+      if (AGENT_TOOLS[i].name === name) { return AGENT_TOOLS[i]; }
+    }
+    return null;
+  }
+
+  function agentArgs(a) {
+    if (!a) { return {}; }
+    if (typeof a === 'string') {
+      try { return JSON.parse(a); } catch (e) { return {}; }
+    }
+    return a;
+  }
+
+  function agentFail(brief, error) {
+    return { ok: false, brief: brief, data: { ok: false, error: error } };
+  }
+
+  /**
+   * 从工具参数里取出「账单数组」。
+   * 实测不同模型的写法差别很大（deepseek 给 {bills:[...]}、glm 直接给数组、
+   * 还有 {items:[]}/{records:[]}），这里统一收口，避免因为外壳不同白丢一笔账。
+   */
+  function agentBillList(a) {
+    if (Array.isArray(a)) { return a; }
+    if (!a || typeof a !== 'object') { return []; }
+    var keys = ['bills', 'items', 'records', 'list', 'entries'];
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      if (Array.isArray(a[keys[i]])) { return a[keys[i]]; }
+    }
+    /* 只给了一份账单对象（{amount:18,...}）也要认 */
+    if (a.amount !== undefined) { return [a]; }
+    return [];
+  }
+
+  /** 账单备注：各家模型给的字段名不同，取第一个有内容的 */
+  function agentNoteOf(it, fallback) {
+    var keys = ['note', 'item', 'title', 'desc', 'name', 'content', 'merchant'];
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      var v = it[keys[i]];
+      if (v !== undefined && v !== null && String(v).trim()) {
+        return String(v).replace(/\s+/g, ' ').trim().slice(0, 16);
+      }
+    }
+    return fallback;
+  }
+
+  var AGENT_TOOLS = [
+    {
+      name: 'add_bills',
+      title: '记账',
+      desc: '把用户说的收支写进账本。一句话里有多笔就一次全放进数组，不要拆成多次调用。',
+      args: '{"bills":[{"amount":18,"category":"餐饮","note":"黄焖鸡","type":"expense","date":"2026-10-29"}]}',
+      run: function (args, ctx) {
+        var list = agentBillList(agentArgs(args));
+        if (!list.length) {
+          return agentFail('没有可记的账',
+            '没解析到账单数组。请用 {"bills":[{"amount":18,"category":"餐饮","note":"黄焖鸡"}]} 这种结构');
+        }
+        var drafts = [];
+        var impulse = agentImpulse(ctx.raw);
+        var i;
+        for (i = 0; i < list.length; i++) {
+          var it = (list[i] && typeof list[i] === 'object') ? list[i] : {};
+          /* 有的模型把支出写成负数（-18），语义上仍是「花了 18」，取绝对值 */
+          var rawAmt = Number(it.amount);
+          var amt = isFinite(rawAmt) ? Math.abs(rawAmt) : NaN;
+          if (!isFinite(amt) || amt <= 0) {
+            return agentFail('金额无效', '第 ' + (i + 1) + ' 笔 amount 不是正数。缺金额时不要猜，问用户多少钱');
+          }
+          if (!agentGrounded(amt, ctx)) {
+            return agentFail('金额不在原话里',
+              '第 ' + (i + 1) + ' 笔金额 ' + amt + ' 不在用户原话中。可用金额只有这些：' +
+              (ctx.amounts.length ? ctx.amounts.join(' / ') : '（用户这句没有说金额）') +
+              '。禁止编造金额，改成问用户实际多少钱');
+          }
+          var type = (it.type === 'income') ? 'income' : 'expense';
+          var note = agentNoteOf(it, '');
+          /* 模型没给品类就本地补判一次（NLP.classify 用的是产品自己的品类词表），
+             比强塞「其他」更贴近用户的真实归类习惯 */
+          var cat = it.category;
+          if (!cat && note) { cat = NLP.classify(note + ' ' + ctx.raw); }
+          drafts.push({
+            date: agentDate(it.date || it.time, ctx),
+            amount: ENG.round2(amt),
+            category: agentCategory(cat, type),
+            source: type === 'income' ? String(it.source || '').slice(0, 8) : '',
+            note: note || (type === 'income' ? '收入' : '未命名'),
+            motivation: impulse === '情绪' ? '情绪' : '刚需',
+            /* 用户话里有「想买/冲动」才允许标非刚需；模型想省掉也行，但不能凭空造一个 */
+            want: impulse === 'want' && it.want !== false,
+            type: type,
+            meal: '',
+            raw: ctx.raw
+          });
+        }
+        pendingClear();
+        correctionPending = null;
+        /* 冷静期会挡住它后面的草稿，所以把「可能进冷静期」的排到最后，
+           让小额账单先落袋，避免「18 块的午饭被 600 的球鞋卡住」。 */
+        var cooldownLine = Number(state.budget.cooldownThreshold);
+        if (cooldownLine > 0 && drafts.length > 1) {
+          var normalDrafts = [];
+          var riskyDrafts = [];
+          for (i = 0; i < drafts.length; i++) {
+            if (isImpulse(drafts[i]) && drafts[i].amount >= cooldownLine) { riskyDrafts.push(drafts[i]); }
+            else { normalDrafts.push(drafts[i]); }
+          }
+          drafts = normalDrafts.concat(riskyDrafts);
+        }
+        var pendingBefore = !!pendingBill;
+        /* 以账本为准判断这批到底记进去几笔：拿 id 做增量，
+           比读 flow.committed 可靠（后者会被冷静期打断、跨轮残留）。 */
+        var beforeIds = {};
+        for (i = 0; i < state.bills.length; i++) { beforeIds[state.bills[i].id] = 1; }
+        /* 智能体回合里由工具自己汇报排队情况，不让 startFlow 另发一条本地气泡（否则一次输入两条回复） */
+        flow.silent = true;
+        flow.last = null;
+        startFlow(drafts);
+        flow.silent = false;
+        var j;
+        var committed = [];
+        for (j = 0; j < state.bills.length; j++) {
+          if (!beforeIds[state.bills[j].id]) { committed.push(state.bills[j]); }
+        }
+        var queued = (flow.queue || []).length;
+        var committedTotal = 0;
+        for (j = 0; j < committed.length; j++) {
+          committedTotal += Number(committed[j].amount) || 0;
+        }
+        var cooling = !!pendingBill;
+        var heldTotal = cooling ? (Number(pendingBill.amount) || 0) : 0;
+        var heldNote = cooling ? String(pendingBill.note || '一笔') : '';
+        var stall = pendingBefore && !committed.length;
+        var brief;
+        if (stall) {
+          brief = drafts.length + ' 笔排队中（' + heldNote + ' ' + money(heldTotal) + ' 冷静期待你决定）';
+        } else if (committed.length === 1 && !cooling && !queued) {
+          brief = committed[0].note + ' ' + money(committedTotal) + ' 已入账';
+        } else if (cooling) {
+          brief = (committed.length ? (committed.length + ' 笔共 ' + money(ENG.round2(committedTotal)) + ' 已入账，')
+            : '') + heldNote + ' ' + money(heldTotal) + ' 进了冷静期' +
+            (queued ? '，另有 ' + queued + ' 笔排队' : '');
+        } else {
+          brief = committed.length + ' 笔共 ' + money(ENG.round2(committedTotal)) + ' 已入账';
+        }
+        ctx.writes += committed.length;
+        var noteText;
+        if (stall) {
+          noteText = '这批一笔都没入账：上一笔 ' + money(heldTotal) + ' 还挂在冷静期等用户决定，' +
+            '已放进队列不会丢。回复要请用户先回答冷静卡，不要说记好了，也不要再调用 add_bills。';
+        } else if (cooling) {
+          noteText = '实际只入账 ' + committed.length + ' 笔。' + heldNote + ' ' + money(heldTotal) +
+            ' 金额较大，已开「冷静期」卡片等用户决定，不能算已记账，也不要再调用 add_bills 重记；' +
+            '回复里必须如实说明这笔在等用户点头。';
+        } else {
+          noteText = '界面已自动展示【记账成功】卡片与余额变化，final 只需一句补充，不要重复卡片的数字';
+        }
+        return {
+          ok: true,
+          brief: brief,
+          data: {
+            ok: true,
+            added: committed.length,
+            committedTotal: ENG.round2(committedTotal),
+            cooling: cooling,
+            heldAmount: cooling ? ENG.round2(heldTotal) : 0,
+            heldNote: heldNote,
+            queued: queued,
+            stalled: stall,
+            items: committed.map(function (d) {
+              return { amount: d.amount, category: d.category, note: d.note, type: d.type, date: d.date };
+            }),
+            note: noteText
+          }
+        };
+      }
+    },
+    {
+      name: 'get_balance',
+      title: '查余额',
+      desc: '查本周期还剩多少钱、日均可用、今天还能花多少，并展示余额卡。',
+      args: '{}',
+      run: function () {
+        var ov = safeOverview();
+        if (!ov) { return agentFail('账本未就绪', '拿不到账本'); }
+        showBalanceCard();
+        var bs = ov.budgetState;
+        return {
+          ok: true,
+          brief: '还剩 ' + money(bs.remaining) + '，日均 ' + money(bs.dailyAllowance),
+          data: {
+            remaining: bs.remaining, budget: state.budget.total, spent: ENG.round2(ov.cycleAgg.expense),
+            dailyAllowance: bs.dailyAllowance, todaySpent: bs.todaySpent, todayRemain: bs.todayRemain,
+            daysLeft: ov.cycle.remainingDays, status: bs.status, isOver: bs.isOver, overBy: bs.overBy,
+            note: '余额卡已经展示，final 不要重复这些数字，补一句建议即可'
+          }
+        };
+      }
+    },
+    {
+      name: 'get_spending',
+      title: '查花销',
+      desc: '按时间范围或品类统计花销，返回总额、笔数与 top 品类。scope 取 today/week/month/cycle/category。',
+      args: '{"scope":"week","category":"餐饮"}',
+      run: function (args) {
+        var a = agentArgs(args);
+        var scope = String(a.scope || 'cycle');
+        var ov = safeOverview();
+        if (!ov) { return agentFail('账本未就绪', '拿不到账本'); }
+        var today = ov.todayStr;
+        var start; var end; var label;
+        if (scope === 'today') { start = today; end = today; label = '今天'; }
+        else if (scope === 'week') { start = ENG.formatDate(new Date(Date.now() - 6 * 864e5)); end = today; label = '最近 7 天'; }
+        else if (scope === 'month') { start = today.slice(0, 8) + '01'; end = today; label = '本自然月'; }
+        else if (scope === 'category') { start = ov.cycle.start; end = ov.cycle.end; label = '本周期'; }
+        else { scope = 'cycle'; start = ov.cycle.start; end = ov.cycle.end; label = '本周期'; }
+        var bills = state.bills;
+        var cat = String(a.category || '').trim();
+        if (cat) {
+          var c = agentCategory(cat, 'expense');
+          bills = bills.filter(function (b) { return b.type !== 'income' && b.category === c; });
+          label = label + '「' + c + '」';
+        }
+        var agg = ENG.aggregate(bills, start, end);
+        var pairs = [];
+        var k;
+        for (k in agg.byCategory) {
+          if (Object.prototype.hasOwnProperty.call(agg.byCategory, k) && agg.byCategory[k] > 0) {
+            pairs.push({ cat: k, amount: agg.byCategory[k] });
+          }
+        }
+        pairs.sort(function (x, y) { return y.amount - x.amount; });
+        if (!agg.expense && !agg.count) {
+          return {
+            ok: true,
+            brief: label + '还没有支出',
+            data: { empty: true, range: label, note: '这个范围没有支出记录，如实告诉用户，不要编数字' }
+          };
+        }
+        return {
+          ok: true,
+          brief: label + ' ' + money(agg.expense) + '（' + agg.count + ' 笔）',
+          data: {
+            range: label, start: start, end: end, total: agg.expense, count: agg.count,
+            avgPerBill: ENG.round2(agg.expense / Math.max(1, agg.count)),
+            topCategories: pairs.slice(0, 5),
+            daysLeft: ov.cycle.remainingDays
+          }
+        };
+      }
+    },
+    {
+      name: 'list_bills',
+      title: '看账单',
+      desc: '列出最近的账单明细，可按品类或关键词过滤。用于「我最近都买了啥」「上周记了啥」。',
+      args: '{"limit":5,"category":"购物","keyword":"奶茶"}',
+      run: function (args) {
+        var a = agentArgs(args);
+        var limit = Math.max(1, Math.min(20, Number(a.limit) || 5));
+        var cat = String(a.category || '').trim();
+        var kw = String(a.keyword || '').trim();
+        var list = [];
+        var i;
+        for (i = state.bills.length - 1; i >= 0 && list.length < limit; i--) {
+          var b = state.bills[i];
+          if (!b) { continue; }
+          if (cat && b.category !== agentCategory(cat, 'expense')) { continue; }
+          if (kw && String(b.note || '').indexOf(kw) === -1) { continue; }
+          list.push({ date: b.date, cat: b.category, amount: b.amount, note: b.note, type: b.type });
+        }
+        if (!list.length) {
+          return { ok: true, brief: '没有符合条件的账单', data: { empty: true, items: [] } };
+        }
+        var sum = 0;
+        for (i = 0; i < list.length; i++) { if (list[i].type !== 'income') { sum += list[i].amount; } }
+        return {
+          ok: true,
+          brief: list.length + ' 笔 · 支出合计 ' + money(ENG.round2(sum)),
+          data: { items: list, expenseSum: ENG.round2(sum) }
+        };
+      }
+    },
+    {
+      name: 'undo_last',
+      title: '撤回',
+      desc: '撤回最近记的一笔账。用户说「记错了 / 删掉刚才那笔 / 撤回」时用。',
+      args: '{}',
+      run: function () {
+        if (!state.bills.length) { return agentFail('没有可撤回的账', '账本是空的'); }
+        var last = state.bills[state.bills.length - 1];
+        var snap = { note: last.note, amount: last.amount, category: last.category };
+        undoLast();
+        return {
+          ok: true,
+          brief: '撤回了 ' + snap.note + ' ' + money(snap.amount),
+          data: { ok: true, removed: snap, note: '撤销气泡已展示，final 一句话即可' }
+        };
+      }
+    },
+    {
+      name: 'cooling_check',
+      title: '冷静一下',
+      desc: '用户想买某个非必需品且金额较大时，先给「值不值」冷静卡，而不是直接记账。',
+      args: '{"item":"联名球鞋","price":600}',
+      run: function (args, ctx) {
+        var a = agentArgs(args);
+        var item = String(a.item || '').trim().slice(0, 12);
+        var price = Number(a.price);
+        if (!item) { return agentFail('没听清买什么', 'item 为空，问用户想买什么'); }
+        if (!isFinite(price) || price <= 0) {
+          return agentFail('没听清价格', 'price 无效，问用户大概多少钱');
+        }
+        if (ctx && ctx.amounts.length && !agentGrounded(price, ctx)) {
+          return agentFail('价格不在原话里',
+            'price ' + price + ' 不在用户原话中（可用：' + ctx.amounts.join(' / ') + '），不要编造');
+        }
+        pendingClear();
+        startCoolingFlow(item, ENG.round2(price));
+        return {
+          ok: true,
+          brief: item + ' ' + money(price) + ' 已开冷静卡',
+          data: { ok: true, item: item, price: ENG.round2(price), note: '冷静卡已展示，等用户选择；不要同时记账' }
+        };
+      }
+    },
+    {
+      name: 'money_plan',
+      title: '省钱方案',
+      desc: '要省钱 / 想搞钱 / 问怎么攒下钱时，调出对应的行动方案卡片。kind 取 save（省钱）或 earn（搞钱）。',
+      args: '{"kind":"save"}',
+      run: function (args) {
+        var kind = String(agentArgs(args).kind || 'save');
+        if (kind === 'earn') { showMakeMoneyGuide(); return { ok: true, brief: '已展开搞钱方案', data: { ok: true, kind: 'earn' } }; }
+        showSaveMoneyGuide();
+        return { ok: true, brief: '已展开省钱方案', data: { ok: true, kind: 'save' } };
+      }
+    },
+    {
+      name: 'find_deals',
+      title: '今日优惠',
+      desc: '查今天有哪些学生优惠 / 会员日 / 券，展示省钱雷达今日卡。',
+      args: '{}',
+      run: function () {
+        if (typeof dealsReady === 'function' && !dealsReady()) {
+          return agentFail('优惠数据没加载', 'DEALS 未就绪');
+        }
+        showDealsTodayCard();
+        var today = [];
+        try {
+          var list = DEALS.dealsOn(new Date());
+          var i;
+          for (i = 0; i < list.length && today.length < 4; i++) {
+            today.push({ name: list[i].name, what: list[i].what });
+          }
+        } catch (e) { /* 拿不到就只给卡片 */ }
+        return {
+          ok: true,
+          brief: today.length ? ('今天 ' + today.length + ' 家有优惠') : '已展开今日优惠卡',
+          data: { ok: true, today: today, note: '优惠卡已展示，final 挑 1 条最相关的说，别复述整张卡' }
+        };
+      }
+    },
+    {
+      name: 'open_panel',
+      title: '打开面板',
+      desc: '打开某个功能面板。panel 取 pie（饼图）/ dash（看板）/ goals（攒钱目标）/ ocr（截图记账）/ analysis（账单分析）/ coach（理财专家）。',
+      args: '{"panel":"pie"}',
+      run: function (args) {
+        var p = String(agentArgs(args).panel || '').trim();
+        var map = {
+          pie: function () { showPieCard(); },
+          dash: function () { switchView('dash'); },
+          goals: function () { showGoalGuide(); },
+          ocr: function () { openOcrModal(); },
+          analysis: function () { openAnalysisSheet(); },
+          coach: function () { switchView('coach'); }
+        };
+        if (!map[p]) { return agentFail('没有这个面板', 'panel 只能是 pie/dash/goals/ocr/analysis/coach'); }
+        map[p]();
+        return { ok: true, brief: '打开 ' + p, data: { ok: true, panel: p } };
+      }
+    }
+  ];
+
+  /* ---------------- Agent：模型调用与协议解析 ---------------- */
+
+  /** 一次模型调用（流式累积成全量文本），带超时与一次网络重试；失败返回 {ok:false, reason} */
+  function agentLLM(messages, timeoutMs) {
+    return new Promise(function (resolve) {
+      if (!cloudClient || !cloudChatModel) {
+        resolve({ ok: false, reason: '云服务未就绪', text: '' });
+        return;
+      }
+      var done = false;
+      var timer = setTimeout(function () {
+        if (done) { return; }
+        done = true;
+        resolve({ ok: false, reason: '模型响应超时', text: '' });
+      }, Math.max(4000, timeoutMs || AGENT_ROUND_MS));
+
+      /* 已经有内容就不再重试：避免「写了一半又重来」导致同一批工具被规划两次 */
+      function attempt(triesLeft) {
+        var full = '';
+        return (async function () {
+          var stream = await Promise.resolve(cloudClient.llm.chat.completions.create({
+            model: cloudChatModel.id,
+            messages: messages,
+            stream: true
+          }));
+          for await (var chunk of stream) {
+            var c = chunk && chunk.choices && chunk.choices[0] && chunk.choices[0].delta &&
+              chunk.choices[0].delta.content;
+            if (c) { full += c; }
+          }
+          return full;
+        })().catch(function (e) {
+          if (triesLeft > 1 && !full && !done) { return attempt(triesLeft - 1); }
+          throw e;
+        });
+      }
+
+      attempt(2).then(function (text) {
+        if (done) { return; }
+        done = true;
+        clearTimeout(timer);
+        resolve({ ok: true, reason: '', text: text });
+      })['catch'](function (e) {
+        if (done) { return; }
+        done = true;
+        clearTimeout(timer);
+        resolve({ ok: false, reason: '模型调用异常：' + (e && e.message ? e.message : e), text: '' });
+      });
+    });
+  }
+
+  /** 解析模型返回的计划；容忍单工具简写与 actions 别名 */
+  function agentParsePlan(text) {
+    var o = parseCloudJson(text);
+    if (!o || typeof o !== 'object') { return null; }
+    var plan = { thought: '', calls: [], final: '' };
+    if (o.thought) { plan.thought = String(o.thought).slice(0, 60); }
+    if (o.final) { plan.final = String(o.final); }
+    if (o.say && !plan.final) { plan.final = String(o.say); }
+    var calls = o.calls || o.actions || o.tools || null;
+    if (calls && !Array.isArray(calls)) { calls = [calls]; }
+    if (!calls && o.tool) { calls = [{ tool: o.tool, args: o.args || o.parameters || {} }]; }
+    if (Array.isArray(calls)) {
+      var i;
+      for (i = 0; i < calls.length; i++) {
+        var c = calls[i];
+        if (typeof c === 'string') { plan.calls.push({ tool: c, args: {} }); continue; }
+        if (!c || !c.tool) { continue; }
+        plan.calls.push({ tool: String(c.tool), args: agentArgs(c.args || c.parameters || c.arguments || {}) });
+      }
+    }
+    if (!plan.final && !plan.calls.length && o.reply) { plan.final = String(o.reply); }
+    if (!plan.final && !plan.calls.length) { return null; }
+    return plan;
+  }
+
+  /** 模型可能把 args 写成字符串化的 JSON，统一在工具入口再解一次（见 agentArgs） */
+
+  /** 把最终回复转成安全的富文本（支持 **加粗** 与换行） */
+  function agentTextHtml(t) {
+    var s = esc(String(t || '').trim());
+    s = s.replace(/\*\*([^*\n]{1,30})\*\*/g, '<b>$1</b>');
+    s = s.replace(/(?:\r?\n){2,}/g, '<br><br>').replace(/\r?\n/g, '<br>');
+    return s;
+  }
+
+  /** 跨轮短期记忆：只留最近几轮，避免 prompt 无限膨胀 */
+  function agentRemember(raw, reply) {
+    agentMemory.push({ role: 'user', content: String(raw).slice(0, 200) });
+    agentMemory.push({ role: 'assistant', content: String(reply || '').slice(0, 300) });
+    while (agentMemory.length > AGENT_MEMORY_MAX) { agentMemory.shift(); }
+  }
+
+  /* ---------------- Agent：系统提示词 ---------------- */
+
+  var WEEK_CN = ['日', '一', '二', '三', '四', '五', '六'];
+
+  function agentSystemPrompt(ctx) {
+    var now = new Date();
+    var snap = agentSnapshot();
+    var toolLines = [];
+    var i;
+    for (i = 0; i < AGENT_TOOLS.length; i++) {
+      var t = AGENT_TOOLS[i];
+      toolLines.push('- ' + t.name + '（' + t.title + '）：' + t.desc + ' 参数 ' + t.args);
+    }
+    var cats = DATA.CATEGORY_KEYS.join('/');
+    var lines = [
+      '你是「' + petDisplayName() + '」，WorkBuddy 上帮大学生管钱的记账智能体。你能调用工具真正读写账本、查统计、开卡片。',
+      '',
+      '【输出格式】每轮只输出一个 JSON 对象，不要 Markdown、不要代码围栏、不要多余文字：',
+      '{"thought":"你现在打算做什么（≤30字，给人看的）","calls":[{"tool":"工具名","args":{}}],"final":"给用户看的回复，暂时没结论就留空"}',
+      '· 需要工具结果才能回答 → calls 非空、final 留空；我会把结果以【工具执行结果】回给你；',
+      '  （同一轮里既调工具又写 final，final 会被丢掉白写：先动手、看完结果再说话）',
+      '· 结果可预见（例如记账）或根本不用工具 → 直接给 final，这样只花一轮；',
+      '· 一句话里有多笔账 → 全部放进同一个 add_bills 的 bills 数组，一次记完，不要分多次调用。',
+      '',
+      '【硬规则】',
+      '1. 金额只能取自用户这句话（见下方【可用金额】），一个字都不能编。缺金额就问，问句里不要出现具体数字。',
+      '2. 疑问句（怎么/吗/多少/能不能/值不值）不是记账；未来计划（明天、打算、约好）要记账时必须提醒「还没发生」。',
+      '3. 非刚需的大额消费（球鞋、数码、潮玩、演唱会等）先调 cooling_check 开冷静卡，不要直接记账。',
+      '4. 同一个工具不要重复调用；工具返回 ok:false 就看 error 改参数，或改成问用户。',
+      '5. 语气口语、简短（一般 1~3 句）、带一点鼓励，不列长清单，不用「首先/其次」，不复述卡片上已有的数字。',
+      '6. 记账 / 撤回 / 冷静卡 都由工具自动出卡，final 只补一句有用的话，或留空字符串。',
+      '7. 品类只能是这些之一：' + cats + '（收入不用填品类）。',
+      '8. 回答「还能不能 / 够不够 / 请得起吗 / 该不该买」这类能不能负担的问题，必须先 get_balance，' +
+        '需要看花销再加 get_spending；不许只凭花销金额或印象下结论。',
+      '9. 工具返回的 data 是账本真实结果，final 必须与它一致：data 里 cooling 为 true 表示那笔还挂在冷静期' +
+        '没入账，不能说「记好了」。',
+      '10. 只有用户自己说了「想买 / 冲动 / 忍不住 / 种草」才算非刚需；日常三餐、聚餐、日用一律按刚需，' +
+        '不要替用户脑补冲动标签。',
+      '',
+      '【示例】用户说「中午黄焖鸡18，晚上和舍友AA付了50」：',
+      '{"thought":"两笔餐饮，一次记完","calls":[{"tool":"add_bills","args":{"bills":' +
+        '[{"amount":18,"category":"餐饮","note":"黄焖鸡"},{"amount":50,"category":"社交","note":"宿舍聚餐"}]}}],' +
+        '"final":"两笔都记好了。"}',
+      '注意：bills 必须是数组，每笔都要有 amount 与 note；不要给负数，不要自己编日期。',
+      '',
+      '【现在】' + ENG.formatDate(now) + ' 周' + WEEK_CN[now.getDay()] + ' ' + nowHM() +
+        '，可用金额：' + (ctx.amounts.length ? ctx.amounts.join(' / ') : '（用户这句没提金额）'),
+      '【账本快照】' + JSON.stringify(snap),
+      '',
+      '【工具】',
+      toolLines.join('\n')
+    ];
+    return lines.join('\n');
+  }
+
+  /* ---------------- Agent：思考轨迹 UI ---------------- */
+
+  /**
+   * 智能体思考卡（原生 <details>，无需事件绑定）：
+   *   运行中展开并逐条追加「工具 + 结果」，结束后保留为可折叠轨迹。
+   * 只保留最近一张展开，历史轨迹自动收起 —— 聊天不至于被思考过程淹没。
+   */
+  function agentTrace() {
+    var prev = DOC.querySelectorAll('#chatList .agent-card[open]');
+    var i;
+    for (i = 0; i < prev.length; i++) { prev[i].removeAttribute('open'); }
+
+    var body = addAIMessage(
+      '<details class="agent-card" open>' +
+      '<summary class="agent-card-head">' +
+      '<span class="agent-spark" aria-hidden="true"></span>' +
+      '<b>智能体</b><span class="agent-state">正在理解你的话…</span>' +
+      '</summary>' +
+      '<div class="agent-thought" hidden></div>' +
+      '<ol class="agent-steps"></ol>' +
+      '</details>');
+    var card = body.querySelector('.agent-card');
+    var thoughtEl = body.querySelector('.agent-thought');
+    var listEl = body.querySelector('.agent-steps');
+    var stateEl = body.querySelector('.agent-state');
+    var n = 0;
+    return {
+      row: body.parentNode,
+      card: card,
+      thought: function (t) {
+        /* 只保留「首轮计划」那句：末轮 thought 往往和回复重复，且首轮才看得出它想干什么 */
+        if (!t || thoughtEl.textContent) { return; }
+        thoughtEl.hidden = false;
+        thoughtEl.textContent = '「' + String(t).replace(/[「」"]/g, '') + '」';
+      },
+      step: function (title, brief, ok) {
+        n++;
+        var li = DOC.createElement('li');
+        li.className = ok === false ? 'bad' : 'ok';
+        li.innerHTML = '<span class="as-idx">' + n + '</span>' +
+          '<span class="as-txt"><b>' + esc(title) + '</b>' +
+          (brief ? '<i>' + esc(brief) + '</i>' : '') + '</span>';
+        listEl.appendChild(li);
+        stateEl.textContent = '正在处理…（' + n + ' 步）';
+        scrollChat();
+      },
+      thinking: function () { stateEl.textContent = '正在整理结果…'; },
+      slow: function (sec) { stateEl.textContent = '模型有点慢，已经等了 ' + sec + ' 秒…'; },
+      finish: function (calls) {
+        stateEl.textContent = calls ? ('已完成 · ' + calls + ' 步') : '已完成';
+        card.className = card.className.replace(/\s*done/, '') + ' done';
+      }
+    };
+  }
+
+  /* ---------------- Agent：主循环 ---------------- */
+
+  function agentExec(call, ctx, trace) {
+    var tool = agentTool(call.tool);
+    if (!tool) {
+      trace.step(String(call.tool || '未知工具'), '没有这个工具', false);
+      return { tool: String(call.tool), ok: false, error: '没有名为「' + call.tool + '」的工具，可用工具见系统提示' };
+    }
+    var res;
+    try {
+      res = tool.run(call.args || {}, ctx) || {};
+    } catch (e) {
+      res = { ok: false, brief: '执行异常', data: { ok: false, error: String(e && e.message ? e.message : e) } };
+    }
+    var ok = res.ok !== false;
+    trace.step(tool.title, res.brief || '', ok);
+    ctx.calls.push({ tool: tool.name, ok: ok, brief: res.brief || '' });
+    return { tool: tool.name, ok: ok, result: res.data === undefined ? null : res.data };
+  }
+
+  /** 轮数/预算用尽时收口：已发生的副作用照实汇报，绝不假装成功 */
+  function agentWrapUp(ctx) {
+    if (!ctx.calls.length) { return { handled: false, reason: '没有执行任何动作' }; }
+    var okCalls = ctx.calls.filter(function (c) { return c.ok; });
+    /* 模型写过 final 但被押后（那一轮同时调了工具）：作为最后兜底，总比没有回复好 */
+    var reply = String(ctx.deferredFinal || '');
+    if (!reply && ctx.writes > 0) {
+      reply = '已经帮你处理好了。';
+    } else if (!reply && okCalls.length) {
+      reply = '帮你看了下：' + okCalls.map(function (c) { return c.brief; }).join('；') + '。';
+    } else if (!reply) {
+      reply = '这一步我没办成，换个说法再试一次？';
+    }
+    return { handled: true, reply: reply, rounds: 0, calls: ctx.calls.length };
+  }
+
+  /**
+   * 跑一轮完整的智能体流程。
+   * @param {string} raw 用户原话
+   * @param {Object} trace 思考卡
+   * @return {Promise<{handled:boolean, reply?:string, reason?:string}>}
+   */
+  function agentRun(raw, trace) {
+    return new Promise(function (resolve) {
+      if (!agentAvailable()) { resolve({ handled: false, reason: '智能体未就绪' }); return; }
+      var ctx = {
+        raw: raw,
+        today: ENG.formatDate(new Date()),
+        amounts: agentAmountsOf(raw),
+        used: 0,
+        calls: [],
+        writes: 0,
+        deferredFinal: ''
+      };
+      var messages = [{ role: 'system', content: agentSystemPrompt(ctx) }];
+      var i;
+      for (i = 0; i < agentMemory.length; i++) { messages.push(agentMemory[i]); }
+      messages.push({ role: 'user', content: raw });
+
+      var deadline = Date.now() + AGENT_DEADLINE_MS;
+      var round = 0;
+      var settled = false;
+
+      function settle(out) {
+        if (settled) { return; }
+        settled = true;
+        agentTurnLog.push({
+          ts: Date.now(), raw: raw, rounds: round, calls: ctx.calls,
+          handled: !!out.handled, reply: out.reply || '', reason: out.reason || ''
+        });
+        while (agentTurnLog.length > 30) { agentTurnLog.shift(); }
+        resolve(out);
+      }
+
+      function loop() {
+        if (round >= AGENT_MAX_ROUNDS) { settle(agentWrapUp(ctx)); return; }
+        var left = deadline - Date.now();
+        if (left < 3000) { settle(agentWrapUp(ctx)); return; }
+        round++;
+        agentLLM(messages, Math.min(AGENT_ROUND_MS, left)).then(function (r) {
+          /* 模型彻底没响应：只在「还没动过账本」时才允许回退本地链路 */
+          if (!r.text) {
+            if (!ctx.calls.length) { settle({ handled: false, reason: r.reason || '模型无响应' }); return; }
+            settle(agentWrapUp(ctx));
+            return;
+          }
+          var plan = agentParsePlan(r.text);
+          if (!plan) {
+            if (!ctx.calls.length) {
+              /* 首轮输出不符合协议：如果是一段人话（没有 JSON 迹象），直接当回复用 */
+              var plain = String(r.text).trim();
+              if (plain && plain.indexOf('{') === -1) {
+                agentRemember(raw, plain);
+                settle({ handled: true, reply: plain, rounds: round, calls: 0 });
+                return;
+              }
+              settle({ handled: false, reason: '输出无法解析' });
+              return;
+            }
+            settle(agentWrapUp(ctx));
+            return;
+          }
+          if (plan.thought) { trace.thought(plan.thought); }
+
+          var obs = [];
+          var k;
+          var executed = 0;
+          for (k = 0; k < plan.calls.length; k++) {
+            if (ctx.used >= AGENT_MAX_CALLS) {
+              obs.push({ tool: plan.calls[k].tool, ok: false, error: '本轮工具调用次数已用完，直接回答用户' });
+              continue;
+            }
+            ctx.used++;
+            obs.push(agentExec(plan.calls[k], ctx, trace));
+            executed++;
+          }
+
+          if (plan.final) {
+            var txt = String(plan.final).trim();
+            /* 有记账动作时，final 里如果再出现金额容易和收据卡打脸 —— 保留原文，只做长度兜底 */
+            if (txt.length > 400) { txt = txt.slice(0, 400); }
+            if (executed) {
+              /* 同一轮里既调工具又下结论，结论一定写于事实之前（例如「两笔都记好了」
+                 而其中一笔其实进了冷静期）。先当兜底存着，等看过工具结果再说。 */
+              ctx.deferredFinal = txt;
+            } else {
+              agentRemember(raw, txt);
+              settle({ handled: true, reply: txt, rounds: round, calls: ctx.calls.length });
+              return;
+            }
+          }
+          if (!executed) {
+            /* 既没工具也没 final：模型空转，别再烧一轮 */
+            settle(ctx.calls.length ? agentWrapUp(ctx) : { handled: false, reason: '模型没有给出动作' });
+            return;
+          }
+          messages.push({ role: 'assistant', content: r.text });
+          messages.push({
+            role: 'user',
+            content: '【工具执行结果】\n' + JSON.stringify(obs) +
+              '\n\n请据此继续：还需要工具就继续调，能回答就直接给 final（不要再重复卡片上的数字）。'
+          });
+          trace.thinking();
+          loop();
+        });
+      }
+      loop();
+    });
+  }
+
+  /**
+   * 智能体是否该接管这一句。
+   * 只放行「自然语言」，明确命令（查余额 / 饼图 / 各项设置）已在上游 commandMatch 秒回；
+   * 极短的单笔记账（「奶茶18」「食堂 15」）继续走本地快路径，保住 0 延迟手感。
+   */
+  function agentShouldTakeOver(raw) {
+    if (!agentAvailable()) { return false; }
+    var compact = String(raw).replace(/\s+/g, '');
+    if (compact.length > 14) { return true; }
+    var amts = NLP.findAmounts(raw);
+    if (amts.length === 1 && !/[，,。；;、?？]/.test(raw) && !COACH.isWantBuy(raw)) {
+      var r = INTENT.classifyIntent(raw, { now: new Date(), lastBill: buildIntentViewCtx().lastBill });
+      if (r && r.intent === 'record' && r.tier === 'high') { return false; }
+    }
+    return true;
+  }
+
+  /** 接管入口：跑智能体；首轮失败则拆掉思考卡、透明回退本地规则链路 */
+  var agentChain = Promise.resolve();   /* 用户连发两句时串行执行，避免两轮工具互相踩账本 */
+
+  function agentHandle(raw) {
+    agentChain = agentChain.then(function () { return agentOne(raw); })['catch'](function () {
+      localAssistantLoop(raw);
+    });
+  }
+
+  function agentOne(raw) {
+    return new Promise(function (done) {
+      var trace = agentTrace();
+      var slowTimer = setTimeout(function () { trace.slow(7); }, 7000);
+      var longTimer = setTimeout(function () { trace.slow(12); }, 12000);
+      agentRun(raw, trace).then(function (out) {
+        clearTimeout(slowTimer);
+        clearTimeout(longTimer);
+        if (!out || out.handled === false) {
+          if (trace.row && trace.row.parentNode) { trace.row.parentNode.removeChild(trace.row); }
+          if (global.console && console.info) {
+            console.info('[agent] 回退本地规则链路：' + ((out && out.reason) || '未知原因'));
+          }
+          localAssistantLoop(raw);
+          done();
+          return;
+        }
+        trace.finish(out.calls || 0);
+        if (out.reply) { addAIMessage(aiBubble(agentTextHtml(out.reply))); }
+        scrollChat();
+        done();
+      });
+    });
+  }
+
   var STORAGE_KEY = DATA.STORAGE_KEY;
   var RING_R = 58;
   var RING_C = 2 * Math.PI * RING_R;
@@ -34536,7 +35691,8 @@ window.AJ_CLOUD_CONFIG = {
   var storageOK = true;
   var state = null;
   var highlightCategory = null;
-  var flow = { queue: [], committed: [] };
+  /* last：本批已入账的账单（finishFlow 清空 committed 前留一份，供智能体工具如实汇报） */
+  var flow = { queue: [], committed: [], last: null, silent: false };
   var pendingBill = null;
   /** 撤回栈：按记账顺序记录每笔账单 id（仅内存，不持久化）。供「撤回上一步」使用 */
   var undoStack = [];
@@ -35311,6 +36467,14 @@ window.AJ_CLOUD_CONFIG = {
 
   /** 开始处理一批解析结果 */
   function startFlow(drafts) {
+    if (pendingBill) {
+      /* 上一笔大额还在冷静期待决：新草稿只能排队，严禁重置 flow（重置会静默丢账/丢报文） */
+      flow.queue = flow.queue.concat(drafts.slice());
+      if (!flow.silent) {
+        addAIMessage(aiBubble('（上一笔 ' + money(pendingBill.amount) + ' 还在等你决定记不记，这笔先排在后面，你决定完马上入账。）'));
+      }
+      return;
+    }
     flow.queue = drafts.slice();
     flow.committed = [];
     stepFlow();
@@ -35318,9 +36482,20 @@ window.AJ_CLOUD_CONFIG = {
 
   /** 逐笔入账，遇到需要冷静期的就暂停 */
   function stepFlow() {
+    /* 冷静期还没决定（pendingBill 挂起）时，新草稿一律排队不入账：
+       否则会静默提交（用户看到「重复记账」）甚至覆盖 pendingBill 丢账。 */
+    if (pendingBill) { return; }
     while (flow.queue.length > 0) {
       var draft = flow.queue.shift();
       if (needsCooldown(draft)) {
+        /* 先把手头已经入账的几笔汇报掉，再挂起大额那笔：
+           否则这些账已经进了账本，界面上却没有【记账成功】卡，
+           而且 flow.committed 会一直挂着，跨轮被当成新账重复汇报。 */
+        if (flow.committed.length) {
+          var done = flow.committed;
+          flow.committed = [];
+          reportCommitted(done);
+        }
         pendingBill = draft;
         showCooldownCard(draft);
         renderAll();
@@ -35336,6 +36511,7 @@ window.AJ_CLOUD_CONFIG = {
   function finishFlow() {
     var list = flow.committed;
     flow.committed = [];
+    flow.last = list.slice();
     pendingBill = null;
     renderAll();
     if (list.length === 0) { return; }
@@ -35447,7 +36623,7 @@ window.AJ_CLOUD_CONFIG = {
       '  <div class="bc-grid">' +
       '    <div><b>' + money(st.income) + '</b><small>本周期收入</small></div>' +
       '    <div><b>' + money(st.expense) + '</b><small>本周期支出</small></div>' +
-      '    <div><b class="' + (bs.remaining < 0 ? 'expense' : 'income') + '">' + money(bs.remaining) + '</b><small>剩余额度</small></div>' +
+      '    <div><b class="' + (bs.remaining < 0 ? 'expense' : 'income') + '">' + money(bs.remaining) + '</b><small>预算剩余</small><small>＝生活费总额 − 已花 − 存钱罐</small></div>' +
       '    <div><b>' + money(Math.max(0, bs.dailyAllowance)) + '</b><small>剩余每天可花</small></div>' +
       '  </div>' +
       /* sentence 内含行内图标 html（内部生成，不含用户输入），不能再 esc，否则会把
@@ -42894,7 +44070,8 @@ window.AJ_CLOUD_CONFIG = {
       html += '<div class="rs-nobackend">' +
         '<p class="rs-nb-h">真实比价需要本机后端，现在它没在跑</p>' +
         '<ol class="rs-nb-steps">' +
-        '<li>在 <b>AI记账</b> 文件夹里双击 <b>启动比价后端.bat</b></li>' +
+        '<li>在 <b>AI记账</b> 文件夹里双击 <b>启动比价后端.bat</b>' +
+          '<br><span class="rs-nb-dim">已设开机自启，重启电脑后它会自己起来。此步只在它意外掉线时才需要。</span></li>' +
         '<li>等黑色窗口里出现「Uvicorn running on http://127.0.0.1:8010」</li>' +
         '<li>回到这里点下面的「再试一次」</li>' +
         '</ol>' +
@@ -42913,8 +44090,9 @@ window.AJ_CLOUD_CONFIG = {
        只要「失败的关键词」= 输入框现在要搜的词，而手里数据的来源关键词又不是它，
        就把列表整个收起来——只明确说清「这次没抓到」和「原本摆着的是哪次的数据」。
        否则用户搜「手机」却看到「笔记本电脑」的价格，中间还顶着绿色「真实抓取」标签。 */
-    var staleKw = (realFailKw && kwNow && realFailKw === kwNow && m && m.keyword !== kwNow)
-      ? String(m.keyword || '') : '';
+    /* 本次是不是刚失败过（失败词 == 现在要搜的词） */
+    var failedNow = !!(realFailKw && kwNow && realFailKw === kwNow);
+    var staleKw = (failedNow && m && m.keyword !== kwNow) ? String(m.keyword || '') : '';
     if (staleKw) {
       html += '<div class="rs-stale">' +
         '<p class="rs-stale-h">' + ic('alert', null, '这不是你要的结果') + '这不是你要的结果</p>' +
@@ -42942,12 +44120,28 @@ window.AJ_CLOUD_CONFIG = {
     var pageItems = items.slice(pageStart, pageStart + REAL_PAGE_SIZE);
     realItemsView = pageItems;   /* 供「填入比价」按下标回查条目（下标是**当前页**的） */
 
-    html += '<div class="rs-src">' +
-      '<span class="rs-badge">' + ic('check', null, '真实抓取') + '真实抓取</span>' +
+    /* 同关键词、但本次抓取失败：手里这份是同词的旧数据。
+       数据还能用，但绝不能再顶着绿色「真实抓取」冒充这次的结果——
+       改成黄色「上次结果」并把「本次没抓到」写在时间旁边。 */
+    var isStaleSame = failedNow && !staleKw;
+
+    if (isStaleSame) {
+      html += '<div class="rs-stale-same">' +
+        ic('alert', null, '注意') +
+        '<span>这次搜「<b>' + esc(kwNow) + '</b>」没抓成功。下面是 <b>' + esc(m.scraped_at || '上次') +
+          '</b> 那次留下的同款结果，<b>价格可能已经变了</b>，仅作参考。点「再试一次」可重抓。</span>' +
+        '</div>';
+    }
+
+    html += '<div class="rs-src' + (isStaleSame ? ' is-stale' : '') + '">' +
+      '<span class="rs-badge' + (isStaleSame ? ' is-stale' : '') + '">' +
+        ic(isStaleSame ? 'alert' : 'check', null, isStaleSame ? '上次结果' : '真实抓取') +
+        (isStaleSame ? '上次结果' : '真实抓取') + '</span>' +
       '<span class="rs-mode">' + (isLive ? '在线抓取' : '内置快照') + '</span>' +
       '<b>' + esc(m.source) + '</b>' +
       '<span class="rs-kw">关键词「' + esc(m.keyword) + '」</span>' +
-      '<span class="rs-time">抓取于 ' + esc(m.scraped_at) + '</span>' +
+      '<span class="rs-time">抓取于 ' + esc(m.scraped_at) +
+        (isStaleSame ? ' · 本次没抓到' : '') + '</span>' +
       (m.page_urls && m.page_urls[0]
         ? '<a class="rs-link" href="' + esc(m.page_urls[0]) + '" target="_blank" rel="noopener noreferrer">原搜索页</a>'
         : '') +
@@ -43152,11 +44346,13 @@ window.AJ_CLOUD_CONFIG = {
       /* 关键：记下失败的关键词。渲染时会据此把上一次的结果收起来，
          避免「搜手机失败 → 却把上次搜笔记本电脑的报价摆着当结果」。 */
       realFailKw = kw;
-      /* 后端回的原因常自带「没抓到…」，别再叠一层前缀说成「这次没抓到：没抓到…」 */
-      realStatus = (String(msg || '').indexOf('没抓到') >= 0 ? '' : '这次没抓到：') + msg +
-        (err && err.business ? '' :
-          '。浏览器直接抓电商页面会被跨域拦截，需要本机后端代理：双击 AI记账 文件夹里的「启动比价后端.bat」，等窗口显示服务已启动，再点「搜同款」。');
       realFailNoBackend = !(err && err.business);
+      /* 后端没起时，下面紧跟着一张分步引导卡，已经把「双击哪个文件、看到什么算成功」
+         讲清楚了。状态行只留一句结论，否则同一屏把同一句话说了两遍。
+         后端在跑但没抓到（业务失败）才需要把后端给的原因原样带出来。 */
+      realStatus = realFailNoBackend
+        ? '这次没抓到：连不上本机后端（127.0.0.1:8010）。按下面的步骤把它启动起来，再点「再试一次」。'
+        : (String(msg || '').indexOf('没抓到') >= 0 ? '' : '这次没抓到：') + msg;
       renderDealsSheet();          /* 重绘一次，让旧结果立刻退场，而不是等用户重新进面板 */
       var goBtn2 = $('btnRsSearch');
       if (goBtn2) { goBtn2.textContent = '搜同款'; }
@@ -46144,6 +47340,25 @@ window.AJ_CLOUD_CONFIG = {
       return;
     }
 
+    /* ② 智能体优先（2026-10）：云端可用时，自然语言交给智能体处理 ——
+       LLM 负责规划「调哪个工具、参数是什么」，工具在本地真执行（写账本 / 查统计 /
+       开卡片），执行结果回灌给模型继续推理，最后产出回复。
+       首轮失败（超时 / 模型不可用 / 输出不可解析且无副作用）会自动退回下面的本地
+       规则链路，断网演示与「云端抽风」都不影响可用性。 */
+    if (agentShouldTakeOver(raw)) {
+      agentHandle(raw);
+      return;
+    }
+
+    localAssistantLoop(raw);
+  }
+
+  /**
+   * 本地规则链路（Agent 的兜底，也是「奶茶18」这类极短记账的快路径）。
+   * 意图分类 -> pending 续接 -> 高置信本地执行 -> 低置信云端二次裁决 -> 兜底澄清。
+   * @param {string} raw
+   */
+  function localAssistantLoop(raw) {
     /* ② 本地意图分类（纯函数，不触网，<1ms） */
     var res = INTENT.classifyIntent(raw, {
       now: new Date(),
@@ -47556,7 +48771,8 @@ window.AJ_CLOUD_CONFIG = {
   function addWelcome() {
     var ov = getOverview();
     var body = addAIMessage(aiBubble(ic('chat', 'bico-brand', '打招呼') + '你好呀，我是' + petDisplayName() +
-      '<br>一句话就能记账，试试「中午食堂 15」。<br>想省钱 / 搞钱，去底部「理财专家」找我，剁手前也可以先让我把把关。'));
+      '<br>一句话就能记账，试试「中午食堂 15」。<br>想省钱 / 搞钱，去底部「理财专家」找我，剁手前也可以先让我把把关。' +
+      '<br><span class="msg-platform">由 WorkBuddy 构建 · 云端大模型由 WorkBuddy 云服务提供</span>'));
     /* 标记欢迎行：切换形象时就地改名，别让历史欢迎语还写着上一只的名字 */
     if (body && body.parentNode) { body.parentNode.setAttribute('data-welcome', '1'); }
     addAIMessage(aiBubble('当前周期 ' + esc(ov.cycle.start) + ' ~ ' + esc(ov.cycle.end) + '，总预算 ' +
@@ -48406,6 +49622,12 @@ function petRecallIcon() {
   function maybePickPetSkin() {
     var st = getSettings();
     if (st.mascot && st.mascot.skin) { return; }   // 已经选过
+    /* 分享链接访客（大赛评审 / 外部访问走 ?sharecode=）不弹首启选择窗：
+       第一屏必须是「智能体在说话」，不能被引导弹窗挡住。
+       默认形象仍是阿账，随时可在「设置 · 宠物形象」里更换。 */
+    try {
+      if (/(?:^|[?&])sharecode=/.test(String((global.location && global.location.search) || ''))) { return; }
+    } catch (e) { /* 无 location 的环境照常弹 */ }
     var cur = 'azhang';
 
     function commit() {

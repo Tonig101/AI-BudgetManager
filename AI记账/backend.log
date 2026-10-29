@@ -1,0 +1,67 @@
+
+[autostart] 2026-10-29 18:28:32 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [6948]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55258 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55259 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=1&limit=8&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55283 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=1&limit=8&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59925 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51526 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50467 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+
+[autostart] 2026-10-29 18:34:51 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [34276]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+
+[autostart] 2026-10-29 18:36:24 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [2252]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57744 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49382 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57972 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54415 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+
+[autostart] 2026-10-29 18:40:31 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [26112]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+
+[autostart] 2026-10-29 18:42:19 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [35468]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+INFO:     127.0.0.1:59931 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55988 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51937 - "GET /api/health HTTP/1.1" 200 OK
+
+[autostart] 2026-10-29 20:22:34 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [36284]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
