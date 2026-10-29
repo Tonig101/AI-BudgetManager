@@ -260,7 +260,7 @@
         '④ 如果给了【本地分类器初判】，只允许在其 candidates 之内裁决，越界视为无效。' +
         '用简洁、口语化、带一点鼓励的中文回复。只返回一个 JSON 对象、不要其它文字：' +
         '{"intent":"<7选1>","confidence":<0~1>,"reply":"<中文回复>","actions":[' +
-        '{"type":"add_bill","amount":<number>,"category":<"餐饮"|"交通"|"购物"|"娱乐"|"学习"|"居住"|"医疗"|"社交"|"其他">,"note":<string>,"date":<"YYYY-MM-DD"|null>,"motivation":<"刚需"|"情绪">,"want":<bool>},' +
+        '{"type":"add_bill","amount":<number>,"category":<"' + DATA.CATEGORY_KEYS.join('"|"') + '">,"note":<string>,"date":<"YYYY-MM-DD"|null>,"motivation":<"刚需"|"情绪">,"want":<bool>},' +
         '{"type":"command","name":<"balance"|"pie"|"income"|"ocr"|"analysis"|"goals"|"settings"|"undo">},' +
         '{"type":"clarify","missing":<"amount"|"queryKind"|"target">,"hint":<string>}]}';
       var userContent = String(messageText || '');
@@ -640,6 +640,8 @@
         skin: (s.mascot && (s.mascot.skin === 'azhang' || s.mascot.skin === 'sprite' ||
           s.mascot.skin === 'pro')) ? s.mascot.skin : null
       },
+      // 界面风格：记账同款（微信绿）/ 学习台紫
+      skin: (s.skin === 'academy') ? 'academy' : 'app',
       // 互动反馈（音效 + 震动）：三个形象共用一套声效，实际开关同步给 AJ.sfx
       fx: !(s.fx === false)
     };
@@ -938,7 +940,7 @@
         var profAv = (ppAv && typeof ppAv._profile === 'function') ? ppAv._profile() : null;
         av.innerHTML = mascotBarProHead(profAv);
       } else {
-        av.innerHTML = MOOD.moodSvg(mk, 'mico', meta.name || mk);
+        av.innerHTML = azhangHeadSvg();
       }
     } else {
       av.textContent = '账';
@@ -981,7 +983,7 @@
       } else {
         var mk = el.getAttribute('data-mood') || 'chill';
         var meta = MOOD.MOOD_META[mk] || {};
-        el.innerHTML = MOOD.moodSvg(mk, 'mico', meta.name || mk);
+        el.innerHTML = azhangHeadSvg();
       }
     }
   }
@@ -1763,7 +1765,6 @@
   /** 渲染「理财专家」Tab：专属建议 + 理财学院（团购省钱已移到「省钱助手」面板） */
   function renderCoachPanel() {
     renderCoachTips();
-    renderCoachAcademy();
     renderPersona();
   }
 
@@ -1850,29 +1851,6 @@
       (rows !== '' ? '<div class="coach-res-title">学习资源</div>' + rows : '') +
       (note !== '' ? '<div class="coach-res-note">' + note + '</div>' : '') +
       '</div>';
-  }
-
-  /**
-   * 理财学院：知识卡列表（COACH.ACADEMY）。
-   * 列表只渲染标题行；点击整行弹详情弹窗（openAcademyLessonModal），
-   * 详细内容（原理 / 步骤 / 清单）全部收进弹窗，列表保持一屏多行。
-   */
-  function renderCoachAcademy() {
-    var box = $('coachAcademy');
-    if (!box) { return; }
-    var html = '';
-    for (var i = 0; i < COACH.ACADEMY.length; i++) {
-      var l = COACH.ACADEMY[i];
-      html += '<div class="coach-lesson" data-lesson="' + esc(l.id) + '">' +
-        '<button type="button" class="coach-lesson-head">' +
-        '<span class="coach-lesson-ico">' + ic(l.icon, null, null) + '</span>' +
-        '<span class="coach-lesson-title">' + esc(l.title) + '</span>' +
-        '<span class="coach-lesson-tag">' + esc(l.tag) + '</span>' +
-        '<span class="coach-lesson-arrow">›</span>' +
-        '</button>' +
-        '</div>';
-    }
-    box.innerHTML = html;
   }
 
   /**
@@ -2220,7 +2198,7 @@
   function openEngelModal() {
     var ov = getOverview();
     var pct = Math.round(ov.engel.percent);
-    var food = ENG.round2(ov.cycleAgg.byCategory['餐饮'] || 0);
+    var food = foodGroupTotal(ov.cycleAgg.byCategory);
     var expense = ENG.round2(ov.cycleAgg.expense);
     var passedDays = Math.max(1, ov.cycle.passedDays);
 
@@ -2412,10 +2390,16 @@
   }
 
   /**
-   * 进入理财学院并定位到学院区。
-   * 视图映射交给 switchView（简洁版自动映射到 scoach），此处不硬编码视图名。
+   * 进入理财学院。
+   * 学院已整体内嵌进单文件主应用（页尾「理财学院 · 应用内嵌入层」，
+   * 全屏 iframe 展示，进度同源 localStorage 直读），优先走嵌入层；
+   * 嵌入层脚本尚未就绪（极端时序）时降级为旧的滚动定位。
    */
   function openAcademy() {
+    if (typeof window !== 'undefined' && typeof window.openAcademyOverlay === 'function') {
+      window.openAcademyOverlay();
+      return;
+    }
     switchView('coach');
     scrollAcademyIntoView();
   }
@@ -2604,7 +2588,7 @@
     if (ring) {
       ring.style.strokeDasharray = RING_C + ' ' + RING_C;
       ring.style.strokeDashoffset = String(RING_C * (1 - ratio));
-      ring.style.stroke = bs.status === 'danger' ? '#EF5350' : (bs.status === 'tight' ? '#FF8A3D' : '#07C160');
+      ring.style.stroke = bs.status === 'danger' ? '#EF5350' : (bs.status === 'tight' ? '#FF8A3D' : skinGreen());
     }
     $('ringRemaining').textContent = money(bs.remaining);
     $('ringPercent').textContent = '剩余 ' + Math.round(ratio * 100) + '%';
@@ -2641,7 +2625,7 @@
     if (ov.engel.alert) {
       engelCard.className = 'card card-engel alert';
       $('engelBadge').className = 'badge badge-soft warn';
-      var food = ENG.round2(ov.cycleAgg.byCategory['餐饮'] || 0);
+      var food = foodGroupTotal(ov.cycleAgg.byCategory);
       // 业务规则 3：餐饮占比 > 60% 时提示，文案按《记账与预算业务规则》
       $('engelText').textContent = '本月餐饮占比过高，建议多去南海北区食堂少点外卖。本月餐饮已花 ' +
         money(food) + '，把外卖和奶茶压掉两成，还能省回约 ' + money(food * 0.2) + '。';
@@ -2696,6 +2680,17 @@
       offset += len;
     }
     return parts.join('');
+  }
+
+  /** 食物组合计（恩格尔口径：餐饮 + 外卖/蔬菜/买菜/水果/零食/饮品，见 DATA.FOOD_CATEGORIES）。 */
+  function foodGroupTotal(byCategory) {
+    var list = (DATA.FOOD_CATEGORIES && DATA.FOOD_CATEGORIES.length) ? DATA.FOOD_CATEGORIES : ['餐饮'];
+    var sum = 0;
+    var i;
+    for (i = 0; i < list.length; i++) {
+      sum += ENG.round2(byCategory && byCategory[list[i]] || 0);
+    }
+    return ENG.round2(sum);
   }
 
   function getCategorySlices(byCategory) {
@@ -2780,7 +2775,7 @@
       var cx = padL + step * i + step / 2;
       var h = day.value > 0 ? Math.max(3, day.value / scaleMax * chartH) : 2;
       var y = padT + chartH - h;
-      var color = day.isToday ? '#07C160' : '#D7DDE5';
+      var color = day.isToday ? skinGreen() : '#D7DDE5';
       if (day.isToday && day.value > max * 0.6) { color = '#FF8A3D'; }
       parts.push('<rect x="' + (cx - barW / 2) + '" y="' + y + '" width="' + barW + '" height="' + h +
         '" rx="4" fill="' + color + '"></rect>');
@@ -2789,7 +2784,7 @@
           (day.value >= 1000 ? Math.round(day.value / 100) / 10 + 'k' : Math.round(day.value)) + '</text>');
       }
       parts.push('<text x="' + cx + '" y="' + (H - 7) + '" text-anchor="middle" font-size="9" fill="' +
-        (day.isToday ? '#07C160' : '#A9B1BC') + '"' + (day.isToday ? ' font-weight="600"' : '') + '>' +
+        (day.isToday ? skinGreen() : '#A9B1BC') + '"' + (day.isToday ? ' font-weight="600"' : '') + '>' +
         (day.isToday ? '今天' : day.label) + '</text>');
     }
     svg.innerHTML = parts.join('');
@@ -2910,7 +2905,7 @@
         var isIncome = b.type === 'income';
         var time = spTimeOf(b);
         html += '<li class="bill-item">' +
-          '<span class="bill-dot" style="background:' + (isIncome ? '#07C160' : categoryColor(b.category)) + '"></span>' +
+          '<span class="bill-dot" style="background:' + (isIncome ? skinGreen() : categoryColor(b.category)) + '"></span>' +
           '<span class="bill-main">' +
           '<span class="bill-note">' + esc(b.note) + '</span>' +
           '<span class="bill-meta">' + esc(time ? time + ' · ' : '') + esc(isIncome ? '收入' : b.category) + '</span>' +
@@ -3394,7 +3389,7 @@
     if (ring) {
       ring.style.strokeDasharray = C + ' ' + C;
       ring.style.strokeDashoffset = String(C * (1 - ratio));
-      ring.style.stroke = pct >= 90 ? '#EF5350' : (pct >= 70 ? '#FF8A3D' : '#07C160');
+      ring.style.stroke = pct >= 90 ? '#EF5350' : (pct >= 70 ? '#FF8A3D' : skinGreen());
     }
     var slices = getCategorySlices(ov.cycleAgg.byCategory);
     var h = '';
@@ -3484,19 +3479,10 @@
     $('spMenuSaveHub').addEventListener('click', function () { switchView('ssave'); });
     $('spMenuAbout').addEventListener('click', openTermsModal);
     $('btnAiBack').addEventListener('click', function () { goBackView(); });
-    $('spUiSeg').addEventListener('change', function (e) {
-      var input = (e.target && e.target.closest) ? e.target.closest('input[name="spUiMode"]') : null;
-      if (!input) { return; }
-      setUiMode(input.value);
-    });
-    /* 同 #setUiModeSeg：点「已选中」的档位也视为显式确认，补打 uiModePicked */
-    $('spUiSeg').addEventListener('click', function (e) {
-      var input = (e.target && e.target.closest) ? e.target.closest('input[name="spUiMode"]') : null;
-      if (input && input.checked && state && !state.uiModePicked) {
-        state.uiModePicked = true;
-        saveState();
-      }
-    });
+    /* 简洁版「设置」：2026-10-29 起与完整版共用同一个 #settingsPage 完整设置面板，
+       旧的内联「界面风格」残缺卡（spUiSeg，只有 UI 类型）已从「我的」页移除。
+       UI 类型切换与 uiModePicked 补打语义由面板里的 #setUiModeSeg 监听承担。 */
+    $('spMenuSettings').addEventListener('click', openDrawer);
   }
 
   /* ================================================================== */
@@ -5734,23 +5720,15 @@
   /* 设置抽屉                                                            */
   /* ================================================================== */
 
+  /**
+   * 打开统一设置面板（#settingsPage）。
+   * 2026-10-29 起预算设置 / 云 OCR / 数据管理已并入完整设置界面，
+   * 旧的侧边抽屉 #settingsDrawer 删除，本函数保留为兼容别名：
+   * 供 简洁版「预算设置」/「设置预算」命令 / OCR 失败跳转 复用，
+   * 输入框回填统一由 renderSettingsPage() 负责。
+   */
   function openDrawer() {
-    $('setTotal').value = String(state.budget.total);
-    $('setPayday').value = String(state.budget.payday);
-    $('setCooldown').value = String(state.budget.cooldownThreshold);
-    renderCycleInfo();
-    var cred = OCR.getCredentials();
-    $('setOcrId').value = cred.secretId || '';
-    $('setOcrKey').value = cred.secretKey || '';
-    $('setOcrRegion').value = cred.region || 'ap-guangzhou';
-    renderOcrState();
-    var mask = $('drawerMask');
-    mask.hidden = false;
-    setTimeout(function () {
-      mask.classList.add('show');
-      $('settingsDrawer').classList.add('open');
-      $('settingsDrawer').setAttribute('aria-hidden', 'false');
-    }, 10);
+    openSettingsPage();
   }
 
   /** 设置抽屉顶部的周期说明 */
@@ -5804,14 +5782,6 @@
     renderOcrState();
   }
 
-  function closeDrawer() {
-    var mask = $('drawerMask');
-    mask.classList.remove('show');
-    $('settingsDrawer').classList.remove('open');
-    $('settingsDrawer').setAttribute('aria-hidden', 'true');
-    setTimeout(function () { mask.hidden = true; }, 220);
-  }
-
   function saveSettings() {
     var total = Number($('setTotal').value);
     var payday = Number($('setPayday').value);
@@ -5820,7 +5790,8 @@
     state.budget.payday = Math.round(clampNumber(payday, 1, 28, state.budget.payday));
     state.budget.cooldownThreshold = clampNumber(cooldown, 0, 9999999, state.budget.cooldownThreshold);
     saveState();
-    closeDrawer();
+    /* 统一设置面板后保存不再整页关闭：留在原地刷新周期行，用户可继续改其他设置 */
+    renderCycleInfo();
     renderAll();
     var ov = getOverview();
     addAIMessage(aiBubble('设置已更新：生活费 ' + money(state.budget.total) + '，发钱日 ' +
@@ -5882,12 +5853,18 @@
   /** 把主题与字体档位应用到 <html data-theme> / body class 上 */
   function applyAppearance() {
     var root = DOC.documentElement;
-    if (root) { root.setAttribute('data-theme', resolveTheme()); }
+    if (root) { root.setAttribute('data-theme', resolveTheme()); root.setAttribute('data-skin', getSettings().skin === 'academy' ? 'academy' : 'app'); }
     var body = DOC.body;
     if (!body) { return; }
     body.classList.remove('font-scale-sm', 'font-scale-lg', 'font-scale-xl');
     var cls = FONT_SCALE_CLASS[getSettings().fontScale];
     if (cls) { body.classList.add(cls); }
+  }
+
+  /** 当前皮肤下的「正向 / 品牌」主色：记账同款=微信绿，学习台紫=靛紫。
+      宠物角色绿（PET_TINT / 阿账 SVG）不调用本函数，保持原绿。 */
+  function skinGreen() {
+    return getSettings().skin === 'academy' ? '#4f46e5' : '#07C160';
   }
 
   /** 窄屏（手机）判定阈值：视口宽度 ≤ 640px 视为手机形态。
@@ -6037,10 +6014,22 @@
     checkRadioGroup('setThemeMode', st.theme);
     checkRadioGroup('setFontScale', st.fontScale);
     checkRadioGroup('setLang', st.lang);
+    checkRadioGroup('setSkin', st.skin);
     checkRadioGroup('setUiMode', state.uiMode);
     $('setSwitchAlbum').checked = st.privacy.album;
     $('setSwitchClipboard').checked = st.privacy.clipboard;
     $('setCacheValue').textContent = estimateCacheSize();
+    /* ---- 预算设置 / 云 OCR：2026-10-29 从 #settingsDrawer 并入本面板，
+       无论从齿轮还是简洁版入口打开，输入框都要回填当前值 ---- */
+    $('setTotal').value = String(state.budget.total);
+    $('setPayday').value = String(state.budget.payday);
+    $('setCooldown').value = String(state.budget.cooldownThreshold);
+    renderCycleInfo();
+    var ocrCred = OCR.getCredentials();
+    $('setOcrId').value = ocrCred.secretId || '';
+    $('setOcrKey').value = ocrCred.secretKey || '';
+    $('setOcrRegion').value = ocrCred.region || 'ap-guangzhou';
+    renderOcrState();
     /* ---- 说话风格：3 张卡片按当前 tone 勾选（卡片本身由 HTML 静态渲染） ---- */
     checkRadioGroup('setTone', TONE.normalize(st.tone));
     /* ---- 单日支出上限：0 = 关闭「单日超支」诊断规则 ---- */
@@ -6189,6 +6178,20 @@
       var input = (e.target && e.target.closest) ? e.target.closest('input[name="setUiMode"]') : null;
       if (!input) { return; }
       setUiMode(input.value);
+    });
+    $('setSkinSeg').addEventListener('change', function (e) {
+      var input = (e.target && e.target.closest) ? e.target.closest('input[name="setSkin"]') : null;
+      if (!input) { return; }
+      getSettings().skin = input.value;
+      /* persistSettings 内部会调 applyAppearance()：更新 <html data-skin>，
+         让 CSS 覆盖段（按钮 / Hero / 渐变等）即时生效；
+         但预算环、趋势日历、明细收入点、分析图表的颜色是渲染时用
+         skinGreen() 算好的内联色，必须重渲染才会跟着换 —— 不补这一步
+         就会出现「切换后环还是绿的，刷新才变」的割裂感（用户实测反馈）。 */
+      persistSettings();
+      renderAll();
+      renderAnalysis();   // 分析区图表不在 renderAll 内，单独补一次（函数自带空容器保护）
+      showToast(input.value === 'academy' ? '已切换到学习台紫' : '已切换回记账同款');
     });
     /* 点「已选中」的 radio 不会触发 change（DOM 标准行为），但用户的点击本身就是一次
        显式确认 —— 补打 uiModePicked。否则窄屏被自动带进来的用户（picked=false）
@@ -6597,7 +6600,7 @@
     var ov = getOverview();
     var bs = ov.budgetState;
     var ratio = state.budget.total > 0 ? Math.max(0, Math.min(100, bs.remaining / state.budget.total * 100)) : 0;
-    var barColor = bs.status === 'danger' ? '#EF5350' : (bs.status === 'tight' ? '#FF8A3D' : '#07C160');
+    var barColor = bs.status === 'danger' ? '#EF5350' : (bs.status === 'tight' ? '#FF8A3D' : skinGreen());
     var html = '' +
       '<div class="bubble ai">帮你查了下这个周期（' + esc(ov.cycle.start) + ' ~ ' + esc(ov.cycle.end) + '）</div>' +
       '<div class="bill-card">' +
@@ -7492,7 +7495,7 @@
       /* 收支对比：一眼看出这个月是「收大于支」还是「入不敷出」 */
       anaColsHtml([
         { label: '总支出', value: ov.expense, color: '#F2643C' },
-        { label: '总收入', value: ov.income, color: '#07C160' }
+        { label: '总收入', value: ov.income, color: skinGreen() }
       ], { height: 112 }) +
       '<div class="sec-note">' + (ov.balance >= 0
         ? '收入比支出多 ' + money(ov.balance) + '，这个月是攒下钱了的。'
@@ -7584,7 +7587,7 @@
           sub: '笔均 ' + money(x.avg),
           value: x.count,
           text: money(x.amount),
-          color: '#07C160'
+          color: skinGreen()
         };
       });
       merBody = anaRankHtml(merItems) +
@@ -7598,7 +7601,7 @@
     html += reportSection('5. 周末 vs 工作日', '' +
       anaColsHtml([
         { label: '周末日均', value: wv.weekend.avg, color: '#F2643C', sub: wv.weekend.days + ' 天' },
-        { label: '工作日日均', value: wv.weekday.avg, color: '#07C160', sub: wv.weekday.days + ' 天' }
+        { label: '工作日日均', value: wv.weekday.avg, color: skinGreen(), sub: wv.weekday.days + ' 天' }
       ]) +
       '<div class="ana-tiles">' +
       '<div class="ana-tile"><b>' + wv.weekend.count + ' 笔 / ' + money(wv.weekend.amount) + '</b>' +
@@ -7729,7 +7732,7 @@
         '<span class="rs-chip">' + (f.ok ? esc(f.encoding || '') + ' · 第 ' + f.headerRow + ' 行表头'
           : '解析失败') + '</span></div>' +
         anaStackHtml([
-          { label: '有效记录', value: f.records, color: '#07C160' },
+          { label: '有效记录', value: f.records, color: skinGreen() },
           { label: '前置说明行', value: f.skippedBefore || 0, color: '#C9CFD8' },
           { label: '无效数据行', value: f.skipped || 0, color: '#EF4444' }
         ], { text: function (s) { return s.value + ' 行'; } }) +
@@ -8272,14 +8275,14 @@
   }
 
   /**
-   * 失败态「配置云 OCR」：关掉识别弹窗，打开设置抽屉并滚到云 OCR 区。
-   * 抽屉里输入框有 id，用 closest 找区块，避免为了锚点多加 DOM 结构。
+   * 失败态「配置云 OCR」：关掉识别弹窗，打开统一设置面板并滚到云 OCR 区。
+   * 面板里输入框有 id，用 closest 找区块，避免为了锚点多加 DOM 结构。
    */
   function openOcrCloudSettings() {
     closeOcrModal();
     openDrawer();
     var idInput = $('setOcrId');
-    var section = idInput && idInput.closest ? idInput.closest('.drawer-group') : null;
+    var section = idInput && idInput.closest ? idInput.closest('.set-group') : null;
     var target = section || idInput;
     if (!target) { return; }
     setTimeout(function () {
@@ -12269,7 +12272,7 @@
       var goBtn = DOC.createElement('button');
       goBtn.type = 'button';
       goBtn.className = 'mascot-bar-go';
-      goBtn.textContent = '走一个';
+      goBtn.textContent = '查看';
       goBtn.addEventListener('click', function () {
         var c = goBtn.getAttribute('data-cmd');
         if (c) { handleSend(c); }
@@ -12304,19 +12307,17 @@
       } else if (skin === 'pro') {
         av.innerHTML = mascotBarProHead(prof);
       } else {
-        av.innerHTML = MOOD.moodSvg(key, 'mico', meta.name || key);
+        av.innerHTML = azhangHeadSvg();
       }
     }
     var txt = bar.querySelector('.mascot-bar-text');
-    if (txt) {
-      var line = MOOD.line({ ov: ov, state: state, money: money });
-      if (line) { txt.textContent = line; }
-    }
+    var lnInfo = MOOD.line({ ov: ov, state: state, money: money });
+    if (txt) { if (lnInfo) { txt.textContent = lnInfo.text; } }
     var go = bar.querySelector('.mascot-bar-go');
-    var cmd = meta.cmd || '查余额';
     if (go) {
-      go.setAttribute('data-cmd', cmd);
-      go.setAttribute('aria-label', '发送推荐问题：' + cmd);
+      go.setAttribute('data-cmd', lnInfo ? lnInfo.cmd : '查余额');
+      go.textContent = lnInfo ? lnInfo.goLabel : '查看';
+      go.setAttribute('aria-label', '发送推荐问题：' + (lnInfo ? lnInfo.cmd : '查余额'));
     }
   }
   function maybeProactiveHint() {
@@ -12694,8 +12695,6 @@
 
     $('btnAddGoal').addEventListener('click', openGoalModal);
     $('btnSettings').addEventListener('click', openSettingsPage);
-    $('btnCloseDrawer').addEventListener('click', closeDrawer);
-    $('drawerMask').addEventListener('click', closeDrawer);
     $('btnSaveSettings').addEventListener('click', saveSettings);
     $('btnCycleReset').addEventListener('click', restorePaydayCycle);
     $('btnSaveOcr').addEventListener('click', saveOcrCredentials);
@@ -12704,7 +12703,7 @@
     /* ---- 顶栏「＋ 记一笔」快捷记账 ---- */
     $('btnQuickAdd').addEventListener('click', openQuickAddModal);
 
-    /* ---- 设置抽屉 · 数据管理 ---- */
+    /* ---- 统一设置面板 · 数据管理（原设置抽屉迁入） ---- */
     $('btnDrawerExport').addEventListener('click', exportAllCsv);
     $('btnDrawerImport').addEventListener('click', openImportSheet);
     $('btnDrawerReset').addEventListener('click', confirmReset);
@@ -13089,19 +13088,22 @@
       showSavingsTodayCard();
     });
     /* ---- 理财学院：点击条目弹详情弹窗 + 资源区复制 ---- */
-    $('coachAcademy').addEventListener('click', function (e) {
-      var tgt = e.target;
-      var copyBtn = (tgt && tgt.closest) ? tgt.closest('[data-copy]') : null;
-      if (copyBtn) {
-        e.preventDefault();
-        coachCopyResource(copyBtn);
-        return;
-      }
-      var head = (tgt && tgt.closest) ? tgt.closest('.coach-lesson-head') : null;
-      if (!head) { return; }
-      var lesson = head.closest ? head.closest('.coach-lesson') : null;
-      if (lesson) { openAcademyLessonModal(lesson.getAttribute('data-lesson')); }
-    });
+    var coachAcademyBox = $('coachAcademy');
+    if (coachAcademyBox) {
+      coachAcademyBox.addEventListener('click', function (e) {
+        var tgt = e.target;
+        var copyBtn = (tgt && tgt.closest) ? tgt.closest('[data-copy]') : null;
+        if (copyBtn) {
+          e.preventDefault();
+          coachCopyResource(copyBtn);
+          return;
+        }
+        var head = (tgt && tgt.closest) ? tgt.closest('.coach-lesson-head') : null;
+        if (!head) { return; }
+        var lesson = head.closest ? head.closest('.coach-lesson') : null;
+        if (lesson) { openAcademyLessonModal(lesson.getAttribute('data-lesson')); }
+      });
+    }
     /* ---- 团购省钱卡：「在聊天里问我怎么省」直接跳到聊天并弹团购答案 ----
        事件委托挂在容器 #groupBuyBody 上：renderCoachGroupBuy() 会整块重写
        innerHTML，直接绑按钮的话节点一重建就失效。 */
@@ -13348,7 +13350,6 @@
         if ($('personaMask') && !$('personaMask').hidden) { closePersonaSheet(); }
         if ($('billFilterMask') && !$('billFilterMask').hidden) { closeBillFilterSheet(); }
         if (!$('ocrMask').hidden) { closeOcrModal(); }
-        if ($('settingsDrawer').classList.contains('open')) { closeDrawer(); }
         if ($('modalMask').hidden && !$('settingsMask').hidden) { closeSettingsPage(); }
       }
     });
@@ -13995,7 +13996,7 @@
       var fresh = (Date.now() - petActAt) < 600;
       if (!fresh && (key === 'cheer' || key === 'save' || key === 'mad' || key === 'stop')) {
         var line = MOOD.line({ ov: ov, state: state, money: money });
-        if (line) { petSay(line, PET_TINT[key] || '#07C160'); }
+        if (line && line.text) { petSay(line.text, PET_TINT[key] || '#07C160'); }
       }
     }
     applyPetVisibility();
@@ -14048,7 +14049,41 @@
    * mascot.js 没打进包时退回手画笑脸，别让按钮空着没东西看。
    * @returns {string} 内联 SVG 字符串
    */
-  function petRecallIcon() {
+  
+  /* 阿账「头像」= 桌面宠物本体那张 PNG（同一个 .aj-pet-face），不再另画一套不像的 mico。
+     聊天消息头像 / 选宠卡片 / 唤回图标 / 播报条头像 全部复用它，保证头像和萌宠本体永远一致
+     （2026-10 用户反馈：头像一点都不像）。运行时从 .aj-pet-face 的 background-image 抽本体图，
+     不把 55KB 的 PNG 再打包一遍。 */
+  var __azhangFaceCache = null;
+  function azhangFaceSrc() {
+    if (__azhangFaceCache !== null) { return __azhangFaceCache; }
+    var src = '';
+    try {
+      var d = document.createElement('div');
+      d.className = 'aj-pet-face';
+      d.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;';
+      document.body.appendChild(d);
+      var bi = (getComputedStyle(d).backgroundImage || '');
+      document.body.removeChild(d);
+      var m = bi.match(/url\(\s*["']?(data:[^"')]+)["']?\s*\)/);
+      if (m) { src = m[1]; }
+    } catch (e) { src = ''; }
+    __azhangFaceCache = src;
+    return src;
+  }
+  function azhangHeadSvg() {
+    var src = azhangFaceSrc();
+    if (!src) {
+      /* mascot.js 没打进包时的兜底：退回原来的 mico，别让头像空着 */
+      return (typeof MOOD !== 'undefined' && MOOD && typeof MOOD.moodSvg === 'function')
+        ? MOOD.moodSvg('cheer', 'mico', '阿账') : '';
+    }
+    return '<svg class="azhang-head" viewBox="0 0 258 360" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;width:100%;height:100%" role="img" aria-label="阿账">' +
+      '<image href="' + src + '" xlink:href="' + src + '" x="0" y="0" width="258" height="360"/></svg>';
+  }
+
+function petRecallIcon() {
     if (!MOOD || MOOD.missing) {
       return '<svg class="pet-recall-ico" viewBox="0 0 24 24" aria-hidden="true">' +
         '<circle cx="12" cy="12" r="8.4"/>' +
@@ -14063,7 +14098,7 @@
       var prof = (pp && typeof pp._profile === 'function') ? pp._profile() : null;
       if (prof) { return mascotBarProHead(prof); }
     }
-    return MOOD.moodSvg('cheer', 'pet-recall-ico', petDisplayName());
+    return azhangHeadSvg();
   }
 
   /** 取（必要时建）右下角那颗唤回按钮 */
@@ -14308,7 +14343,7 @@
     function petPickArt(skin) {
       var sp, pp;
       if (skin === 'azhang') {
-        return (typeof MOOD.moodSvg === 'function') ? MOOD.moodSvg('cheer', 'mico', '阿账') : ic('user', '', '');
+        return azhangHeadSvg();
       }
       if (skin === 'sprite') {
         sp = global.AJ && global.AJ.petSprite;

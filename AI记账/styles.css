@@ -3351,6 +3351,11 @@ h3 {
   animation: ocr-cred-flash 1.4s ease-out;
 }
 
+/* 统一设置面板（#settingsPage）定位到云 OCR 区时的短暂高亮（2026-10-29 迁入） */
+.set-group.flash {
+  animation: ocr-cred-flash 1.4s ease-out;
+}
+
 @keyframes ocr-cred-flash {
   0% {
     box-shadow: 0 0 0 0 rgba(255, 138, 61, 0.55);
@@ -4721,20 +4726,52 @@ body.font-scale-xl .set-arrow { font-size: 18.5px; }
   background: var(--line);
 }
 
-/* 理财学院 → 独立学习台跳转链接（新窗口打开 ../理财学院/理财学院.html） */
+/* 理财学院分节行右侧的入口（应用内全屏打开嵌入层）。
+   与看板「全部 ›」.btn-mini 同尺寸的品牌色小按钮（28px 高、12px 字）；
+   用 --green 系变量，紫色皮肤下由 data-skin 覆盖段自动换色。 */
 .dash-sec-link {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 9px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--brand);
+  color: var(--green);
+  background: var(--green-soft, rgba(7, 193, 96, .10));
   text-decoration: none;
   white-space: nowrap;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--brand-soft, rgba(99, 102, 241, .10));
-  transition: transform .15s, filter .15s;
+  transition: transform .15s ease, filter .15s ease;
 }
-.dash-sec-link:active { transform: scale(.96); }
-.dash-sec-link:hover { filter: brightness(1.05); }
+.dash-sec-link:active { transform: scale(.95); }
+.dash-sec-link:hover { filter: brightness(1.04); }
+.dash-sec-link:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+
+/* 理财学院入口卡：与 .coach-tip 同语言（白卡 + 左绿条 + 图标标题行 + 正文小字） */
+.aca-card {
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  border-left: 3px solid var(--green);
+  margin-top: 8px;
+}
+.aca-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text);
+}
+.aca-card-ico { flex: 0 0 auto; color: var(--green); display: flex; }
+.aca-card-title { font-weight: 600; flex: 1 1 auto; min-width: 0; }
+.aca-card-text {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+.aca-card-text b { color: var(--green); font-weight: 600; }
 
 /* 预算焦点卡：状态芯片（与预算条同语言） */
 .badge.state-safe { background: var(--green-soft); color: var(--green-ink); }
@@ -9759,8 +9796,8 @@ body[data-view="spiggy"] #panelSimplePiggy { display: flex; }
 body[data-view="chat"] .mascot,
 body[data-view="sai"] .mascot { bottom: 250px; }
 
-/* 设置抽屉打开时把小猪收起来：抽屉(41)低于小猪(90)，不收会浮在设置面板上 */
-body:has(#settingsDrawer[aria-hidden="false"]) .mascot { display: none; }
+/* 统一设置面板打开时把小猪收起来：面板(41)低于小猪(90)，不收会浮在设置面板上 */
+body:has(#settingsMask:not([hidden])) .mascot { display: none; }
 
 /* 记一笔等普通弹窗打开时：小猪从聊天位落回右下角，避开垂直居中的卡片与按钮 */
 body:has(.modal-mask:not([hidden])) .mascot {
@@ -10825,8 +10862,8 @@ body:has(.modal-mask:not([hidden])) .mascot {
 body[data-view="chat"] .pm-mascot,
 body[data-view="sai"] .pm-mascot { bottom: 250px; }
 
-/* 设置抽屉打开时收起来：抽屉(41) 低于宠物(60)，不收会浮在面板上 */
-body:has(#settingsDrawer[aria-hidden="false"]) .pm-mascot { display: none; }
+/* 统一设置面板打开时收起来：面板(41) 低于宠物(60)，不收会浮在面板上 */
+body:has(#settingsMask:not([hidden])) .pm-mascot { display: none; }
 
 /* 记一笔等普通弹窗打开：落回右下角，避开垂直居中的卡片与按钮 */
 body:has(.modal-mask:not([hidden])) .pm-mascot {
@@ -12307,4 +12344,40 @@ body[data-view="dazai"] .panel-dazai {
   padding: 0 2px;
   font-size: 12px;
   color: var(--text-3);
+}
+
+/* ============ 界面风格：学习台紫（data-skin="academy"） ============ */
+/* 默认（记账同款）为微信绿，由 :root 的 --green* 提供；
+   选择「学习台紫」时整体把品牌绿替换为靛紫，宠物角色绿（PET_TINT / 阿账 SVG）保持原绿。 */
+[data-skin="academy"] {
+  --green: #4f46e5;
+  --green-dark: #4338ca;
+  --green-deep: #3730a3;
+  --green-ink: #4338ca;
+  --green-soft: #ede9fe;
+  --sp-green: #4f46e5;
+  --sp-green-dark: #4338ca;
+}
+[data-skin="academy"] .logo { background: linear-gradient(135deg, #4f46e5, #4338ca); }
+[data-skin="academy"] .goal-bar i { background: linear-gradient(90deg, #818cf8, #4f46e5); }
+[data-skin="academy"] .sp-hero { background: linear-gradient(135deg, #4f46e5, #4338ca); }
+[data-skin="academy"] .sp-ai-ico {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+}
+[data-skin="academy"] .piggy-hero { background: linear-gradient(135deg, #4f46e5, #4338ca); }
+
+/* 暗色 + 紫皮肤：亮紫更适配深底 */
+[data-theme="dark"][data-skin="academy"] {
+  --green: #818cf8;
+  --green-dark: #6366f1;
+  --green-deep: #4f46e5;
+  --green-ink: #a5b4fc;
+  --green-soft: rgba(99, 102, 241, 0.18);
+  --sp-green: #818cf8;
+  --sp-green-dark: #6366f1;
+}
+[data-theme="dark"][data-skin="academy"] .piggy-hero {
+  background: linear-gradient(135deg, #4338ca, #312e81);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }

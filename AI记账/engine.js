@@ -27,7 +27,7 @@
   var ALL_MERCHANTS = DATA.MERCHANTS;
   var COOLDOWN_KEYWORDS = DATA.COOLDOWN_KEYWORDS;
 
-  /** 业务规则：餐饮支出占比超过 60% 触发恩格尔预警 */
+  /** 业务规则：食物组（餐饮+各餐饮子类）支出占比超过 60% 触发恩格尔预警 */
   var ENGEL_ALERT_RATIO = 0.6;
 
   var MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -426,8 +426,16 @@
    * @return {{ratio:number, percent:number, alert:boolean}}
    */
   function getEngel(byCategory, totalExpense) {
-    var food = num(byCategory && byCategory['餐饮']);
+    /* 餐饮拆出外卖/蔬菜/买菜/水果/零食/饮品子类后，恩格尔必须按食物组求和，
+       否则只数「餐饮」桶会严重低估（外部通过 DATA.FOOD_CATEGORIES 配置）。 */
+    var FOOD_CATEGORIES = (DATA.FOOD_CATEGORIES && DATA.FOOD_CATEGORIES.length)
+      ? DATA.FOOD_CATEGORIES : ['餐饮'];
+    var food = 0;
     var total = num(totalExpense);
+    var i;
+    for (i = 0; i < FOOD_CATEGORIES.length; i++) {
+      food += num(byCategory && byCategory[FOOD_CATEGORIES[i]]);
+    }
     var ratio = total > 0 ? food / total : 0;
     var percent = round2(ratio * 100);
     return { ratio: ratio, percent: percent, alert: percent > 60 };

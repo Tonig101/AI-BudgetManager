@@ -343,14 +343,14 @@
    * when(ctx) 的 ctx = { ov, state, money }。
    */
   var POOLS = [
-    { key: 'G1',
+    { key: 'G1', cmd: '本月花销饼图', goLabel: '看饼图',
       when: function (c) { return !!(c.ov && c.ov.engel && c.ov.engel.alert === true); },
       lines: {
         gentle: ['餐饮已经占了 {engel}% 啦，这顿要不要先缓缓？我把附近食堂今天最便宜的几样翻给你看看。'],
         strict: ['{engel}% 都进肚子了。明天起午饭上限 {allow}，别跟我讨价还价。'],
         rational: ['恩格尔系数 {engel}%（健康线 60%）。按这个比例外推，本周期餐饮将吃掉约 {surplus} 的月度结余。']
       } },
-    { key: 'G2',
+    { key: 'G2', cmd: '存一笔', goLabel: '再存一笔',
       when: function (c) {
         return num(c.ov && c.ov.piggyBalance) > 0 &&
           !!(c.state && Array.isArray(c.state.goals) && c.state.goals.length > 0);
@@ -360,7 +360,7 @@
         strict: ['罐子里 {piggy}，离 {goal} 还差 {gap}。别高兴太早，继续。'],
         rational: ['存钱罐余额 {piggy}，目标「{goal}」完成 {pct}%，缺口 {gap}。']
       } },
-    { key: 'G3',
+    { key: 'G3', cmd: '存一笔', goLabel: '存一笔',
       when: function (c) {
         var p = goalPercent(nearestGoal(c));
         return p >= 80 && p < 100;
@@ -370,14 +370,14 @@
         strict: ['已经 {pct}%，就差 {gap}。这时候掉链子，前面全白攒。'],
         rational: ['目标「{goal}」完成 {pct}%，缺口 {gap}；按当前月度结余 {surplus} 推算，约 {months} 个月可达，比 deadline 早。']
       } },
-    { key: 'G4',
+    { key: 'G4', cmd: '怎么省钱', goLabel: '怎么省',
       when: function (c) { return !!(c.ov && c.ov.budgetState && c.ov.budgetState.isOver === true); },
       lines: {
         gentle: ['这个周期超了 {over}。别慌，账我替你摊开在这儿，咱们一笔一笔把它补回去。'],
         strict: ['超 {over}。接下来 {days} 天，非必要一律不准，我来盯。'],
         rational: ['周期已超支 {over}，剩余 {days} 天日均可用 0。建议冻结非必需分类支出，优先保障餐饮。']
       } },
-    { key: 'G5',
+    { key: 'G5', cmd: '怎么省钱', goLabel: '怎么省',
       when: function (c) {
         var bs = c.ov && c.ov.budgetState;
         return !!bs && bs.status === 'danger' && bs.isOver !== true;
@@ -387,7 +387,7 @@
         strict: ['{days} 天，日均 {allow}。吃土预警已经亮了，给我收着点。'],
         rational: ['日均可用 {allow}（吃土线 20 元），剩余 {days} 天，周期预算已消耗 {spendPct}%。']
       } },
-    { key: 'G6',
+    { key: 'G6', cmd: '怎么省钱', goLabel: '怎么省',
       when: function (c) {
         var bs = c.ov && c.ov.budgetState;
         return !!bs && bs.status === 'tight';
@@ -397,7 +397,7 @@
         strict: ['日均 {allow}，进偏紧区间了。今天花出去的 {today}，自己看着办。'],
         rational: ['日均可用 {allow}（安全线 40 元），今日已支出 {today}，占日均 {todayPct}%。']
       } },
-    { key: 'G7',
+    { key: 'G7', cmd: '加心愿单', goLabel: '加心愿单',
       when: function (c) {
         return !!(c.state && num(c.state.blockedCount) >= 1 && num(c.state.savedMoney) > 0);
       },
@@ -406,7 +406,7 @@
         strict: ['{blocked} 次拦截，{saved} 没花出去。早听我的，早省心。'],
         rational: ['冷静期累计拦截 {blocked} 笔，留存 {saved}，相当于本月预算的 {savedPct}%。']
       } },
-    { key: 'G8',
+    { key: 'G8', cmd: '本月花销饼图', goLabel: '看饼图',
       when: function (c) {
         var bs = c.ov && c.ov.budgetState;
         var p = (c.ov && c.ov.engel) ? num(c.ov.engel.percent) : 0;
@@ -708,9 +708,9 @@
     if (g) {
       var tone = toneOf();
       var arr = g.lines[tone] || g.lines.gentle || [''];
-      return fillVars(arr[0], c);
+      return { text: fillVars(arr[0], c), cmd: g.cmd || '查余额', goLabel: g.goLabel || '查看', groupKey: g.key };
     }
-    return fillVars(FALLBACK_LINES[0], c);
+    return { text: fillVars(FALLBACK_LINES[0], c), cmd: '查余额', goLabel: '查余额', groupKey: 'G0' };
   }
 
   /* ------------------------------------------------------------------ */
