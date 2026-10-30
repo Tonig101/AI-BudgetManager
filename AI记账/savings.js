@@ -33,13 +33,16 @@
   var CATS = READY ? DATA.CATS : [];
   var CERT_LABEL = { stable: '', varies: '力度常变', local: '以你学校为准' };
 
-  /** 场景码 → 人话（详情页「什么时候用」那一行） */
-  var SCENE_LABEL = {
-    always: '随时', weekday: '工作日', 'weekday-lunch': '工作日午餐', 'weekday-dinner': '工作日晚餐',
-    weekend: '周末', 'weekend-meal': '周末正餐', lunch: '午餐', dinner: '晚餐',
-    'late-dinner': '晚 8 点后', meal: '正餐', morning: '早餐', night: '夜间',
-    holiday: '节假日', seasonal: '换季 / 开学', monthly: '每月固定', weekly: '每周固定',
-    order: '下单那一刻', emergency: '应急'
+  /** 时段码 → 人话（三层分类之「时段」） */
+  var WHEN_LABEL = {
+    morning: '早餐时段', lunch: '午餐时段', dinner: '晚餐时段', night: '夜间',
+    'late-dinner': '晚 8 点后', meal: '正餐时段', weekday: '工作日', weekend: '周末',
+    'weekday-lunch': '工作日午餐', 'weekday-dinner': '工作日晚餐', 'weekend-meal': '周末正餐'
+  };
+  /** 频率码 → 人话（三层分类之「频率」；承接原 scene 里的频次词） */
+  var FREQ_LABEL = {
+    always: '随时', monthly: '每月固定', seasonal: '换季 / 开学', holiday: '节假日',
+    weekly: '每周固定', order: '下单那一刻', emergency: '应急'
   };
 
   /* ================================================================== */
@@ -187,7 +190,9 @@
    */
   function triggerText(entry) {
     var t = entry && entry.trigger;
-    if (!t) { return '随时可用'; }
+    if (!t) {
+      return entry && entry.freq ? (FREQ_LABEL[entry.freq] || '随时可用') : '随时可用';
+    }
     var parts = [], i;
 
     if (Array.isArray(t.weekday) && t.weekday.length) {
@@ -213,10 +218,22 @@
     return parts.length ? parts.join(' 或 ') : '随时可用';
   }
 
+  /** 场景 / 场合（三层分类之一；数据里 scene 直接存人话场合，如「连锁快餐」「校园食堂」） */
   function sceneText(entry) {
     var s = entry && entry.scene;
-    if (!s) { return '不限场景'; }
-    return SCENE_LABEL[s] || '不限场景';
+    return s ? s : '通用';
+  }
+
+  /** 时段（三层分类之一；无则返回空串，调用方自行决定是否展示） */
+  function whenText(entry) {
+    var w = entry && entry.when;
+    return w ? (WHEN_LABEL[w] || '') : '';
+  }
+
+  /** 频率（三层分类之一；无则返回空串） */
+  function freqText(entry) {
+    var f = entry && entry.freq;
+    return f ? (FREQ_LABEL[f] || '') : '';
   }
 
   /**
@@ -833,7 +850,8 @@
         }
         lines.push('- **能省多少**：' + amountLine);
         lines.push('- **什么时候能用**：' + mdText(triggerText(e)));
-        lines.push('- **用在哪**：' + mdText(sceneText(e)));
+        if (e.when) { lines.push('- **时段**：' + mdText(whenText(e))); }
+        lines.push('- **场景 / 场合**：' + mdText(sceneText(e)));
         lines.push('- **怎么做**：' + mdText(e.action));
         lines.push('- **门槛**：' + mdText(e.gate));
         lines.push('- **适合谁**：' + mdText(e.who));
@@ -876,7 +894,7 @@
     /* 计算 */
     estimateSave: estimateSave, saveText: saveText, saveRangeText: saveRangeText, ratioText: ratioText,
     matchTrigger: matchTrigger, rankToday: rankToday, scoreOne: scoreOne,
-    triggerText: triggerText, sceneText: sceneText,
+    triggerText: triggerText, sceneText: sceneText, whenText: whenText, freqText: freqText,
     search: search, entriesForBill: entriesForBill, byCat: byCat, byId: dataById,
 
     /* 打卡 */

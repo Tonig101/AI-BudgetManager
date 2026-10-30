@@ -5540,6 +5540,54 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
   color: var(--text-2);
 }
 
+/* 消费诊断 · 理论依据入口（跳理财学院《花钱的艺术》精读） */
+.doc-aca {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 11px;
+  background: var(--line-2, rgba(15, 23, 42, 0.045));
+  border-left: 3px solid var(--green);
+}
+
+.doc-aca b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.doc-aca b svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+  color: var(--green);
+}
+
+.doc-aca p {
+  margin: 5px 0 9px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--text-3);
+}
+
+.doc-aca-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid var(--green);
+  border-radius: 9px;
+  background: var(--green-soft, rgba(7, 193, 96, 0.10));
+  color: var(--green);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .15s ease, filter .15s ease;
+}
+
+.doc-aca-btn:hover { filter: brightness(1.04); }
+.doc-aca-btn:active { transform: scale(.97); }
+
 /* 成就里程碑 */
 .doc-ach {
   margin-top: 11px;
@@ -5694,6 +5742,22 @@ a.coach-res-item:active { background: var(--green-soft); }
   min-width: 0;
 }
 
+/* 链接形态小标：聊天气泡里先标清「单条视频 / UP 主主页 / 课程页 / 合集」 */
+.coach-res-kind {
+  display: inline-block;
+  margin-bottom: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.coach-res-kind.kind-home { background: var(--green-soft); color: var(--green-ink); }
+.coach-res-kind.kind-course { background: #e0e7ff; color: #4338ca; }
+
 .coach-res-label {
   display: block;
   font-size: 12px;
@@ -5835,6 +5899,13 @@ a.coach-res-item:active { background: var(--green-soft); }
   line-height: 16px;
   white-space: nowrap;
 }
+/* 视频 / 课程 / 主页三种形态：视频红、课程蓝、主页沿用绿 */
+.learn-badge.lb-clip { background: #fee2e2; color: #b91c1c; }
+.learn-badge.lb-course { background: #e0e7ff; color: #4338ca; }
+[data-theme="dark"] .learn-badge.lb-clip { background: rgba(248,113,113,.18); color: #fca5a5; }
+[data-theme="dark"] .learn-badge.lb-course { background: rgba(129,140,248,.18); color: #a5b4fc; }
+[data-theme="dark"] .coach-res-kind { background: rgba(248,113,113,.18); color: #fca5a5; }
+[data-theme="dark"] .coach-res-kind.kind-course { background: rgba(129,140,248,.18); color: #a5b4fc; }
 
 /* 箭头固定宽度并顶部对齐：文字换行时箭头不被挤压，也不会跑到行中间 */
 .learn-go {
@@ -12554,4 +12625,340 @@ body[data-view="dazai"] .panel-dazai {
 }
 [data-theme="dark"] .agent-steps li.bad .as-idx {
   background: rgba(239, 68, 68, 0.2);
+}
+
+/* 思考卡的身份标签：左边是角色名（跟随萌宠形象），紧随一枚「智能体」小标，
+   让评审一眼看出这是 Agent 在动手，而不是普通气泡里的自动回复。 */
+.agent-tag {
+  flex: 0 0 auto;
+  margin-left: -1px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.6;
+  letter-spacing: 0.3px;
+}
+@media (max-width: 420px) {
+  .agent-tag { display: none; }
+}
+
+/* =========================================================
+   2026-10-29 · 自定义人设 / AI 能力说明
+   ---------------------------------------------------------
+   两块新 UI：
+   ① 设置页「说话风格」第 4 张卡（自定义）+ 展开后的两个输入框；
+   ② 「AI 能做什么」弹层（示例句 + 功能直达 + 边界）。
+   配色一律走既有变量，深色模式不需要另写一套。
+   ========================================================= */
+
+/* 聊天头部「能做什么」：与撤回并排的次级按钮，窄屏也留得住 */
+.chat-head .chat-help {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 0 8px;
+  height: 24px;
+  line-height: 22px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  color: var(--green-ink);
+  background: var(--green-soft);
+  border: 1px solid transparent;
+}
+.chat-head .chat-help:hover { border-color: var(--green); }
+@media (max-width: 360px) {
+  .chat-head .chat-help { display: none; }   /* 极窄屏优先保住「撤回上一步」 */
+}
+
+/* 欢迎语气泡里的入口：像链接，但确实是个按钮（点它就走 data-cmd 路由） */
+.msg-guide {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border: 1px dashed var(--green);
+  border-radius: 11px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.msg-guide:active { transform: scale(0.98); }
+
+/* ---- 自定义人设：卡片下面的编辑区 ---- */
+.tone-custom {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.tone-custom[hidden] { display: none; }
+.tc-row { display: flex; align-items: center; gap: 8px; }
+.tc-row + .tc-row { margin-top: 10px; }
+.tc-row.tc-col { align-items: flex-start; flex-direction: column; gap: 6px; }
+.tc-key {
+  flex: 0 0 auto;
+  width: 52px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.tc-input,
+.tc-area {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.55;
+}
+.tc-area { resize: vertical; min-height: 68px; }
+.tc-input:focus,
+.tc-area:focus {
+  outline: none;
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(7, 193, 96, 0.12);
+}
+.tc-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+.tc-count { font-size: 11px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tc-tip { font-size: 11px; color: var(--text-3); text-align: right; }
+
+/* 智能体跳转到设置分区时闪一下，用户一眼看到该看哪一行 */
+.set-group-flash {
+  animation: setGroupFlash 1.6s ease;
+  border-radius: 14px;
+}
+@keyframes setGroupFlash {
+  0% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0); }
+  22% { box-shadow: 0 0 0 3px rgba(7, 193, 96, 0.28); }
+  100% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .set-group-flash { animation: none; }
+}
+
+/* ---- 「AI 能做什么」弹层 ---- */
+.modal:has(.ai-guide) { max-width: 380px; }
+/* 面板自己滚，标题和「知道了」常驻：功能清单有 30 条，
+   若让整张弹窗跟着滚，用户得滑到底才能关掉。 */
+.ai-guide {
+  display: flex;
+  flex-direction: column;
+  max-height: min(78vh, 660px);
+}
+.ag-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding-bottom: 2px;
+}
+.ag-head h4 { margin: 0; flex: 1 1 auto; }
+.ag-x {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-3);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ag-x:hover { color: var(--text); }
+.ag-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -4px;
+  padding: 0 4px;
+  overscroll-behavior: contain;
+}
+.ag-actions {
+  flex: 0 0 auto;
+  margin-top: 12px !important;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.ag-lead {
+  margin: 0 0 4px !important;
+  font-size: 12.5px !important;
+  line-height: 1.65 !important;
+  color: var(--text-2) !important;
+}
+.ag-label {
+  margin: 16px 0 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-3);
+}
+.ag-says { display: flex; flex-wrap: wrap; gap: 7px; }
+.ag-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  max-width: 100%;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.ag-pill:hover { border-color: var(--green); background: var(--green-soft); }
+.ag-pill i {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.ag-group + .ag-group { margin-top: 10px; }
+.ag-gname {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.ag-feats { display: flex; flex-wrap: wrap; gap: 6px; }
+.ag-feat {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ag-feat:hover { border-color: var(--green); color: var(--green-ink); background: var(--green-soft); }
+.ag-no {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--text-2);
+}
+.ag-ok {
+  background: var(--green);
+  color: #fff;
+  border: none;
+}
+
+/* =========================================================
+   2026-10-29 · 可点选项（澄清 / 确认 / 下一步）
+   ---------------------------------------------------------
+   AI 问「是 A 还是 B？」时不再只给文字：气泡下面挂 2~4 个
+   可点按钮，点一下就等于把这句完整话发出来。历史消息保留按钮，
+   点过的那条高亮、同组其余淡下去，避免重复点。
+   ========================================================= */
+.msg-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 7px 0 2px 2px;
+  max-width: 100%;
+}
+.choice-btn {
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  word-break: break-all;
+  cursor: pointer;
+  transition: opacity .15s ease, transform .1s ease;
+}
+.choice-btn:hover { background: var(--green); color: #fff; }
+.choice-btn:active { transform: scale(.97); }
+.choice-btn.picked { background: var(--green); color: #fff; }
+.choice-btn.dim { opacity: .42; }
+@media (max-width: 360px) {
+  .choice-btn { padding: 4px 10px; font-size: 12px; }
+}
+
+/* ---- 知识跳转卡：search_kb 命中后挂在 AI 回复下方，可点直接去看 ---- */
+.kb-card {
+  margin: 8px 0 2px 2px;
+  border: 1px solid var(--green);
+  border-radius: 12px;
+  background: var(--green-soft);
+  overflow: hidden;
+  max-width: 100%;
+}
+.kb-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px 5px;
+  font-size: 12.5px;
+}
+.kb-head-ico { font-size: 14px; line-height: 1; }
+.kb-head b { color: var(--green-ink); font-weight: 700; }
+.kb-head-sub { margin-left: auto; color: var(--green-dark); opacity: .75; font-size: 11px; }
+.kb-jump {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  border: 0;
+  border-top: 1px solid rgba(7,193,96,.22);
+  background: transparent;
+  color: var(--green-ink);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s ease, transform .1s ease;
+}
+.kb-jump:hover { background: rgba(7,193,96,.16); }
+.kb-jump:active { transform: scale(.99); }
+.kb-jump-ico { font-size: 15px; line-height: 1; flex: none; }
+.kb-jump-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.kb-jump-txt b { font-weight: 600; line-height: 1.3; word-break: break-all; }
+.kb-jump-txt i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--green-dark);
+  opacity: .85;
+  margin-top: 1px;
+}
+.kb-jump-ar { font-size: 18px; line-height: 1; color: var(--green-dark); flex: none; }
+
+/* ---- 省钱条目被 AI 精确跳中时的高亮 ---- */
+.sv-flash {
+  animation: svFlash 1.8s ease;
+  box-shadow: 0 0 0 2px var(--green), 0 4px 16px rgba(7,193,96,.28);
+  border-radius: 12px;
+}
+@keyframes svFlash {
+  0%   { box-shadow: 0 0 0 3px var(--green), 0 4px 20px rgba(7,193,96,.4); }
+  70%  { box-shadow: 0 0 0 3px var(--green), 0 4px 20px rgba(7,193,96,.4); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (max-width: 360px) {
+  .kb-jump { padding: 7px 10px; font-size: 12.5px; }
 }

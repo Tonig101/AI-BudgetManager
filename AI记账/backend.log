@@ -65,3 +65,21 @@ INFO:     Started server process [36284]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+
+[autostart] 2026-10-30 10:20:25 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [12348]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+
+[autostart] 2026-10-30 13:35:42 启动比价后端，端口 8010
+省钱雷达 API： http://127.0.0.1:8010  （API 文档 /docs）
+比价页面：     http://127.0.0.1:8010/  ← 浏览器直接打开这个地址（本服务托管页面，同源免跨域）
+提示：不配 LLM_API_KEY 也能用，/api/deals/ask 会走本地确定性回答；不配 PRICE_API_URL 就不抓价，只做比价计算。
+INFO:     Started server process [532]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)

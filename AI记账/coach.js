@@ -892,6 +892,7 @@
         label: '比奇堡观察局 · 诱饵陷阱篇（合集）',
         desc: '用海绵宝宝的动画讲消费陷阱：诱饵定价、锚定、价格歧视一集一个，看着出戏但记得住。',
         url: 'https://www.bilibili.com/video/BV1HyEi69E7U/',
+        shape: 'home',
         meta: ['B 站视频', '免费', '合集 · 单条几分钟'],
         detail: [
           { h: '这期视频在讲什么', p: '用《海绵宝宝》的片段当素材，一集拆一个消费陷阱：商家不是让你多买，而是让你在几个选项里挑那个他们早就想好要你挑的。合集把散在各集里的诱饵定价串成一条线，配动画比纯讲道理好记。' },
@@ -1112,6 +1113,7 @@
         label: '零基础理财入门课 · 第 1 集 + 第 5 集',
         desc: '全 20 集短课（每集 20-30 分钟），课堂时间有限，只看第 1 集打底 + 第 5 集实操。',
         url: 'https://www.snm0516.aisee.tv/video/BV1yAX5YQEAs/',
+        shape: 'home',
         meta: ['系列短课', '免费', '两集约 50 分钟'],
         detail: [
           { h: '为什么只挑两集', p: '整套 20 集、每集 20-30 分钟，全看完要十几个小时——大多数人的「学习计划」就死在这儿。第 1 集打底（概念框架），第 5 集上手（真实操作），两集就够你把最常用的那部分用起来。' },
@@ -1197,6 +1199,7 @@
         label: 'Crash Course 经济学 · 中英双语字幕 456 课合集',
         desc: '经济学通识速成课的合集版，一集十来分钟，从机会成本讲到宏观政策，适合系统啃。',
         url: 'https://www.bilibili.com/video/BV1sM4m127Zg/',
+        shape: 'home',
         meta: ['B 站视频', '免费', '中英双语字幕 · 456 课'],
         detail: [
           { h: '这期视频在讲什么', p: 'Crash Course 是国外最经典的经济学通识速成课，一集十来分钟，从机会成本、供需曲线一路讲到宏观政策。456 课合集把整套打包，等于把一门大学经济学导论拆成了可以倍速看的短视频——适合想学成体系、又有一定英语基础的人。' },
@@ -1455,7 +1458,8 @@
    *     放进来会渲染成点不动的空行，故跳过）；
    *   · 返回顺序固定为 video → course → up，同类型内保持 ACADEMY 顺序；
    *   · 每次调用返回全新数组与全新对象，外部修改不会污染 ACADEMY。
-   * @return {Array<Object>} 每项 {lessonId, tag, icon, type, label, desc, url, copy}
+   * @return {Array<Object>} 每项 {lessonId, tag, icon, type, shape, label, desc, url, copy}
+   *   shape: 'clip'=单条视频 / 'home'=UP 主主页·课程页·合集系列 / 'read'=图文专栏
    */
   function learningResources() {
     var out = [];
@@ -1475,6 +1479,8 @@
             tag: lesson.tag || '',
             icon: lesson.icon || '',
             type: type,
+            shape: (r.shape === 'home' || type === 'up' || type === 'course')
+              ? 'home' : (r.shape === 'read' ? 'read' : 'clip'),
             label: r.label,
             desc: r.desc || '',
             url: r.url,
