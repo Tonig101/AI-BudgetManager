@@ -5739,30 +5739,6 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
   background: var(--green-soft); color: var(--green-ink); font-weight: 600; white-space: nowrap;
 }
 
-/* ---------- 省钱助手面板顶部 · App 省钱指南入口 ---------- */
-.save-guide-entry {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  margin: 0 0 12px; padding: 12px 14px; text-align: left;
-  background: var(--card); border-radius: 14px;
-  box-shadow: var(--shadow); border-left: 3px solid var(--green);
-  transition: transform .14s ease;
-}
-.save-guide-entry:active { transform: scale(.99); }
-.sge-ico {
-  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 11px;
-  display: grid; place-items: center;
-  background: var(--green-soft); color: var(--green-ink);
-}
-.sge-ico svg {
-  width: 18px; height: 18px; display: block;
-  fill: none; stroke: currentColor; stroke-width: 1.8;
-  stroke-linecap: round; stroke-linejoin: round;
-}
-.sge-txt { flex: 1 1 auto; min-width: 0; }
-.sge-txt b { display: block; font-size: 14px; font-weight: 600; color: var(--text); }
-.sge-txt small { display: block; font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
-.sge-ar { flex: 0 0 auto; color: var(--text-3); font-size: 16px; line-height: 1; }
-
 .card-more {
   margin-left: 3px;
   font-size: 13px;
@@ -10747,8 +10723,7 @@ body:has(.modal-mask:not([hidden])) .mascot {
 .pet-pick-card:active { transform: scale(0.97); }
 
 .pet-pick-card.active {
-  border-color: var(--green);
-  background: var(--green-soft);
+  background: var(--line-2);
 }
 
 .ppc-ico {
@@ -10773,7 +10748,7 @@ body:has(.modal-mask:not([hidden])) .mascot {
   stroke-linejoin: round;
 }
 
-.pet-pick-card.active .ppc-ico svg { stroke: var(--green-deep); }
+.pet-pick-card.active .ppc-ico svg { stroke: var(--text); }
 
 .pet-pick-card b {
   font-size: 13px;
@@ -10809,13 +10784,12 @@ body:has(.modal-mask:not([hidden])) .mascot {
 }
 
 [data-theme="dark"] .pet-pick-card.active {
-  background: #12331F;
-  border-color: var(--green);
+  background: #232A32;
 }
 
 [data-theme="dark"] .ppc-ico { background: #2A2F36; }
 
-[data-theme="dark"] .pet-pick-card.active .ppc-ico { background: #0F2919; }
+[data-theme="dark"] .pet-pick-card.active .ppc-ico { background: #2A2F36; }
 
 /* =========================================================
    桌面双栏下的精灵定位（pet.js）

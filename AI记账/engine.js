@@ -354,6 +354,10 @@
     }
     // 实付都不够买平替（用券场景），推荐没有意义，直接不返回
     if (effectivePaid <= best.altPrice) { return null; }
+    // 实付远超品牌常规单价（「打车 9999」是代驾/包车/异常输入，不是日常打车）：
+    // 平替只对常规单价场景成立，此时推荐「坐公交省 27」与 9999 的量级完全脱节，
+    // 反而暴露推荐是模板拼装 —— 量级脱节就不推荐。
+    if (paidAmount > best.brandPrice * 3) { return null; }
 
     var save = round2(effectivePaid - best.altPrice);
     var times = (typeof best.times === 'number' && best.times > 0) ? best.times : 1;

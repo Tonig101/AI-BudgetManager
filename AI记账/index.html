@@ -5754,30 +5754,6 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
   background: var(--green-soft); color: var(--green-ink); font-weight: 600; white-space: nowrap;
 }
 
-/* ---------- 省钱助手面板顶部 · App 省钱指南入口 ---------- */
-.save-guide-entry {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  margin: 0 0 12px; padding: 12px 14px; text-align: left;
-  background: var(--card); border-radius: 14px;
-  box-shadow: var(--shadow); border-left: 3px solid var(--green);
-  transition: transform .14s ease;
-}
-.save-guide-entry:active { transform: scale(.99); }
-.sge-ico {
-  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 11px;
-  display: grid; place-items: center;
-  background: var(--green-soft); color: var(--green-ink);
-}
-.sge-ico svg {
-  width: 18px; height: 18px; display: block;
-  fill: none; stroke: currentColor; stroke-width: 1.8;
-  stroke-linecap: round; stroke-linejoin: round;
-}
-.sge-txt { flex: 1 1 auto; min-width: 0; }
-.sge-txt b { display: block; font-size: 14px; font-weight: 600; color: var(--text); }
-.sge-txt small { display: block; font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
-.sge-ar { flex: 0 0 auto; color: var(--text-3); font-size: 16px; line-height: 1; }
-
 .card-more {
   margin-left: 3px;
   font-size: 13px;
@@ -10762,8 +10738,7 @@ body:has(.modal-mask:not([hidden])) .mascot {
 .pet-pick-card:active { transform: scale(0.97); }
 
 .pet-pick-card.active {
-  border-color: var(--green);
-  background: var(--green-soft);
+  background: var(--line-2);
 }
 
 .ppc-ico {
@@ -10788,7 +10763,7 @@ body:has(.modal-mask:not([hidden])) .mascot {
   stroke-linejoin: round;
 }
 
-.pet-pick-card.active .ppc-ico svg { stroke: var(--green-deep); }
+.pet-pick-card.active .ppc-ico svg { stroke: var(--text); }
 
 .pet-pick-card b {
   font-size: 13px;
@@ -10824,13 +10799,12 @@ body:has(.modal-mask:not([hidden])) .mascot {
 }
 
 [data-theme="dark"] .pet-pick-card.active {
-  background: #12331F;
-  border-color: var(--green);
+  background: #232A32;
 }
 
 [data-theme="dark"] .ppc-ico { background: #2A2F36; }
 
-[data-theme="dark"] .pet-pick-card.active .ppc-ico { background: #0F2919; }
+[data-theme="dark"] .pet-pick-card.active .ppc-ico { background: #2A2F36; }
 
 /* =========================================================
    桌面双栏下的精灵定位（pet.js）
@@ -14439,12 +14413,12 @@ body[data-view="dazai"] .panel-dazai {
           </label>
           <label class="set-row set-row-switch">
             <svg class="set-ico"><use href="#i-spark"/></svg>
-            <span class="set-main"><b>桌面宠物</b><small>右下角常驻可拖动的小家伙，记账 / 超支自动变脸</small></span>
+            <span class="set-main"><b>桌面宠物</b><small>右下角常驻的小伙伴，记账 / 存钱 / 超支都会变脸回应，还能戳一戳</small></span>
             <input type="checkbox" class="set-switch" id="setSwitchPet" checked />
           </label>
           <div class="set-row set-row-col">
             <svg class="set-ico"><use href="#i-piggy"/></svg>
-            <span class="set-main"><b>宠物形象</b><small>阿账播报预算心情，存钱罐精灵更活泼，记账小管家能自定义形象</small></span>
+            <span class="set-main"><b>宠物形象</b><small>阿账播报预算心情；精灵存钱动画分四档；小管家可自定义形象、养小猪拿成就</small></span>
             <div class="set-seg" id="setSkinSeg">
               <label class="seg-item"><input type="radio" name="setPetSkin" value="azhang" checked /><span>阿账</span></label>
               <label class="seg-item"><input type="radio" name="setPetSkin" value="sprite" /><span>存钱罐精灵</span></label>
@@ -15660,7 +15634,8 @@ body[data-view="dazai"] .panel-dazai {
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
-<script>/**
+<script>
+/**
  * nlp.js — 自然语言账单解析器（纯函数，可 Node 直接测试）
  *
  * 对外主函数：parseBill(text, options) -> { items: BillDraft[], unparsed: string[] }
@@ -15834,6 +15809,23 @@ body[data-view="dazai"] .panel-dazai {
   var RE_ARABIC = /\d+(?:\.\d{1,2})?/g;
   var RE_CHINESE = /[零〇一二两三四五六七八九十百千]+/g;
   var RE_CN_UNIT_AFTER = /^(元|块钱|块|毛|角)/;
+
+  /**
+   * 型号/编号里的数字不是钱，两侧字母是判据：
+   *   前面贴着字母：K5、A4纸、G102 —— 数字是编号的一部分；
+   *   后面贴着字母：16pro、128g、iPhone15 —— 数字是型号的一部分。
+   * 例外：r/k/w 三个网络金额后缀（30r=30元、3k=3000、2w=两万）仍算钱，
+   * 其余字母一律视为型号，避免「苹果16pro 8999」被拆成 16 + 8999 两笔。
+   */
+  var RE_MONEY_LETTER_SUFFIX = /^[rRkKwW]/;
+
+  function isModelNumber(text, start, end) {
+    var before = start > 0 ? text.charAt(start - 1) : '';
+    if (/[A-Za-z]/.test(before)) { return true; }
+    var after = end < text.length ? text.charAt(end) : '';
+    if (/[A-Za-z]/.test(after) && !RE_MONEY_LETTER_SUFFIX.test(after)) { return true; }
+    return false;
+  }
   var RE_CN_TRIGGER_BEFORE = /(花了|花费|付了|付款|支付|用了|一共|总共|合计|消费|充值|充了|买了|买|才|就|价格|价)$/;
 
   /**
@@ -15945,9 +15937,17 @@ body[data-view="dazai"] .panel-dazai {
       if (overlaps(out, aStart, aEnd)) { continue; }
       // 9点 / 3号线 / 30分钟 / 两包 都不是钱
       if (isNonMoneySuffix(text, aEnd)) { continue; }
+      // K5 / A4 / 16pro / 128g 里的数字是型号编号，不是钱
+      if (isModelNumber(text, aStart, aEnd)) { continue; }
       v = parseFloat(m[0]);
       if (!isNaN(v) && v > 0) {
-        out.push({ value: v, start: aStart, end: aEnd, raw: m[0] });
+        /* 网络金额后缀：3k=3000、2w=20000（r 只表示"元"，无倍数）。
+           倍数后缀要一并消费掉，否则 "2w的电脑" 会留下孤立的 w。 */
+        var unitCh = text.charAt(aEnd);
+        var mult = (unitCh === 'k' || unitCh === 'K') ? 1000
+          : (unitCh === 'w' || unitCh === 'W') ? 10000 : 1;
+        if (mult > 1) { aEnd += 1; }
+        out.push({ value: round2(v * mult), start: aStart, end: aEnd, raw: text.slice(aStart, aEnd) });
       }
     }
 
@@ -16349,7 +16349,8 @@ body[data-view="dazai"] .panel-dazai {
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
-<script>/**
+<script>
+/**
  * engine.js — 预算引擎 / 平替建议 / 冷静期 / 目标测算（纯函数，可 Node 直接测试）
  *
  * 对外主要 API：
@@ -16705,6 +16706,10 @@ body[data-view="dazai"] .panel-dazai {
     }
     // 实付都不够买平替（用券场景），推荐没有意义，直接不返回
     if (effectivePaid <= best.altPrice) { return null; }
+    // 实付远超品牌常规单价（「打车 9999」是代驾/包车/异常输入，不是日常打车）：
+    // 平替只对常规单价场景成立，此时推荐「坐公交省 27」与 9999 的量级完全脱节，
+    // 反而暴露推荐是模板拼装 —— 量级脱节就不推荐。
+    if (paidAmount > best.brandPrice * 3) { return null; }
 
     var save = round2(effectivePaid - best.altPrice);
     var times = (typeof best.times === 'number' && best.times > 0) ? best.times : 1;
@@ -31569,7 +31574,8 @@ body[data-view="dazai"] .panel-dazai {
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
-<script>/**
+<script>
+/**
  * intent.js — 会话意图分类层 + 模糊兜底文案引擎（纯函数，可 Node 直接测试）
  *
  * 设计依据：「意图路由与模糊兜底设计方案.md」
@@ -31689,9 +31695,11 @@ body[data-view="dazai"] .panel-dazai {
   /* ================================================================== */
 
   var LEX = {
-    /** 怎么办式求助 */
+    /** 怎么办式求助（「怎么记/怎么查」等动词组合必须列全：裸「怎么」刻意不收，
+     *  否则「这个月怎么花了这么多」这类统计疑问会被拽成 howto） */
     HOW_TO: ['怎么办', '咋办', '怎么弄', '怎么搞', '如何', '怎么补', '怎么改', '怎么删',
-      '教我', '能不能补', '忘记记', '漏记'],
+      '怎么记', '怎么查', '怎么用', '怎么开', '怎么设置', '怎么导入', '怎么导出',
+      '怎么绑定', '怎么看', '教我', '能不能补', '忘记记', '漏记'],
     /** 求助的具体话题（补记 / 改 / 删 / 找不到入口） */
     HOWTO_TOPIC: [
       { topic: 'backfill', words: ['补', '忘记', '漏', '补记'] },
@@ -32171,8 +32179,10 @@ body[data-view="dazai"] .panel-dazai {
     if ((sig.SIG_Q_BALANCE || sig.SIG_Q_PIE || sig.SIG_Q_STAT) && !hasAmount) {
       s.record = Math.min(s.record, -1);
     }
-    /* V3：改删撤不当记账 */
-    if (sig.SIG_DATAOP && !hasAmount && !sig.SIG_HOWTO) { s.record = Math.min(s.record, -1); }
+    /* V3：改删撤不当记账。DATA_OP 词表全是明确动词（改成/删掉/撤销/记错），
+       金额只是「被改/被删那笔」的旧值指代，不是新消费 —— 带 50 删 50 不是记 50。
+       若按方法提问（「记错了怎么删掉」），R2 会让 howto 优先。 */
+    if (sig.SIG_DATAOP && !sig.SIG_HOWTO) { s.record = Math.min(s.record, -1); }
     /* V4：带金额 + 无疑问结构 -> 强制记账（唯一一条抬分规则，为不破坏现有业务而存在） */
     if (isForceRecord(sig)) { s.record = Math.max(s.record, FORCE_RECORD_MIN); }
     /* V5：纠错句永不记账（改金额由 dataop 通道处理；isForceRecord 已排除 SIG_CORRECTION，V4 不会抬起） */
@@ -32189,6 +32199,8 @@ body[data-view="dazai"] .panel-dazai {
   function isForceRecord(signals) {
     var sig = signals || {};
     if (sig.SIG_CORRECTION) { return false; }
+    /* 改删撤动词在场时，句中金额是旧账指代，V4 不得强制记账（否则「删了50」变成记 50） */
+    if (sig.SIG_DATAOP) { return false; }
     if (sig.SIG_AMOUNT !== true) { return false; }
     return !(sig.SIG_HOWTO || sig.SIG_YESNO || sig.SIG_WH || sig.SIG_QMARK || sig.SIG_Q_BALANCE);
   }
@@ -41598,6 +41610,12 @@ var SAVE_VIDS=[
           drafts = normalDrafts.concat(riskyDrafts);
         }
         var pendingBefore = !!pendingBill;
+        /* 撤 1 笔 + 记 1 笔（5 秒内）= 纠错改金额。必须在 startFlow 之前挂标记：
+           startFlow 内部会同步走完 commitBill → reportCommitted，事后设置永远赶不上。 */
+        if (flow.editFrom && (Date.now() - flow.editFrom.ts) < 5000 && drafts.length === 1) {
+          flow.editPending = flow.editFrom.snap;
+        }
+        flow.editFrom = null;
         /* 以账本为准判断这批到底记进去几笔：拿 id 做增量，
            比读 flow.committed 可靠（后者会被冷静期打断、跨轮残留）。 */
         var beforeIds = {};
@@ -41729,7 +41747,14 @@ var SAVE_VIDS=[
         }
         return {
           ok: true,
-          brief: label + ' ' + money(agg.expense) + '（' + agg.count + ' 笔）',
+          /* brief 必须自带 top3 分类：模型倾向只复述 brief，分类只放 data 里
+             会导致「哪类花得最多」被答成「总额+笔数」。 */
+          brief: label + ' ' + money(agg.expense) + '（' + agg.count + ' 笔）' +
+            (pairs.length
+              ? '，最多的是 ' + pairs.slice(0, 3).map(function (p) {
+                  return p.cat + ' ' + money(p.amount);
+                }).join('、')
+              : ''),
           data: {
             range: label, start: start, end: end, total: agg.expense, count: agg.count,
             avgPerBill: ENG.round2(agg.expense / Math.max(1, agg.count)),
@@ -41780,6 +41805,9 @@ var SAVE_VIDS=[
         var last = state.bills[state.bills.length - 1];
         var snap = { note: last.note, amount: last.amount, category: last.category };
         undoLast();
+        /* 留痕：撤回后若同轮紧跟 add_bills，那是纠错改金额（「记错了，是86不是68」），
+           收据话术要走「已改好」而不是「记账成功」，否则用户以为又多记一笔。 */
+        flow.editFrom = { snap: snap, ts: Date.now() };
         return {
           ok: true,
           brief: '撤回了 ' + snap.note + ' ' + money(snap.amount),
@@ -42873,7 +42901,7 @@ var SAVE_VIDS=[
   var state = null;
   var highlightCategory = null;
   /* last：本批已入账的账单（finishFlow 清空 committed 前留一份，供智能体工具如实汇报） */
-  var flow = { queue: [], committed: [], last: null, silent: false };
+  var flow = { queue: [], committed: [], last: null, silent: false, editFrom: null, editPending: null };
   var pendingBill = null;
   /** 撤回栈：按记账顺序记录每笔账单 id（仅内存，不持久化）。供「撤回上一步」使用 */
   var undoStack = [];
@@ -43794,10 +43822,18 @@ var SAVE_VIDS=[
 
     var overview = getOverview();
     // 业务规则 5：每笔都要给到【记账成功】卡片 + 【余额概览】+【理财专家一句话建议】
+    /* 纠错改金额（撤回后紧跟重记）：头文案说「已改好」，不说「记账成功」——
+       否则用户看到 68 撤回又冒出一笔 86，会以为多记了一笔。
+       单笔且来自纠错标记才走这条路；冷静期挂起的那笔不在此列（不会进 committed）。 */
+    var editFrom = (list.length === 1) ? flow.editPending : null;
+    flow.editPending = null;
     for (i = 0; i < list.length; i++) {
       var bill = list[i];
       var head;
-      if (bill.type === 'income') {
+      if (editFrom && bill.type !== 'income') {
+        head = aiBubble('<b>已改好</b>：「' + esc(editFrom.note) + '」从 <b>' + money(editFrom.amount) +
+          '</b> 改成 <b>' + money(bill.amount) + '</b>，归到 <span class="hl">' + esc(bill.category) + '</span>。');
+      } else if (bill.type === 'income') {
         head = aiBubble(ic('receipt', 'bico-brand', '记账成功') + '<b>【记账成功】</b>这是一笔收入（' + esc(bill.source || '其他') + '），已经加进本周期，不计入支出统计。');
       } else {
         head = aiBubble('<b>【记账成功】</b>记上了，归到 <span class="hl">' + esc(bill.category) + '</span>' +
@@ -43911,11 +43947,12 @@ var SAVE_VIDS=[
     });
     var alt = ENG.getAlternative({ note: draft.note, category: draft.category, amount: draft.amount });
 
-    // 业务规则：冷静期提醒必须说清「占生活费的比例」+「24 小时」+「对食堂伙食预算的影响」
+    // 业务规则：冷静期提醒必须说清「占总预算的比例」+「24 小时」+「对食堂伙食预算的影响」。
+    // 不写死校区/地名：用户不在「南海北区」时这句话就是假的个性化。
     var ratioText = '';
     var totalBudget = Number(state.budget.total) || 0;
     if (totalBudget > 0) {
-      ratioText = '这笔占你南海北区生活费的 ' + Math.round(draft.amount / totalBudget * 1000) / 10 + '%。';
+      ratioText = '这笔占你总预算的 ' + Math.round(draft.amount / totalBudget * 1000) / 10 + '%。';
     }
     var cooldownNotice = ratioText +
       '先别急着下单，把它丢进购物车晾 24 小时，明天还想要我再帮你记上。不过说真的，这几天食堂伙食预算会被它吃掉不少，你心里得有数。';
@@ -52912,7 +52949,6 @@ var SAVE_VIDS=[
       switchView('ssave');
     } else {
       $('saveHubMask').hidden = false;
-      ensureSaveGuideEntry();
       renderHubSheet();
     }
     if (savingsRecovered) {
@@ -52930,39 +52966,9 @@ var SAVE_VIDS=[
    * 不碰遮罩、不弹层 —— 与完整版的 openSaveHub 分开，避免两套语义互相污染。
    */
   function renderSaveHubPanel() {
-    ensureSaveGuideEntry();
     renderHubSheet();
     /* 团购省钱卡住在省钱助手面板里，简洁版切到本页时同样要渲染 */
     renderCoachGroupBuy();
-  }
-
-  /**
-   * 「省钱助手」顶部常驻「App 省钱指南」入口卡。
-   * 完整版是弹层 #saveHubMask、简洁版把同一棵 #saveHubView 移进 #spSaveBody，
-   * 所以挂在二者共用的 .sheet-body 顶部，一次覆盖两种 UI；不随二级 tab 重建。
-   */
-  function ensureSaveGuideEntry() {
-    var view = $('saveHubView');
-    if (!view) { return; }
-    var host = view.querySelector('.sheet-body') || view;
-    var el = $('saveGuideEntry');
-    if (!el) {
-      el = DOC.createElement('button');
-      el.type = 'button';
-      el.id = 'saveGuideEntry';
-      el.className = 'save-guide-entry';
-      el.innerHTML =
-        '<span class="sge-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-bulb"/></svg></span>' +
-        '<span class="sge-txt"><b>App 教学指南</b><small>17 类 App · 51 条要点 · 视频教程</small></span>' +
-        '<span class="sge-ar" aria-hidden="true">›</span>';
-      el.addEventListener('click', function () {
-        if (typeof window.openAcademyOverlay === 'function') {
-          window.openAcademyOverlay('save');
-        }
-      });
-    }
-    if (el.parentNode === host && host.firstChild === el) { return; }
-    host.insertBefore(el, host.firstChild);
   }
 
   /**
@@ -58135,22 +58141,22 @@ function petRecallIcon() {
     var box = openModal(
       '<div class="pet-pick">' +
       '  <h4>选个小伙伴陪你记账</h4>' +
-      '  <p class="pet-pick-sub">它会住在右下角，记账、存钱、超支时都有反应。' +
-      '随时能在「设置 · 宠物形象」里更换。</p>' +
+      '  <p class="pet-pick-sub">三只小伙伴都住在右下角，记账、存钱时都会动起来回应你，戳戳它还有彩蛋。' +
+      '先挑一只，之后随时能在「设置 · 宠物形象」里更换。</p>' +
       /* 三列：390px 视口下每列约 103px，见 styles.css 的 .pet-pick-list-3。
          卡片里放三只的真实样子，不再用通用图标 */
       '  <div class="pet-pick-list pet-pick-list-3">' +
       '    <button type="button" class="pet-pick-card active" data-skin="azhang">' +
       '      <span class="ppc-ico ppc-art">' + petPickArt('azhang') + '</span>' +
-      '      <b>阿账</b><small>9 种心情<br>顶部播报预算</small>' +
+      '      <b>阿账</b><small>9 态情绪<br>顶部播报预算</small>' +
       '    </button>' +
       '    <button type="button" class="pet-pick-card" data-skin="sprite">' +
       '      <span class="ppc-ico ppc-art">' + petPickArt('sprite') + '</span>' +
-      '      <b>存钱罐精灵</b><small>6 种表情<br>随手就能拖</small>' +
+      '      <b>存钱罐精灵</b><small>6 态表情<br>存钱分档 · 可拖拽</small>' +
       '    </button>' +
       '    <button type="button" class="pet-pick-card" data-skin="pro">' +
       '      <span class="ppc-ico ppc-art">' + petPickArt('pro') + '</span>' +
-      '      <b>记账小管家</b><small>自定义形象<br>小猪绕身</small>' +
+      '      <b>记账小管家</b><small>自定义形象工坊<br>绕行小猪 · 成就</small>' +
       '    </button>' +
       '  </div>' +
       '  <button type="button" class="pet-pick-ok" id="petPickOk">就它了</button>' +

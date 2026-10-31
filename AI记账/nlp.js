@@ -172,6 +172,23 @@
   var RE_ARABIC = /\d+(?:\.\d{1,2})?/g;
   var RE_CHINESE = /[零〇一二两三四五六七八九十百千]+/g;
   var RE_CN_UNIT_AFTER = /^(元|块钱|块|毛|角)/;
+
+  /**
+   * 型号/编号里的数字不是钱，两侧字母是判据：
+   *   前面贴着字母：K5、A4纸、G102 —— 数字是编号的一部分；
+   *   后面贴着字母：16pro、128g、iPhone15 —— 数字是型号的一部分。
+   * 例外：r/k/w 三个网络金额后缀（30r=30元、3k=3000、2w=两万）仍算钱，
+   * 其余字母一律视为型号，避免「苹果16pro 8999」被拆成 16 + 8999 两笔。
+   */
+  var RE_MONEY_LETTER_SUFFIX = /^[rRkKwW]/;
+
+  function isModelNumber(text, start, end) {
+    var before = start > 0 ? text.charAt(start - 1) : '';
+    if (/[A-Za-z]/.test(before)) { return true; }
+    var after = end < text.length ? text.charAt(end) : '';
+    if (/[A-Za-z]/.test(after) && !RE_MONEY_LETTER_SUFFIX.test(after)) { return true; }
+    return false;
+  }
   var RE_CN_TRIGGER_BEFORE = /(花了|花费|付了|付款|支付|用了|一共|总共|合计|消费|充值|充了|买了|买|才|就|价格|价)$/;
 
   /**
@@ -283,9 +300,17 @@
       if (overlaps(out, aStart, aEnd)) { continue; }
       // 9点 / 3号线 / 30分钟 / 两包 都不是钱
       if (isNonMoneySuffix(text, aEnd)) { continue; }
+      // K5 / A4 / 16pro / 128g 里的数字是型号编号，不是钱
+      if (isModelNumber(text, aStart, aEnd)) { continue; }
       v = parseFloat(m[0]);
       if (!isNaN(v) && v > 0) {
-        out.push({ value: v, start: aStart, end: aEnd, raw: m[0] });
+        /* 网络金额后缀：3k=3000、2w=20000（r 只表示"元"，无倍数）。
+           倍数后缀要一并消费掉，否则 "2w的电脑" 会留下孤立的 w。 */
+        var unitCh = text.charAt(aEnd);
+        var mult = (unitCh === 'k' || unitCh === 'K') ? 1000
+          : (unitCh === 'w' || unitCh === 'W') ? 10000 : 1;
+        if (mult > 1) { aEnd += 1; }
+        out.push({ value: round2(v * mult), start: aStart, end: aEnd, raw: text.slice(aStart, aEnd) });
       }
     }
 

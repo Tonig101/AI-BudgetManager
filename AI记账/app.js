@@ -2369,6 +2369,12 @@
           drafts = normalDrafts.concat(riskyDrafts);
         }
         var pendingBefore = !!pendingBill;
+        /* 撤 1 笔 + 记 1 笔（5 秒内）= 纠错改金额。必须在 startFlow 之前挂标记：
+           startFlow 内部会同步走完 commitBill → reportCommitted，事后设置永远赶不上。 */
+        if (flow.editFrom && (Date.now() - flow.editFrom.ts) < 5000 && drafts.length === 1) {
+          flow.editPending = flow.editFrom.snap;
+        }
+        flow.editFrom = null;
         /* 以账本为准判断这批到底记进去几笔：拿 id 做增量，
            比读 flow.committed 可靠（后者会被冷静期打断、跨轮残留）。 */
         var beforeIds = {};
@@ -2500,7 +2506,14 @@
         }
         return {
           ok: true,
-          brief: label + ' ' + money(agg.expense) + '（' + agg.count + ' 笔）',
+          /* brief 必须自带 top3 分类：模型倾向只复述 brief，分类只放 data 里
+             会导致「哪类花得最多」被答成「总额+笔数」。 */
+          brief: label + ' ' + money(agg.expense) + '（' + agg.count + ' 笔）' +
+            (pairs.length
+              ? '，最多的是 ' + pairs.slice(0, 3).map(function (p) {
+                  return p.cat + ' ' + money(p.amount);
+                }).join('、')
+              : ''),
           data: {
             range: label, start: start, end: end, total: agg.expense, count: agg.count,
             avgPerBill: ENG.round2(agg.expense / Math.max(1, agg.count)),
@@ -2551,6 +2564,9 @@
         var last = state.bills[state.bills.length - 1];
         var snap = { note: last.note, amount: last.amount, category: last.category };
         undoLast();
+        /* 留痕：撤回后若同轮紧跟 add_bills，那是纠错改金额（「记错了，是86不是68」），
+           收据话术要走「已改好」而不是「记账成功」，否则用户以为又多记一笔。 */
+        flow.editFrom = { snap: snap, ts: Date.now() };
         return {
           ok: true,
           brief: '撤回了 ' + snap.note + ' ' + money(snap.amount),
@@ -3644,7 +3660,7 @@
   var state = null;
   var highlightCategory = null;
   /* last：本批已入账的账单（finishFlow 清空 committed 前留一份，供智能体工具如实汇报） */
-  var flow = { queue: [], committed: [], last: null, silent: false };
+  var flow = { queue: [], committed: [], last: null, silent: false, editFrom: null, editPending: null };
   var pendingBill = null;
   /** 撤回栈：按记账顺序记录每笔账单 id（仅内存，不持久化）。供「撤回上一步」使用 */
   var undoStack = [];
@@ -4565,10 +4581,18 @@
 
     var overview = getOverview();
     // 业务规则 5：每笔都要给到【记账成功】卡片 + 【余额概览】+【理财专家一句话建议】
+    /* 纠错改金额（撤回后紧跟重记）：头文案说「已改好」，不说「记账成功」——
+       否则用户看到 68 撤回又冒出一笔 86，会以为多记了一笔。
+       单笔且来自纠错标记才走这条路；冷静期挂起的那笔不在此列（不会进 committed）。 */
+    var editFrom = (list.length === 1) ? flow.editPending : null;
+    flow.editPending = null;
     for (i = 0; i < list.length; i++) {
       var bill = list[i];
       var head;
-      if (bill.type === 'income') {
+      if (editFrom && bill.type !== 'income') {
+        head = aiBubble('<b>已改好</b>：「' + esc(editFrom.note) + '」从 <b>' + money(editFrom.amount) +
+          '</b> 改成 <b>' + money(bill.amount) + '</b>，归到 <span class="hl">' + esc(bill.category) + '</span>。');
+      } else if (bill.type === 'income') {
         head = aiBubble(ic('receipt', 'bico-brand', '记账成功') + '<b>【记账成功】</b>这是一笔收入（' + esc(bill.source || '其他') + '），已经加进本周期，不计入支出统计。');
       } else {
         head = aiBubble('<b>【记账成功】</b>记上了，归到 <span class="hl">' + esc(bill.category) + '</span>' +
@@ -4682,11 +4706,12 @@
     });
     var alt = ENG.getAlternative({ note: draft.note, category: draft.category, amount: draft.amount });
 
-    // 业务规则：冷静期提醒必须说清「占生活费的比例」+「24 小时」+「对食堂伙食预算的影响」
+    // 业务规则：冷静期提醒必须说清「占总预算的比例」+「24 小时」+「对食堂伙食预算的影响」。
+    // 不写死校区/地名：用户不在「南海北区」时这句话就是假的个性化。
     var ratioText = '';
     var totalBudget = Number(state.budget.total) || 0;
     if (totalBudget > 0) {
-      ratioText = '这笔占你南海北区生活费的 ' + Math.round(draft.amount / totalBudget * 1000) / 10 + '%。';
+      ratioText = '这笔占你总预算的 ' + Math.round(draft.amount / totalBudget * 1000) / 10 + '%。';
     }
     var cooldownNotice = ratioText +
       '先别急着下单，把它丢进购物车晾 24 小时，明天还想要我再帮你记上。不过说真的，这几天食堂伙食预算会被它吃掉不少，你心里得有数。';
@@ -13683,7 +13708,6 @@
       switchView('ssave');
     } else {
       $('saveHubMask').hidden = false;
-      ensureSaveGuideEntry();
       renderHubSheet();
     }
     if (savingsRecovered) {
@@ -13701,39 +13725,9 @@
    * 不碰遮罩、不弹层 —— 与完整版的 openSaveHub 分开，避免两套语义互相污染。
    */
   function renderSaveHubPanel() {
-    ensureSaveGuideEntry();
     renderHubSheet();
     /* 团购省钱卡住在省钱助手面板里，简洁版切到本页时同样要渲染 */
     renderCoachGroupBuy();
-  }
-
-  /**
-   * 「省钱助手」顶部常驻「App 省钱指南」入口卡。
-   * 完整版是弹层 #saveHubMask、简洁版把同一棵 #saveHubView 移进 #spSaveBody，
-   * 所以挂在二者共用的 .sheet-body 顶部，一次覆盖两种 UI；不随二级 tab 重建。
-   */
-  function ensureSaveGuideEntry() {
-    var view = $('saveHubView');
-    if (!view) { return; }
-    var host = view.querySelector('.sheet-body') || view;
-    var el = $('saveGuideEntry');
-    if (!el) {
-      el = DOC.createElement('button');
-      el.type = 'button';
-      el.id = 'saveGuideEntry';
-      el.className = 'save-guide-entry';
-      el.innerHTML =
-        '<span class="sge-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-bulb"/></svg></span>' +
-        '<span class="sge-txt"><b>App 教学指南</b><small>17 类 App · 51 条要点 · 视频教程</small></span>' +
-        '<span class="sge-ar" aria-hidden="true">›</span>';
-      el.addEventListener('click', function () {
-        if (typeof window.openAcademyOverlay === 'function') {
-          window.openAcademyOverlay('save');
-        }
-      });
-    }
-    if (el.parentNode === host && host.firstChild === el) { return; }
-    host.insertBefore(el, host.firstChild);
   }
 
   /**
@@ -18906,22 +18900,22 @@ function petRecallIcon() {
     var box = openModal(
       '<div class="pet-pick">' +
       '  <h4>选个小伙伴陪你记账</h4>' +
-      '  <p class="pet-pick-sub">它会住在右下角，记账、存钱、超支时都有反应。' +
-      '随时能在「设置 · 宠物形象」里更换。</p>' +
+      '  <p class="pet-pick-sub">三只小伙伴都住在右下角，记账、存钱时都会动起来回应你，戳戳它还有彩蛋。' +
+      '先挑一只，之后随时能在「设置 · 宠物形象」里更换。</p>' +
       /* 三列：390px 视口下每列约 103px，见 styles.css 的 .pet-pick-list-3。
          卡片里放三只的真实样子，不再用通用图标 */
       '  <div class="pet-pick-list pet-pick-list-3">' +
       '    <button type="button" class="pet-pick-card active" data-skin="azhang">' +
       '      <span class="ppc-ico ppc-art">' + petPickArt('azhang') + '</span>' +
-      '      <b>阿账</b><small>9 种心情<br>顶部播报预算</small>' +
+      '      <b>阿账</b><small>9 态情绪<br>顶部播报预算</small>' +
       '    </button>' +
       '    <button type="button" class="pet-pick-card" data-skin="sprite">' +
       '      <span class="ppc-ico ppc-art">' + petPickArt('sprite') + '</span>' +
-      '      <b>存钱罐精灵</b><small>6 种表情<br>随手就能拖</small>' +
+      '      <b>存钱罐精灵</b><small>6 态表情<br>存钱分档 · 可拖拽</small>' +
       '    </button>' +
       '    <button type="button" class="pet-pick-card" data-skin="pro">' +
       '      <span class="ppc-ico ppc-art">' + petPickArt('pro') + '</span>' +
-      '      <b>记账小管家</b><small>自定义形象<br>小猪绕身</small>' +
+      '      <b>记账小管家</b><small>自定义形象工坊<br>绕行小猪 · 成就</small>' +
       '    </button>' +
       '  </div>' +
       '  <button type="button" class="pet-pick-ok" id="petPickOk">就它了</button>' +

@@ -118,9 +118,11 @@
   /* ================================================================== */
 
   var LEX = {
-    /** 怎么办式求助 */
+    /** 怎么办式求助（「怎么记/怎么查」等动词组合必须列全：裸「怎么」刻意不收，
+     *  否则「这个月怎么花了这么多」这类统计疑问会被拽成 howto） */
     HOW_TO: ['怎么办', '咋办', '怎么弄', '怎么搞', '如何', '怎么补', '怎么改', '怎么删',
-      '教我', '能不能补', '忘记记', '漏记'],
+      '怎么记', '怎么查', '怎么用', '怎么开', '怎么设置', '怎么导入', '怎么导出',
+      '怎么绑定', '怎么看', '教我', '能不能补', '忘记记', '漏记'],
     /** 求助的具体话题（补记 / 改 / 删 / 找不到入口） */
     HOWTO_TOPIC: [
       { topic: 'backfill', words: ['补', '忘记', '漏', '补记'] },
@@ -600,8 +602,10 @@
     if ((sig.SIG_Q_BALANCE || sig.SIG_Q_PIE || sig.SIG_Q_STAT) && !hasAmount) {
       s.record = Math.min(s.record, -1);
     }
-    /* V3：改删撤不当记账 */
-    if (sig.SIG_DATAOP && !hasAmount && !sig.SIG_HOWTO) { s.record = Math.min(s.record, -1); }
+    /* V3：改删撤不当记账。DATA_OP 词表全是明确动词（改成/删掉/撤销/记错），
+       金额只是「被改/被删那笔」的旧值指代，不是新消费 —— 带 50 删 50 不是记 50。
+       若按方法提问（「记错了怎么删掉」），R2 会让 howto 优先。 */
+    if (sig.SIG_DATAOP && !sig.SIG_HOWTO) { s.record = Math.min(s.record, -1); }
     /* V4：带金额 + 无疑问结构 -> 强制记账（唯一一条抬分规则，为不破坏现有业务而存在） */
     if (isForceRecord(sig)) { s.record = Math.max(s.record, FORCE_RECORD_MIN); }
     /* V5：纠错句永不记账（改金额由 dataop 通道处理；isForceRecord 已排除 SIG_CORRECTION，V4 不会抬起） */
@@ -618,6 +622,8 @@
   function isForceRecord(signals) {
     var sig = signals || {};
     if (sig.SIG_CORRECTION) { return false; }
+    /* 改删撤动词在场时，句中金额是旧账指代，V4 不得强制记账（否则「删了50」变成记 50） */
+    if (sig.SIG_DATAOP) { return false; }
     if (sig.SIG_AMOUNT !== true) { return false; }
     return !(sig.SIG_HOWTO || sig.SIG_YESNO || sig.SIG_WH || sig.SIG_QMARK || sig.SIG_Q_BALANCE);
   }
