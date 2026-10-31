@@ -10,8 +10,12 @@ AI 校园记账管家 —— 后端服务（一键启动）
     GET  /                      静态首页（index.html）
     GET  /<file>                静态资源（.js/.css/.html/.png...，禁止访问 .env/server.py）
     POST /api/health            健康检查
-    POST /api/chat              接收文字 -> 调用大模型 -> 返回 {reply, actions}
+    POST /api/chat              【实验性备用通道，前端当前不调用】见下注
     POST /api/ocr               接收 base64 图片 -> 服务端调用腾讯云 OCR -> 返回 {text}
+
+注：前端的 AI 对话直连 WorkBuddy 云服务（cloud-config.js 的 SDK，模型 deepseek），
+    不经过本文件的 /api/chat。此接口保留为「自带 OpenAI 兼容 key 的独立部署」
+    备用通道（LLM_BASE_URL/LLM_API_KEY 只对它生效），答辩演示口径以云服务为准。
 
 环境变量（见 .env.example）：
     LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / LLM_TIMEOUT
@@ -109,6 +113,8 @@ def health():
 
 # =====================================================================
 # /api/chat —— 对话（调用 OpenAI 兼容的大模型接口）
+# 【实验性备用通道】前端对话直连 WorkBuddy 云服务（cloud-config.js），不调用本接口；
+# 仅供不带云服务的独立部署场景使用（需要配 LLM_API_KEY）。
 # =====================================================================
 
 SYSTEM_PROMPT = (

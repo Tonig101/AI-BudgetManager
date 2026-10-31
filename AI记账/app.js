@@ -2354,6 +2354,32 @@
             raw: ctx.raw
           });
         }
+        /* 大额硬门禁（代码级，不依赖模型自觉）：单笔支出 ≥ 冷静阈值时强制改走冷静卡。
+           提示词已写明 ≥ 阈值必须先调 cooling_check，但实测模型仍有概率直接 add_bills
+           （9999 打车被记上）。门禁放这里对「确认口径」放行：用户回「没记错就是这么多」
+           是第二轮、冷静卡流程已经走过，再拦就成了死循环。纠错改金额（editFrom）同理放行。 */
+        var coolLine = Number(state.budget.cooldownThreshold) || 0;
+        var isConfirmRaw = /没记错|没错|就是这笔|就是这么多|确认|确定|记上|真的花了|直接记/.test(String(ctx.raw));
+        if (coolLine > 0 && !isConfirmRaw && !flow.editFrom) {
+          var big = null;
+          for (i = 0; i < drafts.length; i++) {
+            if (drafts[i].type === 'expense' && drafts[i].amount >= coolLine &&
+              (!big || drafts[i].amount > big.amount)) { big = drafts[i]; }
+          }
+          if (big) {
+            pendingClear();
+            startCoolingFlow(big.note, big.amount);
+            return {
+              ok: true,
+              brief: big.note + ' ' + money(big.amount) + ' 已转冷静卡（大额强制拦截）',
+              data: {
+                ok: true, cooling: true, held: { note: big.note, amount: big.amount },
+                note: '金额达到冷静期阈值，已自动开冷静卡等用户决定，没有入账。' +
+                  'final 请告诉用户先停一下，不许说「记好了」；用户确认后他会再说，那时按确认口径放行。'
+              }
+            };
+          }
+        }
         pendingClear();
         correctionPending = null;
         /* 冷静期会挡住它后面的草稿，所以把「可能进冷静期」的排到最后，
@@ -3257,6 +3283,9 @@
       if (parts.length) { featureLines.push('- ' + AGENT_FEATURE_GROUPS[gi] + '：' + parts.join('、')); }
     }
     var cats = DATA.CATEGORY_KEYS.join('/');
+    /* 大额门禁量化进提示词：只写「非刚需大额」时，打车/日用等刚需品类的大额会被模型放行
+       （实测 9999 打车被直接 add_bills）。阈值即冷静卡拦截线，直接给数字最稳。 */
+    var coolLimit = (state && state.budget) ? Number(state.budget.cooldownThreshold) || 50 : 50;
     /* 自定义人设可能要求「用您称呼」，那条固定口径要摘掉，否则提示词自相矛盾，
        模型会两边各听一半，语气忽冷忽热。 */
     var voiceLines = AGENT_PERSONA.voice.slice();
@@ -3297,7 +3326,8 @@
       '【硬规则】',
       '1. 金额只能取自用户这句话（见下方【可用金额】），一个字都不能编。缺金额就问，问句里不要出现具体数字。',
       '2. 疑问句（怎么/吗/多少/能不能/值不值）不是记账；未来计划（明天、打算、约好）要记账时必须提醒「还没发生」。',
-      '3. 非刚需的大额消费（球鞋、数码、潮玩、演唱会等）先调 cooling_check 开冷静卡，不要直接记账。',
+      '3. 硬门禁：单笔金额 ≥ ' + coolLimit + '（冷静期阈值）时，无论品类、无论是否刚需，都必须先调 cooling_check ' +
+        '开冷静卡，不许直接 add_bills 记账；非刚需的大额消费（球鞋、数码、潮玩、演唱会等）即使不足 ' + coolLimit + ' 也先调 cooling_check。',
       '4. 同一个工具不要重复调用；工具返回 ok:false 就看 error 改参数，或改成问用户。',
       '5. 一律按【你是谁】说话：口语、1~3 句、不列长清单、不复述卡片上已有的数字；' +
         '语气可以直，但不许刻薄、不许说教、不许替用户下「你太穷了 / 你管不住手」这种判断。',
@@ -3603,7 +3633,15 @@
     var amts = NLP.findAmounts(raw);
     if (amts.length === 1 && !/[，,。；;、?？]/.test(raw) && !COACH.isWantBuy(raw)) {
       var r = INTENT.classifyIntent(raw, { now: new Date(), lastBill: buildIntentViewCtx().lastBill });
-      if (r && r.intent === 'record' && r.tier === 'high') { return false; }
+      if (r && r.intent === 'record' && r.tier === 'high') {
+        /* 大额例外：金额达到冷静期阈值时不走本地快路径——
+           冲动消费恰恰需要智能体查预算占比 / 给平替 / 拦一下，
+           本地快路径只管「记上」，绕过把关就失去「大额必拦」（实测 9999 被快路径吞掉）。
+           小额日常单仍保住 0 延迟手感。 */
+        var coolLimit = (state && state.budget) ? Number(state.budget.cooldownThreshold) || 0 : 0;
+        if (coolLimit > 0 && amts[0].value >= coolLimit) { return true; }
+        return false;
+      }
     }
     return true;
   }
@@ -16465,6 +16503,8 @@
       /* ⑥ 兜底：保证永远有东西可点，且一定有一条记账 / 一条省钱 */
       add('balance', '查余额', '查余额', '看看这周期还剩多少', 40);
       add('deal', '今天有啥优惠', '今天有什么优惠', '每天的活动不一样', 38);
+      /* 「App 教学」chip：直达学院「App 教学」Tab（点击拦截见 bindEvents 的 __acaSave 分支） */
+      add('acaSave', 'App 教学', '__acaSave', 'App 省钱技巧与视频教程', 36);
       add('guide', 'AI 能做什么', '你能做什么', '', 20);
 
       out.sort(function (a, b) { return b.w - a.w; });
