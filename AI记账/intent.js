@@ -404,7 +404,9 @@
        只在本句没有任何品类证据时才当作情绪信号，否则「奶茶」会被压成闲聊。
        这是对 §2.2 的一处必要收紧，见回传的「偏离说明」。 */
     sig.SIG_EMOTION = moodHit || (!hasCategory && anyHit(t, DATA.EMOTION_KEYWORDS || []));
-    sig.SIG_ADVICE = anyHit(t, LEX.ADVICE);
+    /* 求建议信号 = 通用建议词 + 省钱向 + 赚钱向（攒钱/搞钱单独出现时也是求建议，
+       否则「我想攒钱买电脑」会被当记账，反问金额让人莫名其妙） */
+    sig.SIG_ADVICE = anyHit(t, LEX.ADVICE) || anyHit(t, LEX.ADVICE_EARN) || anyHit(t, LEX.ADVICE_SAVE);
 
     /* ---- 以下几个是内部辅助位（不在 18 个里，无权重，不参与打分） ---- */
     sig.SIG_GREET = isGreeting(t);

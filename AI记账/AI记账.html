@@ -16224,7 +16224,13 @@ body[data-view="dazai"] .panel-dazai {
     // 数量 + 量词整体剔除，必须排在「抹掉数字」之前：
     // 否则 "3个苹果" 先被抹成 " 个苹果"，剩下孤零零的 "个" 就再也配不上数量了。
     if (RE_NUM_QUANT) { t = t.replace(RE_NUM_QUANT, ' '); }
-    t = t.replace(/\d+(?:\.\d{1,2})?/g, ' ');
+    /* 抹数字时保留型号编号（数字后贴非金额字母：16pro / 128g），
+       否则「苹果16pro」的备注会变成「苹果 pro」；金额后缀 r/k/w 照常抹掉。 */
+    t = t.replace(/\d+(?:\.\d{1,2})?[A-Za-z]?/g, function (tok) {
+      var tail = tok.charAt(tok.length - 1);
+      if (/[A-Za-z]/.test(tail) && !/^[rRkKwW]$/.test(tail)) { return tok; }
+      return ' ';
+    });
     t = t.replace(/[零〇一二两三四五六七八九十百千]+(?:元|块钱|块|毛|角)/g, ' ');
     t = t.replace(/[，。；、,!！?？~～|]+/g, ' ');
     var i;
@@ -16243,6 +16249,8 @@ body[data-view="dazai"] .panel-dazai {
     t = t.replace(/^[的与及]+/, '').trim();
     // 清掉残留的孤立中文数字（如 "一 鞋" -> "鞋"）
     t = t.replace(/(^|\s)[零〇一二两三四五六七八九十百千]+(?=\s|$)/g, ' ');
+    // 清掉金额后缀留下的孤立字母（"打车30r" 金额抹掉后剩 "打车 r" -> "打车"）
+    t = t.replace(/(^|\s)[rR](?=\s|$)/g, '$1');
     t = t.replace(/\s+/g, ' ').trim();
     if (!t) { t = meal || category; }
     return t;
@@ -31981,7 +31989,9 @@ body[data-view="dazai"] .panel-dazai {
        只在本句没有任何品类证据时才当作情绪信号，否则「奶茶」会被压成闲聊。
        这是对 §2.2 的一处必要收紧，见回传的「偏离说明」。 */
     sig.SIG_EMOTION = moodHit || (!hasCategory && anyHit(t, DATA.EMOTION_KEYWORDS || []));
-    sig.SIG_ADVICE = anyHit(t, LEX.ADVICE);
+    /* 求建议信号 = 通用建议词 + 省钱向 + 赚钱向（攒钱/搞钱单独出现时也是求建议，
+       否则「我想攒钱买电脑」会被当记账，反问金额让人莫名其妙） */
+    sig.SIG_ADVICE = anyHit(t, LEX.ADVICE) || anyHit(t, LEX.ADVICE_EARN) || anyHit(t, LEX.ADVICE_SAVE);
 
     /* ---- 以下几个是内部辅助位（不在 18 个里，无权重，不参与打分） ---- */
     sig.SIG_GREET = isGreeting(t);

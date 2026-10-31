@@ -3621,11 +3621,21 @@
     return new Promise(function (done) {
       var trace = agentTrace();
       agentKbHits = [];   /* 每轮重置：只挂本轮 search_kb 命中的条目 */
-      var slowTimer = setTimeout(function () { trace.slow(7); }, 7000);
-      var longTimer = setTimeout(function () { trace.slow(12); }, 12000);
+      /* 慢反馈：7s 起每 6s 报一次已等待秒数。
+         原来只有 7s/12s 两个定点，实测大额冷静期整轮可到 30s，12s 之后全程空窗无反馈。 */
+      var slowStart = Date.now();
+      var slowTimer = null;
+      var slowInterval = null;
+      function slowTick() {
+        trace.slow(Math.round((Date.now() - slowStart) / 1000));
+      }
+      slowTimer = setTimeout(function () {
+        slowTick();
+        slowInterval = setInterval(slowTick, 6000);
+      }, 7000);
       agentRun(raw, trace).then(function (out) {
         clearTimeout(slowTimer);
-        clearTimeout(longTimer);
+        clearInterval(slowInterval);
         if (!out || out.handled === false) {
           if (trace.row && trace.row.parentNode) { trace.row.parentNode.removeChild(trace.row); }
           if (global.console && console.info) {

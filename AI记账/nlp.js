@@ -587,7 +587,13 @@
     // 数量 + 量词整体剔除，必须排在「抹掉数字」之前：
     // 否则 "3个苹果" 先被抹成 " 个苹果"，剩下孤零零的 "个" 就再也配不上数量了。
     if (RE_NUM_QUANT) { t = t.replace(RE_NUM_QUANT, ' '); }
-    t = t.replace(/\d+(?:\.\d{1,2})?/g, ' ');
+    /* 抹数字时保留型号编号（数字后贴非金额字母：16pro / 128g），
+       否则「苹果16pro」的备注会变成「苹果 pro」；金额后缀 r/k/w 照常抹掉。 */
+    t = t.replace(/\d+(?:\.\d{1,2})?[A-Za-z]?/g, function (tok) {
+      var tail = tok.charAt(tok.length - 1);
+      if (/[A-Za-z]/.test(tail) && !/^[rRkKwW]$/.test(tail)) { return tok; }
+      return ' ';
+    });
     t = t.replace(/[零〇一二两三四五六七八九十百千]+(?:元|块钱|块|毛|角)/g, ' ');
     t = t.replace(/[，。；、,!！?？~～|]+/g, ' ');
     var i;
@@ -606,6 +612,8 @@
     t = t.replace(/^[的与及]+/, '').trim();
     // 清掉残留的孤立中文数字（如 "一 鞋" -> "鞋"）
     t = t.replace(/(^|\s)[零〇一二两三四五六七八九十百千]+(?=\s|$)/g, ' ');
+    // 清掉金额后缀留下的孤立字母（"打车30r" 金额抹掉后剩 "打车 r" -> "打车"）
+    t = t.replace(/(^|\s)[rR](?=\s|$)/g, '$1');
     t = t.replace(/\s+/g, ' ').trim();
     if (!t) { t = meal || category; }
     return t;
