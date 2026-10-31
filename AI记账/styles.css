@@ -721,6 +721,42 @@ h3 {
   color: var(--green-dark);
 }
 
+/* 「推荐」chip：每屏只出一条，绿点 + 淡绿底，和普通快捷指令区分开。
+   文案与理由由建议引擎按上下文算，这里只管长相。 */
+.chip-reco {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-weight: 600;
+}
+
+.chip-reco::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(47, 158, 110, 0.14);
+}
+
+.chip-reco:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+.chip-reco:hover::before {
+  background: #fff;
+  box-shadow: none;
+}
+
+[data-theme="dark"] .chip-reco {
+  background: rgba(7, 193, 96, 0.16);
+  color: #7BE3AE;
+}
+
 .input-row {
   display: flex;
   align-items: center;
@@ -803,6 +839,19 @@ h3 {
   font-weight: 600;
   font-size: 13.5px;
   transition: background 0.18s ease, transform 0.12s ease;
+  /* 图标+文字横排：块级布局会让无尺寸约束的 SVG 把「发送」挤到第二行、漏出按钮外 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+/* 发送箭头 SVG 锁定尺寸：无约束时按固有尺寸渲染，会撑爆按钮 */
+.btn-send-ico {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
 }
 
 .btn-send:hover {
@@ -1674,7 +1723,11 @@ h3 {
 .tabbar {
   display: none;
   flex: 0 0 auto;
-  min-height: 54px;
+  /* 全局 * { box-sizing: border-box } 生效，min-height 量的是「边框盒」。
+     真机（viewport-fit=cover，iPhone 小黑条 env()≈34px）里 padding-bottom 会从
+     边框盒里扣掉，只留 54-34=20px 内容盒 → 图标+文字放不下被裁。
+     故把安全区并入最小高度，保证内容盒恒为 54px，安全区再大也不会压扁。 */
+  min-height: calc(54px + env(safe-area-inset-bottom, 0px));
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: saturate(180%) blur(12px);
   border-top: 1px solid var(--line);
@@ -5679,6 +5732,37 @@ body[data-ui-mode="simple"] .ui-full-only { display: none !important; }
 .card-link:active { box-shadow: inset 0 0 0 1px var(--green); }
 .card-link:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
+/* ---------- 首页 · App 省钱指南入口卡（→ 学院「省钱」Tab） ---------- */
+.card-saveguide .sg-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.card-saveguide .sg-tags span {
+  font-size: 11.5px; line-height: 1.5; padding: 2px 8px; border-radius: 999px;
+  background: var(--green-soft); color: var(--green-ink); font-weight: 600; white-space: nowrap;
+}
+
+/* ---------- 省钱助手面板顶部 · App 省钱指南入口 ---------- */
+.save-guide-entry {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  margin: 0 0 12px; padding: 12px 14px; text-align: left;
+  background: var(--card); border-radius: 14px;
+  box-shadow: var(--shadow); border-left: 3px solid var(--green);
+  transition: transform .14s ease;
+}
+.save-guide-entry:active { transform: scale(.99); }
+.sge-ico {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: var(--green-soft); color: var(--green-ink);
+}
+.sge-ico svg {
+  width: 18px; height: 18px; display: block;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.sge-txt { flex: 1 1 auto; min-width: 0; }
+.sge-txt b { display: block; font-size: 14px; font-weight: 600; color: var(--text); }
+.sge-txt small { display: block; font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
+.sge-ar { flex: 0 0 auto; color: var(--text-3); font-size: 16px; line-height: 1; }
+
 .card-more {
   margin-left: 3px;
   font-size: 13px;
@@ -6501,6 +6585,54 @@ svg.di-emoji {
   color: var(--text-3);
 }
 
+/* 「手动比价」的用法说明：场景 / 怎么填 / 能看到什么
+   用左边一条绿色竖线做视觉锚点，和下面的输入行区分开，避免被当成又一段灰色小字略过 */
+.dc-howto {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 2px 0 6px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.dch-row {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+
+.dch-row b {
+  display: inline-block;
+  width: 5.4em;
+  margin-right: 8px;
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+/* 窄屏：标签单独占一行，正文整宽，避免 5.4em 的标签列把正文挤成一条窄缝 */
+@media (max-width: 600px) {
+  .dch-row b {
+    display: block;
+    width: auto;
+    margin: 0 0 1px;
+  }
+}
+
+/* 填表提示：比说明卡更轻，紧贴输入区 */
+.dc-tip {
+  margin: 6px 0 9px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+
 /* ---------- 未来 7 天 ---------- */
 .deals-up { display: flex; flex-direction: column; gap: 6px; }
 
@@ -6907,7 +7039,7 @@ svg.di-emoji {
 .rs-chip.is-mute { background: var(--line-2); color: var(--text-3); }
 
 .rs-price { text-align: right; }
-.rs-price b { display: block; font-size: 15px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.rs-price b { display: block; font-size: 17px; font-weight: 700; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
 .rs-price small { font-size: 10.5px; color: var(--text-3); }
 
 .rs-fill {
@@ -7058,6 +7190,194 @@ svg.di-emoji {
 }
 .rs-nomatch b { color: var(--text-2); font-weight: 600; }
 .rs-nomatch svg { width: 14px; height: 14px; flex: none; opacity: .7; }
+
+/* ---------- 抓取明细折叠（默认收起，想查才展开） ---------- */
+.rs-more { border: none; }
+.rs-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  cursor: pointer;
+  outline: none;
+  font-size: 11.5px;
+  color: var(--text-3);
+  user-select: none;
+}
+.rs-more > summary::-webkit-details-marker { display: none; }
+.rs-more > summary::before {
+  content: '';
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 4.5px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform .15s ease;
+}
+.rs-more[open] > summary::before { transform: rotate(90deg); }
+.rs-more > summary i { margin-left: auto; font-style: normal; }
+.rs-more > summary:hover { color: var(--text-2); }
+.rs-more-tip { margin: 6px 0 0; font-size: 11px; color: var(--text-3); line-height: 1.6; }
+
+/* ---------- 结论先行概览句 ---------- */
+/* 必须是 block 而不是 flex：这句话里 <b> 和文本是混排的，做成 flex 后
+   每个 <b>、每段连续文字各自成为一个 item，flex-wrap 默认 nowrap，
+   窄屏会把整句话竖着压成一字一行（横向还顶出滚动条）。
+   图标用 float 挂在左上，句子回到正常中文换行。 */
+.rs-lead {
+  display: block;
+  padding: 9px 11px;
+  border: 1px solid var(--green);
+  border-radius: 12px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+  font-size: 12.5px;
+  line-height: 1.75;
+  overflow-wrap: break-word;
+}
+.rs-lead > svg {
+  float: left;
+  width: 14px; height: 14px; margin: 3px 6px 0 0;
+  fill: none; stroke: var(--green); stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.rs-lead::after { content: ''; display: block; clear: both; }
+.rs-lead b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.rs-lead .rs-lo { color: var(--green-ink); }
+.rs-lead .rs-hi { color: var(--danger-deep); }
+
+/* ---------- 价格分布轴（纯 CSS 绝对定位，不引第三方库） ---------- */
+.rs-axis {
+  padding: 9px 11px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+.rs-axis-h {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  font-size: 12px; color: var(--text-2);
+}
+.rs-axis-h b { color: var(--text); font-weight: 600; font-size: 12.5px; }
+.rs-axis-h i { margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-3); }
+
+.rs-axis-track {
+  position: relative;
+  height: 10px;
+  margin: 26px 0 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--green-soft) 0%, var(--amber-soft) 50%, var(--danger-soft) 100%);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.rs-axis-rail {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 0;
+  bottom: 0;
+}
+.rs-dot {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--text-3);
+  box-shadow: 0 0 0 1.5px var(--card);
+  cursor: help;
+}
+.rs-dot.is-lo { background: var(--green); }
+.rs-dot.is-hi { background: var(--danger); }
+
+.rs-axis-avg {
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  width: 0;
+  border-left: 1px dashed var(--text-3);
+  pointer-events: none;
+}
+.rs-axis-avg em {
+  position: absolute;
+  bottom: 100%;
+  left: 4px;
+  margin-bottom: 1px;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rs-axis-avg.is-left em { left: auto; right: 4px; }
+
+/* 轴的两端补回真实金额：刻度改成「由低到高的排序位置」后，
+   相邻点间距不再等于差价，量级信息必须靠这两端的数字补回来 */
+.rs-axis-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: -2px;
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.rs-axis-ends b { color: var(--text-2); font-weight: 600; }
+
+.rs-axis-f {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 每行的贵贱条（跨整行，宽度 = 在「由低到高排序位置」上的百分比） ---------- */
+.rs-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1px;
+}
+.rs-bar-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line-2);
+  overflow: hidden;
+}
+.rs-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background-image: linear-gradient(90deg, var(--green) 0%, var(--amber) 50%, var(--danger) 100%);
+  background-repeat: no-repeat;
+}
+.rs-barnote {
+  flex: none;
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rs-best {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--amber);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+/* 排序说明：只是换显示顺序，别让人误以为价格被改了 */
+.rs-sort-note { flex: 0 0 100%; margin-top: -1px; font-size: 11.5px; color: var(--text-3); }
 
 /* ---------- 比价结果 ---------- */
 .dcz-result { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
@@ -7371,6 +7691,9 @@ svg.di-emoji {
   color: var(--text-3);
 }
 
+/* 公式行：keep-all 让「存钱罐」等词整体不被拆行，避免末字孤行 */
+.bc-formula { word-break: keep-all; }
+
 .bc-sentence {
   margin-top: 8px;
   font-size: 12px;
@@ -7604,11 +7927,17 @@ body[data-ui-mode="simple"] #tabbarSimple { display: flex; }
 #tabbarSimple .t-ico { font-size: 19px; line-height: 1; }
 #tabbarSimple .tab.active::after { top: auto; bottom: 5px; }
 
-/* 简洁版 6 格（记账/明细/预算/省钱/理财专家/我的）：
-   390px 下每格约 65px，四字标签 11px 需 nowrap 且不许撑破；图标+文字比 4 格时更挤，
-   故简洁版 tabbar 单独加高 2px，窄机再缩一档字号。 */
-body[data-ui-mode="simple"] #tabbarSimple { height: 56px; }
-#tabbarSimple .tab { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 简洁版 7 格（记账/明细/预算/省钱助手/搭子/理财专家/我的）：
+   390px 下每格约 55px，四字标签 11px 需 nowrap 且不许撑破。
+   高度用 height:auto + min-height(含安全区) 的「自愈式」写法：
+   内容盒尺寸由内容撑开，安全区只增加外框高度，真机不会再被压扁。 */
+body[data-ui-mode="simple"] #tabbarSimple {
+  height: auto;
+  min-height: calc(56px + env(safe-area-inset-bottom, 0px));
+}
+/* padding:0 —— 去掉按钮 UA 默认内边距（约 1px 6px），否则 4 字标签
+   「省钱助手」「理财专家」在 390px 下差 0.3px 被省略成「省钱…」「理财…」。 */
+#tabbarSimple .tab { min-width: 0; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 360px) {
   #tabbarSimple .tab { font-size: 10px; gap: 1px; }
   #tabbarSimple .t-ico { font-size: 17px; }
@@ -12336,6 +12665,14 @@ body[data-view="dazai"] .panel-dazai {
 .rs-nb-dim { display: inline-block; margin-top: 3px; font-size: 11.5px; opacity: .8; line-height: 1.55; }
 .rs-nb-steps b { color: var(--text); font-weight: 600; }
 
+/* 自动等待后端：轮询期间告诉用户「不用点，它自己会重搜」，避免用户反复点按钮 */
+.rs-nb-wait {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-2, #475569);
+  opacity: .9;
+}
+
 .rs-nb-retry {
   min-height: 44px;
   padding: 0 20px;
@@ -12668,6 +13005,32 @@ body[data-view="dazai"] .panel-dazai {
   border: 1px solid transparent;
 }
 .chat-head .chat-help:hover { border-color: var(--green); }
+
+/* 头部「撤回上一步」与「能做什么」统一为同一套淡绿软胶囊语言 */
+.chat-head .chat-undo {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  height: 24px;
+  line-height: 22px;
+  padding: 0 8px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  color: var(--green-ink);
+  background: var(--green-soft);
+  border: 1px solid transparent;
+  /* 图标+文字横排：块级布局会让 SVG 把胶囊撑爆、文字被挤下裁掉 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.chat-head .chat-undo:hover { border-color: var(--green); }
+/* 撤回箭头 SVG 必须锁定尺寸：无约束时按固有尺寸渲染，会把胶囊撑爆 */
+.chat-head .chat-undo-ico {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
 @media (max-width: 360px) {
   .chat-head .chat-help { display: none; }   /* 极窄屏优先保住「撤回上一步」 */
 }
@@ -12899,56 +13262,116 @@ body[data-view="dazai"] .panel-dazai {
   .choice-btn { padding: 4px 10px; font-size: 12px; }
 }
 
-/* ---- 知识跳转卡：search_kb 命中后挂在 AI 回复下方，可点直接去看 ---- */
+/* ---- 知识跳转卡：search_kb 命中后挂在 AI 回复下方，可点直接去看 ----
+   视觉：淡绿描边卡（不是整块绿底），行首放品牌瓦片/类型图标。
+   满绿底会把三行文字全压成同一个绿色调，品牌 logo 的白底瓦片也会跟着发脏。 */
 .kb-card {
-  margin: 8px 0 2px 2px;
-  border: 1px solid var(--green);
-  border-radius: 12px;
-  background: var(--green-soft);
+  margin: 9px 0 2px;
+  border: 1px solid rgba(7, 193, 96, .30);
+  border-radius: 14px;
+  background: rgba(7, 193, 96, .055);
   overflow: hidden;
   max-width: 100%;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
 }
 .kb-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 11px 5px;
-  font-size: 12.5px;
+  padding: 8px 12px 5px;
 }
-.kb-head-ico { font-size: 14px; line-height: 1; }
-.kb-head b { color: var(--green-ink); font-weight: 700; }
-.kb-head-sub { margin-left: auto; color: var(--green-dark); opacity: .75; font-size: 11px; }
+.kb-head-t {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--green-ink);
+}
+.kb-head-sub {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
 .kb-jump {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
+  min-height: 48px;
   box-sizing: border-box;
-  padding: 8px 11px;
+  padding: 9px 11px;
   border: 0;
-  border-top: 1px solid rgba(7,193,96,.22);
+  border-top: 1px solid rgba(7, 193, 96, .16);
   background: transparent;
-  color: var(--green-ink);
+  color: var(--text);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: background .15s ease, transform .1s ease;
+  transition: background .15s ease;
 }
-.kb-jump:hover { background: rgba(7,193,96,.16); }
-.kb-jump:active { transform: scale(.99); }
-.kb-jump-ico { font-size: 15px; line-height: 1; flex: none; }
-.kb-jump-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.kb-jump-txt b { font-weight: 600; line-height: 1.3; word-break: break-all; }
+.kb-jump:hover { background: rgba(7, 193, 96, .08); }
+.kb-jump:active { background: rgba(7, 193, 96, .14); }
+.kb-jump:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.kb-jump-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+}
+/* 无品牌可挂时的类型图标：24px 圆角小方块 + 主色线性图标 */
+.kb-ico-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--green-soft);
+  color: var(--green-ink);
+}
+.kb-ico-chip .bico { width: 14px; height: 14px; min-width: 0; min-height: 0; }
+/* 白底 logo 瓦片落在淡绿卡面上，默认 0.09 的描边几乎看不见 —— 卡内单独加重一档 */
+.kb-jump .brand-tile.has-logo { box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .13); }
+.kb-jump-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.kb-jump-txt b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.32;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
 .kb-jump-txt i {
   font-style: normal;
   font-size: 11px;
-  color: var(--green-dark);
-  opacity: .85;
-  margin-top: 1px;
+  line-height: 1.3;
+  color: var(--text-3);
 }
-.kb-jump-ar { font-size: 18px; line-height: 1; color: var(--green-dark); flex: none; }
+.kb-jump-ar {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: var(--text-3);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .75;
+}
+[data-theme="dark"] .kb-card { background: rgba(7, 193, 96, .07); border-color: rgba(7, 193, 96, .34); }
+[data-theme="dark"] .kb-jump { border-top-color: rgba(255, 255, 255, .07); }
+@media (max-width: 360px) {
+  .kb-jump { padding: 8px 10px; font-size: 12.5px; }
+  .kb-jump-txt b { font-size: 12.5px; }
+}
 
 /* ---- 省钱条目被 AI 精确跳中时的高亮 ---- */
+.deal-flash {
+  animation: svFlash 1.8s ease;
+  box-shadow: 0 0 0 2px var(--green), 0 4px 16px rgba(7,193,96,.28);
+  border-radius: 12px;
+}
 .sv-flash {
   animation: svFlash 1.8s ease;
   box-shadow: 0 0 0 2px var(--green), 0 4px 16px rgba(7,193,96,.28);
@@ -12961,4 +13384,143 @@ body[data-view="dazai"] .panel-dazai {
 }
 @media (max-width: 360px) {
   .kb-jump { padding: 7px 10px; font-size: 12.5px; }
+}
+
+/* =========================================================
+   手机端对话页重排（≤640px）
+   手机上一屏就那么高，纵向空间该留给消息本身。三处最吃屏幕的地方统一重排：
+   a) 快捷提问换行成两三排，最后一排只剩两颗、右侧一大块空白 → 改单行横滑，
+      右端渐隐提示「还能滑」，出血到屏幕边缘让第一颗与输入行左对齐；
+   b) 播报条固定一行截断，长句永远看不全 → 放开到两行；
+   c) 输入行三个控件大小不一、和 Tab 栏贴在一起 → 全部拉到 42px 触摸目标。
+   桌面端（>640px）保持原样，一条规则都不受影响。
+   ========================================================= */
+@media (max-width: 640px) {
+  /* ---- 顶栏：身份 + 两个动作，长提示让位 ---- */
+  .chat-head {
+    min-height: 48px;
+    padding: 0 10px 0 8px;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .chat-head-hint { display: none; }
+  .chat-back { width: 34px; height: 34px; font-size: 20px; }
+  .dot-live { margin-right: 2px; }
+  .chat-head .chat-undo,
+  .chat-head .chat-help {
+    height: 30px;
+    line-height: 28px;
+    padding: 0 10px;
+    border-radius: 15px;
+  }
+  .chat-head .chat-undo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .chat-undo-ico { width: 15px; height: 15px; flex: 0 0 auto; }
+  /* 手机端撤回键也显示文字，与「能做什么」同为绿字胶囊，避免一图标一文案的不协调 */
+  .chat-undo-txt { display: inline; }
+  /* 标题占满剩余空间并可收缩，保证两个动作按钮在窄屏不被挤出 */
+  #chatPeerName { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- 消息：留白、圆角、行高 ---- */
+  .chat-list {
+    padding: 14px 12px calc(8px + var(--aj-pet-reserve, 0px));
+  }
+  .msg-row { gap: 10px; margin-bottom: 12px; }
+  .avatar.ai { width: 34px; height: 34px; }
+  .msg-body { max-width: 82%; }
+  .bubble {
+    padding: 11px 14px;
+    border-radius: 16px;
+    font-size: 14.5px;
+    line-height: 1.66;
+  }
+  /* 靠头像那一角收尖：一眼看出是谁说的，而不是一排同圆角卡片 */
+  .bubble.ai { border-top-left-radius: 6px; }
+  .bubble.me { border-top-right-radius: 6px; }
+  .msg-time { font-size: 11px; padding: 0 6px; }
+  /* 欢迎语脚注：字号更小、单独成行，免得在窄气泡里折成碎块 */
+  .msg-platform { display: block; margin-top: 6px; font-size: 11px; line-height: 1.5; }
+
+  /* ---- 输入区 ---- */
+  .chat-composer { padding: 8px 12px 10px; }
+
+  .mascot-bar {
+    gap: 8px;
+    padding: 6px;
+    margin-bottom: 8px;
+    border-radius: 20px;
+    /* 播报条是「系统通知」，不是输入框的一部分：给它一层灰底，
+       和下面的输入行、白色气泡区分开，堆叠三层时才有层次 */
+    background: #F2F4F7;
+    border-color: transparent;
+  }
+  [data-theme="dark"] .mascot-bar {
+    background: var(--raise);
+    border-color: transparent;
+  }
+  .mascot-bar-av { width: 32px; height: 32px; }
+  .mascot-bar-text {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.45;
+  }
+
+  .quick-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 8px;
+    padding: 2px 12px 8px;
+    /* 负边距出血：视觉上第一颗贴屏幕边，滑到末尾也留得住 12px */
+    margin: 0 -12px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+  }
+  .quick-chips::-webkit-scrollbar { display: none; }
+  .chip { height: 32px; padding: 0 13px; font-size: 12.5px; }
+
+  .input-row { gap: 8px; }
+  .btn-mic { width: 42px; height: 42px; border-radius: 50%; }
+  #chatInput { height: 42px; border-radius: 21px; padding: 0 16px; }
+  .btn-send {
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-send-ico { width: 20px; height: 20px; }
+  .btn-send-txt { display: none; }
+
+  /* 宠物头顶那两个白圆钮：手机上正好压在宠物脸上，实心白圆比宠物本身还抢眼。
+     默认压到半透明，手摸上去（hover / 拖拽 / 键盘聚焦）再显形，功能一点没少。 */
+  .pet-swap,
+  .pet-hide {
+    width: 24px;
+    height: 24px;
+    opacity: 0.5;
+    transition: opacity 0.18s ease;
+  }
+  .aj-pet:hover .pet-swap,
+  .aj-pet:hover .pet-hide,
+  .aj-pet.dragging .pet-swap,
+  .aj-pet.dragging .pet-hide,
+  .pet-swap:focus-visible,
+  .pet-hide:focus-visible { opacity: 1; }
+}
+
+/* 极窄屏（≤360px）：提问再紧一档，顶栏优先保住「撤回」 */
+@media (max-width: 360px) {
+  .chat-head .chat-help { display: none; }
+  .chip { height: 30px; padding: 0 11px; font-size: 12px; }
 }

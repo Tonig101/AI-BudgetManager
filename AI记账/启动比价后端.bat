@@ -1,40 +1,73 @@
 @echo off
-chcp 65001 >nul
-title AIè®°è´¦ - çœŸå®æ¯”ä»·åç«¯ (deals_api)
+chcp 936 >nul
+title AI¼ÇÕË - ÕæÊµ±È¼Ûºó¶Ë (service\backend_service.py)
+setlocal
 cd /d "%~dp0"
 
+REM ¶Ë¿Ú¹Ì¶¨ 8010£¬²»ÔÙ½ÓÊÜÃüÁîĞĞ²ÎÊı£ºÇ°¶Ë app.js µÄ REAL_API_BASES Óë½¡¿µ¼ì²é
+REM ¶¼Ö»ÈÏ 8010£¬ºó¶Ë»»¸ö¶Ë¿Ú»áÈÃ¡¸ËÑË÷ + ×ÔÓú¡¹Ò»ÆğÊ§Ğ§£¬ËùÒÔÕâÀï²»ÁôÕâ¸öĞıÅ¥¡£
+set "PORT=8010"
+
 echo.
 echo   ==========================================================
-echo    AIè®°è´¦ Â· çœŸå®æ¯”ä»·åç«¯
-echo    æ¯”ä»·æœç´¢ã€å•†å“å›¾ã€è·¨è®¾å¤‡å®¡æ‰¹éƒ½é å®ƒ
+echo    AI¼ÇÕË ¡¤ ÕæÊµ±È¼Ûºó¶Ë
+echo    ±È¼ÛËÑË÷¡¢ÉÌÆ·Í¼¡¢¿çÉè±¸ÉóÅú¶¼¿¿Ëü
 echo   ==========================================================
 echo.
 
-REM ---- ä¾èµ–è‡ªæ£€ï¼šç¼ºä»€ä¹ˆå°±è£…ä»€ä¹ˆï¼ˆé¦–æ¬¡è¿è¡Œä¼šè‡ªåŠ¨è£…ï¼Œçº¦ 1-3 åˆ†é’Ÿï¼‰----
-python -c "import fastapi,uvicorn,httpx,bs4" >nul 2>&1
-if errorlevel 1 (
-  echo [1/2] é¦–æ¬¡è¿è¡Œï¼Œæ­£åœ¨å®‰è£…ä¾èµ–ï¼ˆfastapi / uvicorn / httpx / beautifulsoup4ï¼‰...
-  python -m pip install -q fastapi uvicorn httpx beautifulsoup4 lxml
-  if errorlevel 1 (
-    echo.
-    echo [å¤±è´¥] ä¾èµ–å®‰è£…å¤±è´¥ã€‚è¯·æ£€æŸ¥ç½‘ç»œï¼Œæˆ–æ‰‹åŠ¨æ‰§è¡Œï¼š
-    echo        python -m pip install fastapi uvicorn httpx beautifulsoup4 lxml
-    echo.
-    pause
-    exit /b 1
-  )
-  echo [1/2] ä¾èµ–å®‰è£…å®Œæˆã€‚
-) else (
-  echo [1/2] ä¾èµ–é½å…¨ã€‚
-)
+REM ---- ½âÊÍÆ÷½âÎö£ºÓÃ»§ PATH Àï¿ÉÄÜ¸ù±¾Ã»ÓĞ python.exe£¬²»ÄÜÖ±½ÓĞ´ python ----
+call "%~dp0service\find_python.cmd"
+set "RC=%errorlevel%"
+if "%RC%"=="3" goto :nointerp
+if "%RC%"=="2" goto :needdeps
+echo [1/2] ÒÀÀµÆëÈ«¡£
+goto :ready
 
-echo [2/2] å¯åŠ¨æœåŠ¡ï¼Œæµè§ˆå™¨è®¿é—® http://127.0.0.1:8010/api/health åº”æ˜¾ç¤º real_search=true
+:needdeps
+echo [1/2] ÕÒµ½½âÊÍÆ÷µ«È±ÒÀÀµ£¬ÕıÔÚ°²×°£¨Ê×´ÎÔËĞĞÔ¼ 1-3 ·ÖÖÓ£©...
+"%AJ_PY%" -m pip install -q fastapi uvicorn httpx beautifulsoup4 lxml
+if errorlevel 1 goto :pipfail
+echo [1/2] ÒÀÀµ°²×°Íê³É¡£
+goto :ready
+
+:ready
+echo     Ê¹ÓÃ½âÊÍÆ÷: %AJ_PY%
+echo [2/2] Æô¶¯³£×¤·şÎñ£ºä¯ÀÀÆ÷·ÃÎÊ http://127.0.0.1:%PORT%/api/health Ó¦ÏÔÊ¾ real_search=true
 echo.
-echo     å…³é—­æœ¬çª—å£å³åœæ­¢æœåŠ¡ã€‚çœŸå®æœç´¢éœ€è¦æœ¬æœåŠ¡åœ¨çº¿ã€‚
+echo     ¹Ø±Õ±¾´°¿Ú¼´Í£Ö¹·şÎñ£»·şÎñ±ÀÀ£»á×Ô¶¯ÖØÆô£¨×î¶à 5 ´Î£©¡£
+echo     ÈÕÖ¾Ğ´ÔÚÍ¬Ò»¸öÎÄ¼ş¼ĞÀïµÄ backend.log¡£
+echo     ¿ª»ú×ÔÆô / ¾²Ä¬Æô¶¯ÓÃµÄÊÇÍ¬Ò»¸ö½Å±¾£ºservice\backend_service.py
 echo.
 
-python deals_api.py --port 8010
+REM ¶µµ×£ºÍòÒ» service\backend_service.py ±»ÎóÉ¾£¨É±ÈíÎóÉ±µÈ£©£¬Ò²²»ÒªÈÃÓÃ»§¿¨ËÀÔÚÕâÀï
+if not exist "%~dp0service\backend_service.py" goto :fallback
 
+"%AJ_PY%" "%~dp0service\backend_service.py" --port %PORT%
+goto :done
+
+:fallback
+echo [ÌáÊ¾] ÕÒ²»µ½ service\backend_service.py£¬¸ÄÓÃ deals_api.py Ö±½ÓÆô¶¯¡£
+echo        ÕâÖÖ·½Ê½Ã»ÓĞ±ÀÀ£×Ô¶¯ÖØÆô¡¢Ò²²»»á°ÑÈÕÖ¾Ğ´½ø backend.log£¬½¨Òé¾¡¿ì»Ö¸´¸ÃÎÄ¼ş¡£
 echo.
-echo æœåŠ¡å·²åœæ­¢ã€‚
+"%AJ_PY%" "%~dp0deals_api.py" --port %PORT%
+goto :done
+
+:nointerp
+echo [Ê§°Ü] ÕÒ²»µ½ÈÎºÎ¿ÉÓÃµÄ Python ½âÊÍÆ÷£¨PATH ÀïÃ»ÓĞ£¬WorkBuddy ÄÚÖÃÄ¿Â¼ÀïÒ²Ã»ÓĞ£©¡£
+echo        Çë°²×° Python 3.10 ÒÔÉÏ°æ±¾£¨°²×°Ê±¹´Ñ¡ Add to PATH£©£¬»òÖØ×° WorkBuddy ºóÖØÊÔ¡£
+echo.
+echo        ÊÖ¶¯ÅÅ²é£ºÔÚÃüÁîĞĞÖ´ĞĞ  where python   Ó¦ÄÜÊä³öÒ»¸öÕæÊµÂ·¾¶£¨²»ÊÇ WindowsApps ÀïµÄ£©¡£
+pause
+exit /b 1
+
+:pipfail
+echo [Ê§°Ü] ÒÀÀµ°²×°Ê§°Ü¡£Çë¼ì²éÍøÂç£¬»òÊÖ¶¯Ö´ĞĞÏÂÃæÕâÌõÃüÁî£º
+echo        "%AJ_PY%" -m pip install fastapi uvicorn httpx beautifulsoup4 lxml
+echo.
+pause
+exit /b 1
+
+:done
+echo.
+echo ·şÎñÒÑÍ£Ö¹¡£
 pause

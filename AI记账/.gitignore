@@ -13,3 +13,9 @@ _shot/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 运行时产物（日志 / 测试数据库）：本地后端与探针生成，不入库、不发布
+*.log
+*.db
+*.sqlite
+*.sqlite3

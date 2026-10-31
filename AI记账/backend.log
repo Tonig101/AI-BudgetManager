@@ -83,3 +83,539 @@ INFO:     Started server process [532]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 20:23:17] [service] 端口 8010 已在监听，本进程不再启动（单实例保护），退出
+[2026-10-30 20:23:49] [service] 端口 8010 已在监听，本进程不再启动（单实例保护），退出
+[2026-10-30 20:24:25] [service] 端口 8010 已在监听，本进程不再启动（单实例保护），退出
+[2026-10-30 20:25:00] [service] 端口 8010 已在监听，本进程不再启动（单实例保护），退出
+[2026-10-30 20:25:08] [service] 端口 8010 已在监听，本进程不再启动（单实例保护），退出
+[2026-10-30 20:25:27] [service] 端口 8010 已在监听，本进程不再启动（单实例保护），退出
+[2026-10-30 20:27:13] [service] ==========================================================
+[2026-10-30 20:27:13] [service] 启动比价后端：host=127.0.0.1 port=8011，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:27:13] [service] uvicorn 启动：127.0.0.1:8011（app=deals_api:app）
+[2026-10-30 20:27:15] INFO:     Started server process [35292]
+[2026-10-30 20:27:15] INFO:     Waiting for application startup.
+[2026-10-30 20:27:15] INFO:     Application startup complete.
+[2026-10-30 20:27:15] INFO:     Uvicorn running on http://127.0.0.1:8011 (Press CTRL+C to quit)
+[2026-10-30 20:27:24] INFO:     127.0.0.1:62714 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:28:08] INFO:     127.0.0.1:64465 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:30:42] [service] ==========================================================
+[2026-10-30 20:30:42] [service] 启动比价后端：host=127.0.0.1 port=8098，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:30:42] [service] uvicorn 启动：127.0.0.1:8098（app=deals_api:app）
+[2026-10-30 20:30:43] INFO:     Started server process [13584]
+[2026-10-30 20:30:43] INFO:     Waiting for application startup.
+[2026-10-30 20:30:43] INFO:     Application startup complete.
+[2026-10-30 20:30:43] INFO:     Uvicorn running on http://127.0.0.1:8098 (Press CTRL+C to quit)
+[2026-10-30 20:30:52] INFO:     127.0.0.1:56373 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:31:16] [service] ==========================================================
+[2026-10-30 20:31:16] [service] 启动比价后端：host=127.0.0.1 port=8098，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:31:16] [service] uvicorn 启动：127.0.0.1:8098（app=deals_api:app）
+[2026-10-30 20:31:17] INFO:     Started server process [24524]
+[2026-10-30 20:31:17] INFO:     Waiting for application startup.
+[2026-10-30 20:31:17] INFO:     Application startup complete.
+[2026-10-30 20:31:17] INFO:     Uvicorn running on http://127.0.0.1:8098 (Press CTRL+C to quit)
+[2026-10-30 20:31:26] INFO:     127.0.0.1:64558 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:31:39] [service] ==========================================================
+[2026-10-30 20:31:39] [service] 启动比价后端：host=127.0.0.1 port=8098，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:31:39] [service] uvicorn 启动：127.0.0.1:8098（app=deals_api:app）
+[2026-10-30 20:31:40] INFO:     Started server process [4824]
+[2026-10-30 20:31:40] INFO:     Waiting for application startup.
+[2026-10-30 20:31:40] INFO:     Application startup complete.
+[2026-10-30 20:31:40] INFO:     Uvicorn running on http://127.0.0.1:8098 (Press CTRL+C to quit)
+[2026-10-30 20:31:45] INFO:     127.0.0.1:50120 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:31:54] [service] ==========================================================
+[2026-10-30 20:31:54] [service] 启动比价后端：host=127.0.0.1 port=8098，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:31:55] [service] uvicorn 启动：127.0.0.1:8098（app=deals_api:app）
+[2026-10-30 20:31:56] INFO:     Started server process [7268]
+[2026-10-30 20:31:56] INFO:     Waiting for application startup.
+[2026-10-30 20:31:56] INFO:     Application startup complete.
+[2026-10-30 20:31:56] INFO:     Uvicorn running on http://127.0.0.1:8098 (Press CTRL+C to quit)
+[2026-10-30 20:32:01] INFO:     127.0.0.1:49401 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:32:29] [service] ==========================================================
+[2026-10-30 20:32:29] [service] 启动比价后端：host=127.0.0.1 port=8098，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:32:29] [service] uvicorn 启动：127.0.0.1:8098（app=deals_api:app）
+[2026-10-30 20:32:30] INFO:     Started server process [30144]
+[2026-10-30 20:32:30] INFO:     Waiting for application startup.
+[2026-10-30 20:32:30] INFO:     Application startup complete.
+[2026-10-30 20:32:30] INFO:     Uvicorn running on http://127.0.0.1:8098 (Press CTRL+C to quit)
+[2026-10-30 20:32:35] INFO:     127.0.0.1:53396 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:33:30] [service] ==========================================================
+[2026-10-30 20:33:30] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:33:30] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 20:33:31] INFO:     Started server process [6180]
+[2026-10-30 20:33:31] INFO:     Waiting for application startup.
+[2026-10-30 20:33:31] INFO:     Application startup complete.
+[2026-10-30 20:33:31] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 20:33:37] INFO:     127.0.0.1:61000 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:34:28] INFO:     127.0.0.1:51838 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:34:48] INFO:     127.0.0.1:51840 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:34:53] INFO:     127.0.0.1:60865 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:35:17] INFO:     127.0.0.1:59396 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:35:36] INFO:     127.0.0.1:55124 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:36:03] INFO:     127.0.0.1:49210 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:42:45] [service] ==========================================================
+[2026-10-30 20:42:45] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:42:45] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 20:42:46] INFO:     Started server process [4636]
+[2026-10-30 20:42:46] INFO:     Waiting for application startup.
+[2026-10-30 20:42:46] INFO:     Application startup complete.
+[2026-10-30 20:42:46] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 20:42:47] INFO:     127.0.0.1:49670 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:42:58] INFO:     127.0.0.1:49670 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:43:06] INFO:     127.0.0.1:65045 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:12] INFO:     127.0.0.1:56521 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:14] INFO:     127.0.0.1:63426 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:16] INFO:     127.0.0.1:63428 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:17] INFO:     127.0.0.1:63430 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:19] INFO:     127.0.0.1:63431 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:21] INFO:     127.0.0.1:63257 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:22] INFO:     127.0.0.1:65154 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:24] INFO:     127.0.0.1:65158 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:25] INFO:     127.0.0.1:65160 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:27] INFO:     127.0.0.1:65162 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:28] INFO:     127.0.0.1:65164 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:30] INFO:     127.0.0.1:65170 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:32] INFO:     127.0.0.1:65171 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:33] INFO:     127.0.0.1:65172 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:35] INFO:     127.0.0.1:52702 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:36] INFO:     127.0.0.1:52703 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:38] INFO:     127.0.0.1:52704 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:40] INFO:     127.0.0.1:52705 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:41] INFO:     127.0.0.1:55178 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:43] INFO:     127.0.0.1:64184 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:45] INFO:     127.0.0.1:58513 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:46] INFO:     127.0.0.1:58517 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:48] INFO:     127.0.0.1:58524 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:49] INFO:     127.0.0.1:58530 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:51] INFO:     127.0.0.1:58533 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:53] INFO:     127.0.0.1:58534 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:54] INFO:     127.0.0.1:58542 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:56] INFO:     127.0.0.1:49667 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:58] INFO:     127.0.0.1:49671 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:43:59] INFO:     127.0.0.1:49674 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:01] INFO:     127.0.0.1:58387 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:03] INFO:     127.0.0.1:62513 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:05] INFO:     127.0.0.1:62514 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:06] INFO:     127.0.0.1:62515 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:08] INFO:     127.0.0.1:58544 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:10] INFO:     127.0.0.1:58546 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:12] INFO:     127.0.0.1:58547 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:13] INFO:     127.0.0.1:58550 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:15] INFO:     127.0.0.1:58551 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:17] INFO:     127.0.0.1:58655 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:18] INFO:     127.0.0.1:58657 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:20] INFO:     127.0.0.1:58658 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:22] INFO:     127.0.0.1:62195 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:24] INFO:     127.0.0.1:61594 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:25] INFO:     127.0.0.1:50117 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:27] INFO:     127.0.0.1:50118 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:29] INFO:     127.0.0.1:50119 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:30] INFO:     127.0.0.1:50120 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:32] INFO:     127.0.0.1:50123 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:34] INFO:     127.0.0.1:50124 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:35] INFO:     127.0.0.1:50125 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:37] INFO:     127.0.0.1:50126 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:39] INFO:     127.0.0.1:50127 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:40] INFO:     127.0.0.1:50128 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:42] INFO:     127.0.0.1:50130 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:44] INFO:     127.0.0.1:54319 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:46] INFO:     127.0.0.1:56473 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:47] INFO:     127.0.0.1:56475 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:49] INFO:     127.0.0.1:56476 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:44:51] INFO:     127.0.0.1:56478 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:45:21] INFO:     127.0.0.1:60674 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:45:33] INFO:     127.0.0.1:53654 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:46:38] INFO:     127.0.0.1:63774 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:47:33] INFO:     127.0.0.1:57439 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:47:58] INFO:     127.0.0.1:63624 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:48:15] INFO:     127.0.0.1:52854 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:48:40] INFO:     127.0.0.1:58345 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:48:57] INFO:     127.0.0.1:56748 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:49:22] INFO:     127.0.0.1:53639 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:49:56] INFO:     127.0.0.1:55280 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:51:11] INFO:     127.0.0.1:53769 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:51:36] INFO:     127.0.0.1:54532 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:51:48] INFO:     127.0.0.1:51138 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:52:13] INFO:     127.0.0.1:62719 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:52:36] INFO:     127.0.0.1:56734 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:54:27] [service] ==========================================================
+[2026-10-30 20:54:27] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 20:54:27] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 20:54:28] INFO:     Started server process [28180]
+[2026-10-30 20:54:28] INFO:     Waiting for application startup.
+[2026-10-30 20:54:28] INFO:     Application startup complete.
+[2026-10-30 20:54:28] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 20:54:28] INFO:     127.0.0.1:54788 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:34] INFO:     127.0.0.1:54788 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:54:43] INFO:     127.0.0.1:55512 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:45] INFO:     127.0.0.1:49672 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:47] INFO:     127.0.0.1:49674 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:49] INFO:     127.0.0.1:49675 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:50] INFO:     127.0.0.1:49677 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:52] INFO:     127.0.0.1:61016 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:54] INFO:     127.0.0.1:55470 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:55] INFO:     127.0.0.1:60922 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:57] INFO:     127.0.0.1:57998 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:54:59] INFO:     127.0.0.1:52553 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:01] INFO:     127.0.0.1:52554 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:02] INFO:     127.0.0.1:52555 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:04] INFO:     127.0.0.1:61611 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:06] INFO:     127.0.0.1:58513 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:08] INFO:     127.0.0.1:52114 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:09] INFO:     127.0.0.1:52115 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:11] INFO:     127.0.0.1:52116 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:13] INFO:     127.0.0.1:52117 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:14] INFO:     127.0.0.1:53833 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:16] INFO:     127.0.0.1:57961 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:18] INFO:     127.0.0.1:55167 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:19] INFO:     127.0.0.1:60389 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:21] INFO:     127.0.0.1:60390 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:23] INFO:     127.0.0.1:60391 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:25] INFO:     127.0.0.1:60392 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:26] INFO:     127.0.0.1:51768 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:28] INFO:     127.0.0.1:55439 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:30] INFO:     127.0.0.1:55440 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:32] INFO:     127.0.0.1:53333 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:33] INFO:     127.0.0.1:63308 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:35] INFO:     127.0.0.1:52643 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:37] INFO:     127.0.0.1:61600 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:38] INFO:     127.0.0.1:61601 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:40] INFO:     127.0.0.1:55359 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:42] INFO:     127.0.0.1:55360 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:44] INFO:     127.0.0.1:55361 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:45] INFO:     127.0.0.1:55362 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:47] INFO:     127.0.0.1:52473 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:49] INFO:     127.0.0.1:50525 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:51] INFO:     127.0.0.1:51694 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:52] INFO:     127.0.0.1:51695 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:54] INFO:     127.0.0.1:60070 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:56] INFO:     127.0.0.1:60072 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:57] INFO:     127.0.0.1:50171 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:55:59] INFO:     127.0.0.1:50172 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:01] INFO:     127.0.0.1:50173 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:03] INFO:     127.0.0.1:50174 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:04] INFO:     127.0.0.1:52416 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:06] INFO:     127.0.0.1:55036 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:08] INFO:     127.0.0.1:64995 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:09] INFO:     127.0.0.1:64996 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:11] INFO:     127.0.0.1:51313 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:13] INFO:     127.0.0.1:51314 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:14] INFO:     127.0.0.1:54241 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:16] INFO:     127.0.0.1:54242 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:17] INFO:     127.0.0.1:53472 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:19] INFO:     127.0.0.1:64920 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:20] INFO:     127.0.0.1:64921 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:22] INFO:     127.0.0.1:64922 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:24] INFO:     127.0.0.1:64923 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:56:32] INFO:     127.0.0.1:62051 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:57:23] INFO:     127.0.0.1:58011 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:57:42] INFO:     127.0.0.1:61967 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 20:59:15] INFO:     127.0.0.1:53754 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 20:59:42] INFO:     127.0.0.1:55068 - "GET /api/deals/search?keyword=%E5%86%B0%E7%BA%A2%E8%8C%B6&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:00:59] INFO:     127.0.0.1:62319 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:01:04] INFO:     127.0.0.1:62326 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:01:51] INFO:     127.0.0.1:63183 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:02:09] INFO:     127.0.0.1:49308 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:02:32] INFO:     127.0.0.1:58653 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:04:42] [service] ==========================================================
+[2026-10-30 21:04:42] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:04:42] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:04:43] INFO:     Started server process [20216]
+[2026-10-30 21:04:43] INFO:     Waiting for application startup.
+[2026-10-30 21:04:43] INFO:     Application startup complete.
+[2026-10-30 21:04:43] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:04:43] INFO:     127.0.0.1:58964 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:04:50] INFO:     127.0.0.1:58964 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:05:02] INFO:     127.0.0.1:57432 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:04] INFO:     127.0.0.1:64967 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:05] INFO:     127.0.0.1:50164 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:07] INFO:     127.0.0.1:50165 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:09] INFO:     127.0.0.1:50167 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:11] INFO:     127.0.0.1:50168 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:12] INFO:     127.0.0.1:50169 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:14] INFO:     127.0.0.1:50170 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:16] INFO:     127.0.0.1:53251 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:18] INFO:     127.0.0.1:53254 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:19] INFO:     127.0.0.1:50347 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:21] INFO:     127.0.0.1:50348 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:23] INFO:     127.0.0.1:55301 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:24] INFO:     127.0.0.1:55302 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:26] INFO:     127.0.0.1:56173 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:28] INFO:     127.0.0.1:62982 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:29] INFO:     127.0.0.1:62992 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:31] INFO:     127.0.0.1:62994 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:33] INFO:     127.0.0.1:62996 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:35] INFO:     127.0.0.1:62997 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:36] INFO:     127.0.0.1:63285 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:38] INFO:     127.0.0.1:63296 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:39] INFO:     127.0.0.1:64710 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:41] INFO:     127.0.0.1:53816 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:43] INFO:     127.0.0.1:53817 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:45] INFO:     127.0.0.1:49841 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:47] INFO:     127.0.0.1:49847 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:48] INFO:     127.0.0.1:52309 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:50] INFO:     127.0.0.1:53573 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:52] INFO:     127.0.0.1:53575 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:53] INFO:     127.0.0.1:53581 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:55] INFO:     127.0.0.1:53583 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:57] INFO:     127.0.0.1:56158 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:05:59] INFO:     127.0.0.1:49667 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:00] INFO:     127.0.0.1:49671 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:02] INFO:     127.0.0.1:62954 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:04] INFO:     127.0.0.1:62956 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:06] INFO:     127.0.0.1:65447 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:07] INFO:     127.0.0.1:65454 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:09] INFO:     127.0.0.1:60435 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:11] INFO:     127.0.0.1:60444 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:12] INFO:     127.0.0.1:60446 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:14] INFO:     127.0.0.1:60449 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:16] INFO:     127.0.0.1:60453 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:17] INFO:     127.0.0.1:61264 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:19] INFO:     127.0.0.1:63122 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:21] INFO:     127.0.0.1:63123 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:23] INFO:     127.0.0.1:63241 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:24] INFO:     127.0.0.1:51594 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:26] INFO:     127.0.0.1:62135 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:28] INFO:     127.0.0.1:62144 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:29] INFO:     127.0.0.1:54586 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:31] INFO:     127.0.0.1:54601 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:33] INFO:     127.0.0.1:54622 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:34] INFO:     127.0.0.1:54628 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:36] INFO:     127.0.0.1:54632 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:38] INFO:     127.0.0.1:58656 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:40] INFO:     127.0.0.1:62158 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:42] INFO:     127.0.0.1:62173 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:06:43] INFO:     127.0.0.1:62175 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:07:18] INFO:     127.0.0.1:60774 - "GET /api/deals/search?keyword=%E6%9C%BA%E6%A2%B0%E9%94%AE%E7%9B%98&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:07:36] INFO:     127.0.0.1:55391 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:08:01] INFO:     127.0.0.1:52299 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:08:17] INFO:     127.0.0.1:58513 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:08:47] INFO:     127.0.0.1:57543 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:09:03] INFO:     127.0.0.1:62123 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:09:06] INFO:     127.0.0.1:50060 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:09:23] [service] ==========================================================
+[2026-10-30 21:09:23] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:09:24] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:09:25] INFO:     Started server process [12492]
+[2026-10-30 21:09:25] INFO:     Waiting for application startup.
+[2026-10-30 21:09:25] INFO:     Application startup complete.
+[2026-10-30 21:09:25] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:09:34] INFO:     127.0.0.1:54687 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:09:34] INFO:     127.0.0.1:54729 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:09:51] [service] ==========================================================
+[2026-10-30 21:09:51] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:09:51] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:09:52] INFO:     Started server process [34452]
+[2026-10-30 21:09:52] INFO:     Waiting for application startup.
+[2026-10-30 21:09:52] INFO:     Application startup complete.
+[2026-10-30 21:09:52] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:10:00] INFO:     127.0.0.1:52249 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:10:31] [service] ==========================================================
+[2026-10-30 21:10:31] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:11:11] [service] ==========================================================
+[2026-10-30 21:11:11] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:11:11] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:11:12] INFO:     Started server process [31568]
+[2026-10-30 21:11:12] INFO:     Waiting for application startup.
+[2026-10-30 21:11:12] INFO:     Application startup complete.
+[2026-10-30 21:11:12] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:11:13] INFO:     127.0.0.1:54589 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:13] INFO:     127.0.0.1:54593 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:15] INFO:     127.0.0.1:54593 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:18] INFO:     127.0.0.1:54593 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:20] INFO:     127.0.0.1:54593 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:21] INFO:     127.0.0.1:54589 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:11:23] INFO:     127.0.0.1:54593 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:25] INFO:     127.0.0.1:54593 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:27] INFO:     127.0.0.1:54593 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:39] INFO:     127.0.0.1:58513 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:11:44] INFO:     127.0.0.1:51927 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:11:48] [service] 端口 8010 已在监听，本进程不再启动（单实例保护），退出
+[2026-10-30 21:11:54] INFO:     127.0.0.1:53230 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:12:11] INFO:     127.0.0.1:53608 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:13:36] [service] ==========================================================
+[2026-10-30 21:13:36] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:13:36] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:13:37] INFO:     Started server process [35640]
+[2026-10-30 21:13:37] INFO:     Waiting for application startup.
+[2026-10-30 21:13:37] INFO:     Application startup complete.
+[2026-10-30 21:13:37] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:13:37] INFO:     127.0.0.1:58947 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:13:48] INFO:     127.0.0.1:58947 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:13:54] INFO:     127.0.0.1:61307 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:14:06] INFO:     127.0.0.1:56206 - "GET /api/deals/search?keyword=%E6%9C%BA%E6%A2%B0%E9%94%AE%E7%9B%98&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:14:25] INFO:     127.0.0.1:63687 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:14:50] INFO:     127.0.0.1:49806 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:14:59] INFO:     127.0.0.1:57891 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:16:18] [service] ==========================================================
+[2026-10-30 21:16:18] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:16:18] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:16:19] INFO:     Started server process [1888]
+[2026-10-30 21:16:19] INFO:     Waiting for application startup.
+[2026-10-30 21:16:19] INFO:     Application startup complete.
+[2026-10-30 21:16:19] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:16:19] INFO:     127.0.0.1:50109 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:16:29] INFO:     127.0.0.1:50109 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:21:45] [service] ==========================================================
+[2026-10-30 21:21:45] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:21:46] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:21:46] INFO:     Started server process [21808]
+[2026-10-30 21:21:46] INFO:     Waiting for application startup.
+[2026-10-30 21:21:46] INFO:     Application startup complete.
+[2026-10-30 21:21:46] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:21:46] INFO:     127.0.0.1:49669 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:22:44] INFO:     127.0.0.1:56428 - "GET /api/deals/search?keyword=%E6%9C%BA%E6%A2%B0%E9%94%AE%E7%9B%98&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:23:01] INFO:     127.0.0.1:54014 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:03] INFO:     127.0.0.1:59005 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:05] INFO:     127.0.0.1:55810 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:07] INFO:     127.0.0.1:49227 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:09] INFO:     127.0.0.1:57024 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:11] INFO:     127.0.0.1:60302 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:13] INFO:     127.0.0.1:51443 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:15] INFO:     127.0.0.1:51447 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:16] INFO:     127.0.0.1:51449 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:18] INFO:     127.0.0.1:51451 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:20] INFO:     127.0.0.1:49197 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:22] INFO:     127.0.0.1:49198 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:24] INFO:     127.0.0.1:49202 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:26] INFO:     127.0.0.1:64153 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:27] INFO:     127.0.0.1:64154 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:29] INFO:     127.0.0.1:52879 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:31] INFO:     127.0.0.1:56851 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:33] INFO:     127.0.0.1:56852 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:35] INFO:     127.0.0.1:56853 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:37] INFO:     127.0.0.1:56854 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:39] INFO:     127.0.0.1:56856 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:40] INFO:     127.0.0.1:51519 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:42] INFO:     127.0.0.1:61314 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:44] INFO:     127.0.0.1:55041 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:46] INFO:     127.0.0.1:55042 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:48] INFO:     127.0.0.1:57259 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:49] INFO:     127.0.0.1:51409 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:51] INFO:     127.0.0.1:53715 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:53] INFO:     127.0.0.1:53717 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:55] INFO:     127.0.0.1:53718 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:57] INFO:     127.0.0.1:53721 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:23:58] INFO:     127.0.0.1:53722 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:00] INFO:     127.0.0.1:53724 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:02] INFO:     127.0.0.1:60123 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:04] INFO:     127.0.0.1:56475 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:06] INFO:     127.0.0.1:56780 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:08] INFO:     127.0.0.1:63857 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:10] INFO:     127.0.0.1:59595 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:12] INFO:     127.0.0.1:62968 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:14] INFO:     127.0.0.1:59549 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:15] INFO:     127.0.0.1:59550 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:17] INFO:     127.0.0.1:59555 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:19] INFO:     127.0.0.1:59556 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:21] INFO:     127.0.0.1:64167 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:23] INFO:     127.0.0.1:61508 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:25] INFO:     127.0.0.1:62589 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:27] INFO:     127.0.0.1:54634 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:28] INFO:     127.0.0.1:63938 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:30] INFO:     127.0.0.1:51541 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:32] INFO:     127.0.0.1:51542 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:34] INFO:     127.0.0.1:65398 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:35] INFO:     127.0.0.1:65399 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:37] INFO:     127.0.0.1:65400 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:39] INFO:     127.0.0.1:65402 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:41] INFO:     127.0.0.1:65403 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:43] INFO:     127.0.0.1:52035 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:44] INFO:     127.0.0.1:49801 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:46] INFO:     127.0.0.1:63641 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:48] INFO:     127.0.0.1:53820 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:50] INFO:     127.0.0.1:61277 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:24:59] INFO:     127.0.0.1:62673 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:25:25] INFO:     127.0.0.1:56893 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:25:42] INFO:     127.0.0.1:63886 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:26:15] INFO:     127.0.0.1:58400 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:27:10] INFO:     127.0.0.1:49171 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:27:38] INFO:     127.0.0.1:52200 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:30:15] INFO:     127.0.0.1:65361 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:30:40] INFO:     127.0.0.1:65436 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:31:03] INFO:     127.0.0.1:60739 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:33:14] [service] ==========================================================
+[2026-10-30 21:33:14] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:33:15] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:33:15] INFO:     Started server process [25848]
+[2026-10-30 21:33:15] INFO:     Waiting for application startup.
+[2026-10-30 21:33:15] INFO:     Application startup complete.
+[2026-10-30 21:33:15] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:33:17] INFO:     127.0.0.1:49370 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:33:23] INFO:     127.0.0.1:49370 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:33:42] INFO:     127.0.0.1:56365 - "GET /api/deals/search?keyword=%E6%9C%BA%E6%A2%B0%E9%94%AE%E7%9B%98&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:33:59] INFO:     127.0.0.1:64545 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:34:24] INFO:     127.0.0.1:60970 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:34:36] INFO:     127.0.0.1:58512 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:41:05] INFO:     127.0.0.1:60853 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:41:22] INFO:     127.0.0.1:51827 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:41:45] INFO:     127.0.0.1:51911 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:43:44] [service] ==========================================================
+[2026-10-30 21:43:44] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:43:44] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:43:45] INFO:     Started server process [31360]
+[2026-10-30 21:43:45] INFO:     Waiting for application startup.
+[2026-10-30 21:43:45] INFO:     Application startup complete.
+[2026-10-30 21:43:45] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:43:46] INFO:     127.0.0.1:61014 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:43:51] INFO:     127.0.0.1:61014 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:45:28] [service] ==========================================================
+[2026-10-30 21:45:28] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-30 21:45:28] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-30 21:45:29] INFO:     Started server process [23228]
+[2026-10-30 21:45:29] INFO:     Waiting for application startup.
+[2026-10-30 21:45:29] INFO:     Application startup complete.
+[2026-10-30 21:45:29] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-30 21:45:29] INFO:     127.0.0.1:65384 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:45:35] INFO:     127.0.0.1:65384 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:45:54] INFO:     127.0.0.1:62475 - "GET /api/deals/search?keyword=%E6%9C%BA%E6%A2%B0%E9%94%AE%E7%9B%98&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 21:46:08] INFO:     127.0.0.1:52539 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 21:46:25] INFO:     127.0.0.1:59304 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 23:53:15] INFO:     127.0.0.1:53503 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 23:55:03] INFO:     127.0.0.1:64735 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-30 23:56:32] INFO:     127.0.0.1:56615 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-30 23:57:03] INFO:     127.0.0.1:63120 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:01:30] INFO:     127.0.0.1:65226 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:11:21] INFO:     127.0.0.1:63884 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:13:41] INFO:     127.0.0.1:61625 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:16:13] INFO:     127.0.0.1:54398 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:17:15] INFO:     127.0.0.1:59435 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:17:31] INFO:     127.0.0.1:55404 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:19:21] INFO:     127.0.0.1:62273 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:19:46] INFO:     127.0.0.1:55856 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:20:42] INFO:     127.0.0.1:58544 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 00:22:31] [service] ==========================================================
+[2026-10-31 00:22:31] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-31 00:22:34] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-31 00:22:44] INFO:     Started server process [16072]
+[2026-10-31 00:22:44] INFO:     Waiting for application startup.
+[2026-10-31 00:22:44] INFO:     Application startup complete.
+[2026-10-31 00:22:44] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-31 00:22:45] INFO:     127.0.0.1:62883 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 00:22:53] INFO:     127.0.0.1:62883 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:23:09] INFO:     127.0.0.1:57189 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 00:26:03] INFO:     127.0.0.1:49369 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:29:10] INFO:     127.0.0.1:53647 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 00:44:58] INFO:     127.0.0.1:58048 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 00:48:31] INFO:     127.0.0.1:58265 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 00:50:02] INFO:     127.0.0.1:61142 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 00:57:10] INFO:     127.0.0.1:50060 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:58:28] INFO:     127.0.0.1:52484 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:58:48] INFO:     127.0.0.1:53930 - "GET /api/deals/search?keyword=%E9%9D%A2%E5%8C%85&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 00:59:12] INFO:     127.0.0.1:57831 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 01:03:33] INFO:     127.0.0.1:55811 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 10:43:56] [service] ==========================================================
+[2026-10-31 10:43:56] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-31 10:44:00] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-31 10:44:13] INFO:     Started server process [9932]
+[2026-10-31 10:44:13] INFO:     Waiting for application startup.
+[2026-10-31 10:44:13] INFO:     Application startup complete.
+[2026-10-31 10:44:13] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-10-31 10:49:14] INFO:     127.0.0.1:49215 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 11:02:50] INFO:     127.0.0.1:53553 - "GET /api/health HTTP/1.1" 200 OK
+[2026-10-31 13:40:43] [service] ==========================================================
+[2026-10-31 13:40:43] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-10-31 13:40:43] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-10-31 13:40:46] INFO:     Started server process [16328]
+[2026-10-31 13:40:46] INFO:     Waiting for application startup.
+[2026-10-31 13:40:46] INFO:     Application startup complete.
+[2026-10-31 13:40:46] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
