@@ -3,7 +3,7 @@
 """gen_appguide.py — 从 理财学院/理财学院.html 抽取 App 教学数据，生成 appguide.js。
 
 为什么要有这个脚本：
-  51 条 App 实操要点原本只写死在学院页面里，AI 检索不到（问「淘宝怎么领小样」
+  学院页里的 App 实操要点原本只写死在页面代码里，AI 检索不到（问「淘宝怎么领小样」
   「闲鱼怎么捡漏」只能瞎答）。学院页面是这些内容的唯一真相来源，所以这里做
   **纯文本切片**把它搬成一个模块给 app.js 用，而不是另抄一份——手抄必然漂移。
 
@@ -26,11 +26,12 @@ SRC = os.path.join(ROOT, '理财学院', '理财学院.html')
 OUT = os.path.join(ROOT, 'appguide.js')
 
 HEADER = '''/**
- * appguide.js — App 教学指南数据（理财学院「App 教学」Tab 的 17 类 App / 51 条要点）
+ * appguide.js — App 教学指南数据（理财学院「App 教学」Tab 的全部 App 与实操要点）
  *
  * 这些要点原本只活在学院页面里：AI 检索不到，「淘宝怎么领小样」「闲鱼怎么捡漏」
  * 「会员怎么拼最便宜」这类问题只能靠模型瞎猜。本模块把它们搬进 AJ.appguide，
  * 由 app.js 的 AGENT_KB 建成知识卡（type:'guide'），答完还能一键跳到学院对应 App。
+ * 类数与要点数不写死，用 AJ.appguide.APP_N / TIP_N 数（学院页每加一类自动跟上）。
  *
  * 【勿手改】内容唯一真相来源是 理财学院/理财学院.html 的 SAVE_CATS / SAVE_APPS / SAVE_VIDS。
  * 改完学院页面后跑 `python gen_appguide.py` 重新生成本文件；

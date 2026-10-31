@@ -1112,7 +1112,7 @@
       budget: ['预算', '预算设置', '改预算', '设置预算', '发钱日', '生活费额度', '月度预算', '总预算', '预算线'],
       tone: ['说话风格', '语气', '人设', '换个人设', '自定义人设', '换个语气', '说话方式'],
       profile: ['个人资料', '昵称', '头像', '改名字', '换个头像', '我的资料'],
-      privacy: ['数据与隐私', '隐私', '清缓存', '清空缓存', '注销', '数据管理', '删除数据', '备份']
+      privacy: ['数据与隐私', '隐私', '清缓存', '清理缓存', '清空缓存', '注销', '数据管理', '删除数据', '备份']
     };
 
     var IDX = null;
@@ -1615,6 +1615,7 @@
       { id: 'psych', kw: ['套路', '锚定', '促销', '商家', '营销', '限时', '满减套路', '为什么划算'] },
       { id: 'bloggers', kw: ['博主', 'up主', 'b站', '跟着学'] },
       { id: 'budget', kw: ['分配', '预算', '生活费', '怎么花', '结余', '月光', '攒钱', '存钱', '不够花', '花完', '怎么攒'] },
+      { id: 'art', kw: ['花钱', '花得明白', '花钱的艺术', '消费', '投机', '消费观', '消费主义', '买经历', '买时间', '值不值', '买什么'] },
       { id: 'invest', kw: ['理财', '定投', '基金', '应急金', '投资', '收益', '入门', '闲钱'] },
       { id: 'mooc', kw: ['系统学', '慕课', 'mooc', '体系化'] },
       { id: 'macro', kw: ['大环境', '经济形势', '周期', '就业', '焦虑', '时代'] },
@@ -1635,12 +1636,16 @@
       transit: ['打车', '公交', '地铁', '火车', '高铁', '机票', '单车', '顺风车', '出行', '拼车', '青旅'],
       study: ['教材', '文具', '考证', '驾校', '查重', '知网', '软件', '学习资料', '打印店', '辅导书', '考研'],
       promo: ['大促', '618', '双11', '双12', '开学季', '百亿补贴', '会员日', '唯品会'],
-      gu: ['谷子', '盲盒', '抽赏', '拼团', '吃谷', '谷圈', '吧唧']
+      gu: ['谷子', '盲盒', '抽赏', '拼团', '吃谷', '谷圈', '吧唧'],
+      /* 生活杂项：话费 / 流量 / 宽带 / 体检 / 医保 / 租房 / 养宠 / 兼职 / 月底救急。
+         这 9 条原本错挂在 gu（吃谷避坑）下，搜「谷子」会被它们蹭到类目加分，见 savings_data CATS 注释。 */
+      life: ['话费', '流量', '宽带', '网费', '体检', '医保', '租房', '房租', '养宠', '宠物', '兼职', '勤工', '救急', '月底没钱']
     };
 
-    /* 学院 MOC：13 节课按主题归 5 组，提示词按主题列，便于模型按话题定位 */
+    /* 学院 MOC：课程按主题归 5 组，提示词按主题列，便于模型按话题定位。
+       新增课必须先在这里登记，否则 indexText() 不会列出它、模型也就查不到。 */
     var LESSON_MOC = {
-      '认知与心理': ['cooldown', 'latte', 'psych'],
+      '认知与心理': ['cooldown', 'art', 'latte', 'psych'],
       '省钱方法': ['infodiff', 'engel', 'bloggers'],
       '预算与理财': ['budget', 'invest', 'mooc'],
       '避坑与搞钱': ['loan', 'resale', 'work'],
@@ -1653,7 +1658,7 @@
     /* 用户在这类句子里问的是「这个 App 本身」，产品卡要优先于外部知识卡 */
     var APPSELF = /这个?\s*(?:app|应用|软件|网站|界面)|你们|你会|你能|能不能帮我|怎么用|怎么设置|有什么功能|能做什么|怎么操作|在哪(?:里)?(?:改|设|调|看|找)|哪里(?:改|设|调)/i;
     /* 产品语境的显式词：命中任一项，产品卡按满分参与排序（否则降权，避免抢走省钱/心理类问题） */
-    var APIQ = /导入|导出|备份|清空|注销|撤回|数据|隐私|上传|预算|发钱日|设置|功能|怎么用|怎么记|app|应用|软件|截图|截屏|语音|麦克风|账单/i;
+    var APIQ = /导入|导出|备份|清空|注销|撤回|数据|隐私|上传|预算|发钱日|设置|功能|怎么用|怎么记|怎么改|改错|记错|修改|编辑|删除|app|应用|软件|截图|截屏|语音|麦克风|账单/i;
 
     /**
      * 口语 → 标准词的同义扩展。CATK 只覆盖常见品类词，学生实际说法更散
@@ -1716,7 +1721,27 @@
     function clean(s) { return String(s || '').replace(/\s*\n+\s*/g, ' ').trim(); }
     function cut(s, n) {
       s = String(s || '');
-      return s.length > n ? s.slice(0, n) + '…' : s;
+      if (s.length <= n) { return s; }
+      var head = s.slice(0, n);
+      /* 别在句子中间切断。原来直接 slice(0,n)+'…'，把「天月遥——极简省钱…」
+         这种半个名字留在检索文本里，模型读到的是残句。改成回退到最近句读：
+         先找句号/分号，找不到再退逗号，回退超过 n 的 40% 就不退（宁短勿乱）。 */
+      var floor = Math.max(0, Math.floor(n * 0.6));
+      var at = -1, k;
+      for (k = head.length - 1; k >= floor; k--) {
+        if ('。；！？'.indexOf(head.charAt(k)) >= 0) { at = k; break; }
+      }
+      if (at < 0) {
+        floor = Math.max(0, Math.floor(n * 0.75));
+        for (k = head.length - 1; k >= floor; k--) {
+          if ('，、：,;'.indexOf(head.charAt(k)) >= 0) { at = k; break; }
+        }
+      }
+      var out = at >= 0 ? head.slice(0, at + 1) : head;
+      /* 括号没闭合就更糟：整段回退到左括号之前 */
+      var open = out.lastIndexOf('（'), close = out.lastIndexOf('）');
+      if (open > close) { out = out.slice(0, open); }
+      return out + '…';
     }
 
     /** 理财学院：body + detail(h/p) + resources(label/desc) 全部入索引 */
@@ -1765,8 +1790,12 @@
             var e = es[i];
             var sv = e.save || {};
             var pr = e.priceRef || {};
-            var saveTxt = sv.type === 'range' ? ('省 ' + sv.min + '~' + sv.max + ' 元')
-              : (sv.min ? ('省 ' + sv.min + ' 元') : '');
+            /* min===max 时别写成「省 2~2 元」：区间退化成一个数就说一个数；
+               fixed 是真·定值（蜜雪满 12 减 2、云闪付立减 5），字段叫 amount 不是 min */
+            var saveTxt;
+            if (sv.type === 'fixed' && sv.amount) { saveTxt = '省 ' + sv.amount + ' 元'; }
+            else if (sv.type === 'range' && sv.max && sv.max !== sv.min) { saveTxt = '省 ' + sv.min + '~' + sv.max + ' 元'; }
+            else { saveTxt = sv.min ? ('省 ' + sv.min + ' 元') : ''; }
             var priceTxt = (pr.before && pr.after) ? ('原价 ' + pr.before + ' 元 → ' + pr.after + ' 元') : '';
             var WHEN_CN = { morning: '早餐', lunch: '午餐', dinner: '晚餐', night: '夜间', 'late-dinner': '晚八点后', meal: '正餐', weekday: '工作日', weekend: '周末', 'weekday-lunch': '工作日午餐', 'weekday-dinner': '工作日晚餐', 'weekend-meal': '周末正餐' };
             var kw = (Array.isArray(e.keywords) ? e.keywords.join(' ') : '') + ' ' + clean(e.who) + ' ' +
@@ -1809,8 +1838,16 @@
             m = ms[i];
             var r = m.rule || {};
             var ruleTxt = '常驻';
-            if (r.type === 'weekly' && typeof r.weekday === 'number') { ruleTxt = '每周' + WK.charAt(r.weekday % 7); }
-            else if (r.type === 'monthly' && typeof r.monthday === 'number') { ruleTxt = '每月 ' + r.monthday + ' 号'; }
+            /* deals.js 的字段是 rule.day（不是 monthday），weekday 还可能是数组（海底捞=工作日 1-5）。
+               这里读错一次，4 个「每月 N 号」活动 + 海底捞全被写成「常驻优惠」——日期还在正文里，
+               AI 却会把「每月 20 号才有」说成「天天有」。 */
+            if (r.type === 'weekly') {
+              if (Array.isArray(r.weekday)) { ruleTxt = '工作日'; }
+              else if (typeof r.weekday === 'number') { ruleTxt = '每周' + WK.charAt(r.weekday % 7); }
+            } else if (r.type === 'monthly') {
+              if (typeof r.day === 'number') { ruleTxt = '每月 ' + r.day + ' 号'; }
+              else if (typeof r.monthday === 'number') { ruleTxt = '每月 ' + r.monthday + ' 号'; }
+            }
             var what = clean(m.what);
             var how = clean(m.how);
             var tip = clean(m.tip);
@@ -1922,15 +1959,15 @@
       {
         id: 'edit', tag: '数据', faq: 'edit',
         title: '怎么修改 / 删除账单',
-        core: '目前只支持「撤回最近一笔」，不支持逐笔改金额或定点删除——这是演示版本有意做的简化。',
-        detail: '记错了点聊天顶部「↩ 撤回上一步」，连点可连续往回撤，撤回是彻底移除。很早以前的错账：直接补记一笔正确金额。想彻底重来要先导出 CSV，再用「注销账号」清空全部数据（「清空缓存」不会动账本）。要精细改账建议导出 CSV 在表格里改。',
-        kw: '修改 删除 改账 删账 撤回 记错了 编辑 撤销 改金额'
+        core: '支持逐笔改和逐笔删：在聊天里找到那张账单卡片，点「修改」可改金额 / 分类 / 需要-想要-情绪 / 备注 / 日期；点「撤回」就删掉那一笔（任意时间的一笔都行）。',
+        detail: '快捷方式：聊天顶部「↩ 撤回上一步」删最近一笔，连点可连续往回撤，撤回是彻底移除、不留痕。改完卡片原地更新，不会新增一笔。逐笔删除后没有任何「回收站」，想彻底重来要先导出 CSV，再用「注销账号」清空全部数据（「清理缓存」不会动账本）。',
+        kw: '修改 删除 改账 删账 撤回 记错了 编辑 撤销 改金额 改分类 改日期 改备注'
       },
       {
         id: 'undo', tag: '概念', faq: 'undo',
         title: '「撤回」和「值不值」是什么',
         core: '撤回管「记错了」，把最近一笔从账本和所有统计里删掉；值不值管「花错了」，给每笔支出打「值 / 一般 / 不值」自评。',
-        detail: '值不值入口在每笔记完的气泡里，统计在「账单分析 · 值不值自评」，会算「不值」的笔数和金额占比。连续几周「不值」占比高，说明问题不在预算太少而在下单太快，该用「剁手冷静法」。',
+        detail: '值不值入口在每笔记完的气泡里（账单卡片上也有三个按钮）。统计在「账单分析」页最下面的「值不值 · 我的自评」：值 / 一般 / 不值各几笔，以及「不值」的金额和占支出比例。连续几周「不值」占比高，说明问题不在预算太少而在下单太快，该用「剁手冷静法」。',
         kw: '撤回 值不值怎么用 自评 评价 标记 删掉 撤销 好不好'
       },
       {
@@ -1943,9 +1980,10 @@
       {
         id: 'storage', tag: '数据', settings: 'setGroupData',
         title: '数据存在哪、会不会上传',
-        core: '账本只存在你这台设备的浏览器本地存储（localStorage），不上传服务器，也不跨设备同步。',
-        detail: '所以：清理浏览器数据、换手机、换浏览器、用无痕模式，账本都不会跟过去，且可能直接丢失。重要数据请定期「设置 · 数据管理 · 导出 CSV」备份。AI 对话里提到的金额也只是本地处理。',
-        kw: '数据 存在哪 隐私 上传 云端 同步 换手机 丢失 本地 安全 备份'
+        core: '账本只存在你这台设备的浏览器本地存储（localStorage），不上传服务器保存，也不跨设备同步；AI 助手要联网，会把当次需要的账本摘要发给模型。',
+        detail: '所以：清理浏览器数据、换手机、换浏览器、用无痕模式，账本都不会跟过去，且可能直接丢失。重要数据请定期「设置 · 数据管理 · 导出 CSV」备份。'
+          + '关于 AI：它答账本类问题时要看数，会把「本期预算 / 已花 / 剩余 / 日均可用 / 分类合计 / 最近 5 笔的日期、分类、金额、备注」和你的问题一起发给模型服务，不在本地跑；不想让它看，就别在对话里问账本，或在断网状态用——断网时 AI 不参与，记账与统计照常（纯本地）。',
+        kw: '数据 存在哪 隐私 上传 云端 同步 换手机 丢失 本地 安全 备份 模型'
       },
       {
         id: 'export', tag: '数据', settings: 'setGroupData',
@@ -1956,16 +1994,16 @@
       },
       {
         id: 'clear', tag: '数据', settings: 'setGroupData',
-        title: '「清空缓存」和「注销账号」有什么区别',
-        core: '「清空缓存」只删账本之外的本地数据（设置、偏好等），账本一笔不动；「注销账号」会清空包括账本在内的全部数据。',
-        detail: '想清掉卡顿或异常状态用清空缓存；想彻底重来才用注销账号，且务必先导出 CSV——注销后数据无法恢复。',
+        title: '「清理缓存」和「注销账号」有什么区别',
+        core: '「清理缓存」只删账本之外的本地数据（设置、偏好等），账本一笔不动；「注销账号」会清空包括账本在内的全部数据。',
+        detail: '想清掉卡顿或异常状态用清理缓存；想彻底重来才用注销账号，且务必先导出 CSV——注销后数据无法恢复。',
         kw: '清空 缓存 注销 删除全部 重置 恢复出厂 数据清空'
       },
       {
         id: 'ai', tag: 'AI', faq: 'start',
         title: 'AI 助手能做什么、不能做什么',
-        core: '能：一句话记账、查理财学院与省钱助手的真实内容并给跳转、看你的账本做诊断、改预算和口径设置。不能：逐笔修改历史账单、查实时价格或库存、替你下单。',
-        detail: 'AI 给的省钱金额来自知识库里的估算区间，不是你所在城市当天的实际价格；活动类信息（如「疯狂星期四」）会变，去优惠日历看当天实际。涉及钱的决定，AI 只给选项和条件，不替你决定。',
+        core: '能：一句话记账、查理财学院与省钱助手的真实内容并给跳转、看你的账本做诊断、帮你打开预算和口径设置（改金额还要你确认）。不能：替你批量改历史账单、查实时价格或库存、替你下单。',
+        detail: 'AI 给的省钱金额来自知识库里的估算区间，不是你所在城市当天的实际价格；活动类信息（如「疯狂星期四」）会变，去优惠日历看当天实际。涉及钱的决定，AI 只给选项和条件，不替你决定。改某一笔账请点账单卡片上的「修改」，AI 不走这条路（避免它改错你还不知道）。',
         kw: 'ai 能做什么 功能 会不会 帮我 助手 能力 不能 会不会算错'
       },
       {
@@ -2009,10 +2047,11 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /* App 教学：理财学院「App 教学」Tab 的 17 类 App / 51 条实操要点         */
+    /* App 教学：理财学院「App 教学」Tab 的每一类 App 一张卡                    */
     /* 数据来自 appguide.js（由理财学院页面切片生成，勿手抄），这里一条 App  */
-    /* 一张卡：一个问题往往要「入口 + 条件 + 避坑」三件事，拆成 51 张碎卡反而 */
+    /* 一张卡：一个问题往往要「入口 + 条件 + 避坑」三件事，拆成逐条小卡反而    */
     /* 答不全（模型只看到命中那张）。整类 App 的要点全塞进 content，仍 <280 字。*/
+    /* 类数与要点数一律从 AJ.appguide 数（APP_N / TIP_N），不许在本文件写死。  */
     /* ------------------------------------------------------------------ */
     /** App 要点总条数（提示词文案用，数字从数据里数，别写死 51） */
     function guideTipN() {
@@ -2040,6 +2079,18 @@
             kws.push(clean(tp.t));
           }
           var catName = (ag.CAT_NAME && ag.CAT_NAME[a.cat]) || '';
+          /* 短语命中加分只认「整串出现在问句里」，所以 phrases 必须是**单个品牌名**：
+             name 常写成「淘宝 / 天猫」「出行火车票（12306）」这种合卡，整串永远匹配不上，
+             拆成 ['淘宝','天猫'] 才能各拿 +5；vq 首词通常是学院页作者定的别名
+             （「B站 免费 教程 资源」→「B站」），一并收进来。 */
+          var ph = String(a.name).split(/[\/、（）()·|]/);
+          var vq0 = String(a.vq || '').split(/\s+/)[0];
+          if (vq0 && vq0.length >= 2) { ph.push(vq0); }
+          var phOut = [];
+          for (var pi = 0; pi < ph.length; pi++) {
+            var pv = clean(ph[pi]);
+            if (pv.length >= 2) { phOut.push(pv); }
+          }
           arr.push({
             type: 'guide', id: 'guide.' + a.id, cat: 'guide', tag: catName || 'App 教学',
             title: clean(a.name) + ' · ' + clean(a.intro),
@@ -2052,7 +2103,7 @@
               ' ' + catName + ' 怎么省 在哪 技巧 攻略 教程',
             text: cut('【' + clean(a.name) + '｜' + clean(a.intro) + '】' + lines.join('；'), MAX_CONTENT),
             certainty: '', source: '理财学院 · App 教学',
-            phrases: [clean(a.name)],
+            phrases: phOut,
             jump: { guide: a.id, q: clean(a.name), label: clean(a.name) }
           });
         }
@@ -2108,6 +2159,8 @@
     function search(query, scope) {
       var qs = norm2(query);
       if (!qs) { return []; }
+      /* 短语比对用去空格版（「B 站」vs「B站」），只服务 phrases 的 +5，不影响主索引 */
+      var qsNoSp = qs.replace(/\s+/g, '');
       var idx = ensure();
       /* 同义扩展：只在检索向量上加词，qs（短语 / 概念匹配）仍用原始查询 */
       var ext = '';
@@ -2152,6 +2205,19 @@
         if (scope === 'app' && c.type !== 'app') { continue; }
         /* 没有任何产品语境时不放产品卡进来：问「值不值」「钱不够花」不该被功能说明顶掉 */
         if (c.type === 'app' && !appSelf && !apiQ && scope !== 'app') { continue; }
+        /* App 教学卡的**品牌门禁**：这类卡是「某个平台怎么省」，用户没提这个平台就不该由它
+           来答。反例：问「信用卡最低还款有什么坑」，电影票卡因为含「信用卡满减」一条被顶到
+           第一——词对上了，意图完全不对。所以问句里没出现该 App 的名字时只给 55% 分：
+           仍可进候选（用户说「顺风车」不该丢掉嘀嗒卡），但压不过真正同题的知识卡。 */
+        var gBrand = true;
+        if (c.type === 'guide') {
+          gBrand = false;
+          if (c.phrases) {
+            for (k = 0; k < c.phrases.length; k++) {
+              if (qsNoSp.indexOf(String(c.phrases[k]).replace(/\s+/g, '')) !== -1) { gBrand = true; break; }
+            }
+          }
+        }
         var s = 0;
         for (k = 0; k < qg.length; k++) {
           var w = c.g[qg[k]];
@@ -2165,12 +2231,14 @@
         if (bonus[c.id]) { s += bonus[c.id]; }
         if (c.phrases) {
           for (var p2 = 0; p2 < c.phrases.length; p2++) {
-            if (c.phrases[p2] && qs.indexOf(c.phrases[p2]) !== -1) { s += 5; break; }
+            /* 去空格比对：用户写「B 站」、资料写「B站」，差一个空格就丢 +5 太冤 */
+            if (c.phrases[p2] && qsNoSp.indexOf(String(c.phrases[p2]).replace(/\s+/g, '')) !== -1) { s += 5; break; }
           }
         }
         /* 自指问句：「这个 App 怎么用」问的是产品本身，产品卡加权压过同分的外部知识卡 */
         if (c.type === 'app' && (appSelf || apiQ)) { s += 10; }
         if (catHit[c.cat]) { s += (c.type === 'saving' ? 2.0 : 0.5); }
+        if (c.type === 'guide' && !gBrand) { s *= 0.55; }
         if (s > 0) { hits.push({ card: c, score: s }); }
       }
       hits.sort(function (a, b) { return b.score - a.score; });
@@ -2266,7 +2334,7 @@
         lines.push('- App 自身功能（' + ap.length + ' 条，用户问「怎么用 / 怎么导入 / 数据在哪 / 能不能导出 / 你怎么记账」时先查这里，' +
           '再给对应入口）：' + ap.join('；') + '。');
       }
-      /* App 教学：理财学院里的 17 类 App 实操要点（淘宝凑单、闲鱼捡漏、会员拼单…） */
+      /* App 教学：理财学院里的各类 App 实操要点（淘宝凑单、闲鱼捡漏、会员拼单…） */
       var gd = [];
       for (i2 = 0; i2 < idx.cards.length; i2++) {
         if (idx.cards[i2].type === 'guide') { gd.push(idx.cards[i2].title); }
@@ -2301,6 +2369,7 @@
       savings: function () { return savingCards(); },
       deals: function () { return dealCards(); },
       terms: function () { return termCards(); },
+      apps: function () { return appCards(); },
       guides: function () { return guideCards(); }
     };
   })();
@@ -2617,6 +2686,27 @@
           return agentFail('价格不在原话里',
             'price ' + price + ' 不在用户原话中（可用：' + ctx.amounts.join(' / ') + '），不要编造');
         }
+        /* 同一笔的冷静卡还开着（用户还没点决定）就不要再开第二张 ——
+           重复开卡等于把问过的问题再问一遍。这里直接按用户这句的语义办：
+           拒绝冷静就记账，说不买就不记，别再把选择抛回去。 */
+        if (cooling && !cooling.alreadyRecorded && cooling.price &&
+            Math.abs(cooling.price - ENG.round2(price)) < 0.011) {
+          if (coolingRefused(ctx && ctx.raw)) {
+            coolingRecord();
+            return {
+              ok: true,
+              brief: cooling.item + ' ' + money(price) + ' 已按用户要求记上',
+              data: {
+                ok: true, recorded: true, item: cooling.item, price: ENG.round2(price),
+                note: '用户已明确拒绝冷静（就在刚开的那张卡上），这笔已经入账。' +
+                  'final 只需确认「记上了」并给分类，不要再开卡、不要再让用户二选一。'
+              }
+            };
+          }
+          return agentFail('这张冷静卡已经开过了',
+            '「' + cooling.item + '」的冷静卡还在等你，不要重复开卡，也不要把选择再抛回给用户。' +
+            '用户这句话如果是在回答（要买 / 不买），直接照办：要买就调 add_bills 记账，不买就别记。');
+        }
         pendingClear();
         startCoolingFlow(item, ENG.round2(price));
         return {
@@ -2773,7 +2863,7 @@
     {
       name: 'search_kb',
       title: '查知识库',
-      desc: '检索理财学院 13 节课、省钱助手 155 条条目、优惠日历（商家活动 / 平台大促 / 品类价格带）、谷圈黑话 33 词、App 自身功能说明 11 条，以及 17 类高频 App 的 51 条实操要点（淘宝怎么领小样 / 闲鱼怎么捡漏 / 会员怎么拼 / 话费怎么降），返回真实原文（含生效条件 / 避坑 / 可省金额 / 稳定度）和跳转目标。' +
+      desc: '检索理财学院 {LESSON_N} 节课、省钱助手 {SAVING_N} 条条目、优惠日历（商家活动 / 平台大促 / 品类价格带）、谷圈黑话 {TERM_N} 词、App 自身功能说明 {APP_DOC_N} 条，以及 {APP_N} 类高频 App 的 {TIP_N} 条实操要点（淘宝怎么领小样 / 闲鱼怎么捡漏 / 会员怎么拼 / 话费怎么降），返回真实原文（含生效条件 / 避坑 / 可省金额 / 稳定度）和跳转目标。' +
         '用户问知识点、提到具体店名品类、问「XX 多少钱正常」、问「XX 是什么意思」、问「XX 这个 App 怎么省钱 / 在哪领券 / 怎么弄最便宜」、问「这个 App 怎么用 / 怎么导入账单 / 数据在哪 / 能不能导出」时先用它取内容再作答。' +
         'args: {"query":"用户原话即可，中文无需分词","scope":"academy(课程)|saving(省钱条目)|app(App 自身功能)|all(默认)"}',
       args: '{"query":"我每次去麦当劳都花二十多，怎么点才最省","scope":"all"}',
@@ -3265,9 +3355,24 @@
     var snap = agentSnapshot();
     var toolLines = [];
     var i;
+    /* App 教学规模从 appguide 数出来：学院页每加一类 App，工具描述与提示词自动跟上，
+       不写死数字（历史上 17 类 / 51 条就是这么和学院页对不上的） */
+    var agn = (typeof AJ !== 'undefined' && AJ.appguide) || null;
+    var nAppG = (agn && agn.APP_N) || 0;
+    var nTipG = (agn && agn.TIP_N) || 0;
+    /* 其余规模一律从知识库自己数：加课 / 加条目 / 删条目都不用改文案 */
+    var kbs = AGENT_KB.stats();
+    var nLessonG = kbs.lesson;
+    var nSavingG = kbs.saving;
+    var nTermG = kbs.term;
+    var nDocG = kbs.app;
     for (i = 0; i < AGENT_TOOLS.length; i++) {
       var t = AGENT_TOOLS[i];
-      toolLines.push('- ' + t.name + '（' + t.title + '）：' + t.desc + ' 参数 ' + t.args);
+      toolLines.push('- ' + t.name + '（' + t.title + '）：' +
+        String(t.desc).replace(/\{APP_N\}/g, nAppG).replace(/\{TIP_N\}/g, nTipG)
+          .replace(/\{LESSON_N\}/g, nLessonG).replace(/\{SAVING_N\}/g, nSavingG)
+          .replace(/\{TERM_N\}/g, nTermG).replace(/\{APP_DOC_N\}/g, nDocG) +
+        ' 参数 ' + t.args);
     }
     /* 功能目录：按分组压成一行组名 + 若干「key（名字）」，比一条一行省一半长度，
        模型照样认得出「预算 → budget」 */
@@ -3350,8 +3455,8 @@
         '必须 search_kb 再答；返回的 content 里已经带「条件 / 避坑 / 省多少 / 稳定度」，直接引用其中的数字与条件，' +
         '不许自己另算一个价，也不许把「活动会变」的条目说成长期有效。',
       '15. 用户问「这个 App 怎么用 / 怎么导入账单 / 数据存在哪 / 能不能导出 / 怎么删记录 / 你能不能帮我改」时，' +
-        '先 search_kb（App 自身功能 11 条），按里面写死的路径回答，然后挂卡给入口，不许自己编菜单名或承诺没做的功能' +
-        '（例如「逐笔编辑」「云同步」目前都没有，必须如实说没有）。',
+        '先 search_kb（scope=app，App 自身功能说明），按里面写死的路径回答，然后挂卡给入口，不许自己编菜单名或承诺没做的功能' +
+        '（注意：逐笔「修改 / 撤回」已经有了，别再说没有；「云同步」「实时比价」才是真的没有，必须如实说没有）。',
       '16. 用户问某个 App / 平台「怎么省钱 / 在哪领券 / 怎么弄最便宜」（淘宝、闲鱼、拼多多、美团、话费、寄快递、会员、电影票、12306…）时，' +
         '先 search_kb（命中 type=guide 的 App 教学卡），按里面的具体入口和条件答（「搜『U先试用』」这种可执行动作），' +
         '不要只给「多比价」「等大促」这类正确但没用的话；答完顺带让用户点卡片直接跳到「理财学院 · App 教学」。',
@@ -5020,9 +5125,14 @@
   /** 结论后选择「仍然购买」：直接入账（已走完冷静流程，不再二次弹冷静期） */
   function coolingRecord() {
     if (!cooling) { return; }
+    /* 品类按商品名判，别再一律写「购物」：剁手冷静法也会被夜宵烧烤、火锅、奶茶触发，
+       全塞进「购物」会让餐饮统计和恩格尔系数偏低，用户在账单分析里会看到一笔分类错的账。 */
+    var guessRaw = '';
+    try { guessRaw = NLP.classify(cooling.item) || ''; } catch (e) { guessRaw = ''; }
+    var guessCat = guessRaw ? agentCategory(guessRaw, 'expense') : '';
     var draft = {
       amount: cooling.price,
-      category: '购物',
+      category: guessCat || '购物',
       note: cooling.item,
       date: ENG.formatDate(new Date()),
       motivation: '情绪',
@@ -6880,6 +6990,27 @@
     $('spBtnAdd').addEventListener('click', function () { openQuickAddModal(); });
     $('spBtnAi').addEventListener('click', function () { switchView('sai'); });
     $('spBtnMe').addEventListener('click', function () { switchView('sprofile'); });
+    /* 简洁版也提供截屏记账入口（完整版在顶栏 #btnOcr，简洁版外壳不渲染顶栏） */
+    if ($('spBtnOcr')) { $('spBtnOcr').addEventListener('click', function () { openOcrModal(); }); }
+    /* 明细二级页签：流水 / 预算（预算不再占一级 tab） */
+    var subSegs = DOC.querySelectorAll('.sp-subseg-btn');
+    for (var si = 0; si < subSegs.length; si++) {
+      subSegs[si].addEventListener('click', function () { switchView(this.getAttribute('data-sub')); });
+    }
+    /* 省钱页内进入凑单搭子（搭子不再占一级 tab）；搭子页返回省钱 */
+    if ($('spBtnDazai')) { $('spBtnDazai').addEventListener('click', function () { switchView('sdazai'); }); }
+    if ($('spDazaiBack')) { $('spDazaiBack').addEventListener('click', function () { switchView('ssave'); }); }
+    /* 首页「攒钱与理财」四宫格：data-view 直接切视图，心愿单走弹层（不再只埋在「我的」菜单） */
+    var featGrid = $('spFeatureGrid');
+    if (featGrid) {
+      featGrid.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('.sp-g') : null;
+        if (!b) { return; }
+        var v = b.getAttribute('data-view');
+        if (v) { switchView(v); }
+        else if (b.getAttribute('data-goto-wish')) { openWishSheet(); }
+      });
+    }
     $('spQuick').addEventListener('click', function (e) {
       var q = e.target.closest ? e.target.closest('.sp-q[data-cat]') : null;
       if (q) { openQuickAddModal(q.getAttribute('data-cat')); }
@@ -6903,7 +7034,7 @@
     $('spGoalsBack').addEventListener('click', function () { goBackView(); });
     $('spMenuPiggy').addEventListener('click', function () { switchView('spiggy'); });
     $('spMenuWish').addEventListener('click', openWishSheet);
-    $('spBtnPiggyQuick').addEventListener('click', function () { switchView('spiggy'); });
+    if ($('spBtnPiggyQuick')) { $('spBtnPiggyQuick').addEventListener('click', function () { switchView('spiggy'); }); }
     $('spPiggyBack').addEventListener('click', function () { goBackView(); });
     /* 存钱罐面板：完整版弹层与简洁版整页共用同一套 data-act 分发 */
     ['piggyBody', 'spPiggyBody'].forEach(function (id) {
@@ -7853,10 +7984,9 @@
     var todayKey = o.todayStr || ENG.formatDate(new Date());
     var st = WISH.stats();
     if (!st.cooling && !st.savedAmount) {
-      box.innerHTML = '<div class="sp-wish-row">' +
-        '<span class="sp-wish-label">心愿单</span>' +
-        '<span class="sp-wish-count">空</span></div>' +
-        '<div class="sp-wish-note">想买又拿不定主意？说出来，我先帮你放进清单晾 48 小时。</div>';
+      /* 2026-10-31：首页新增「攒钱与理财」四宫格后，心愿单已有固定入口；
+         空态再叠一张卡会重复，故空态直接隐藏，有内容时仍显示进度卡。 */
+      box.hidden = true;
       return;
     }
     var next = wishNextItem();
@@ -10012,25 +10142,25 @@
       icon: 'pencil',
       q: '怎么修改 / 删除账单？',
       tag: '数据',
-      intro: '目前支持「撤回最近一笔」，不支持逐笔改金额——这是演示版本有意做的简化。',
+      intro: '支持逐笔改（金额 / 分类 / 需要-想要-情绪 / 备注 / 日期）和逐笔删：在聊天里找到那张账单卡片，点「修改」或「撤回」。',
       detail: [
-        { h: '撤销误记', steps: [
-          '在聊天页顶部点「↩ 撤回上一步」；',
-          '每次撤掉最近的一笔，连点可以连续往回撤；',
-          '撤回是彻底移除，不是标记删除，撤完那笔不会再出现在任何统计里。'
+        { h: '改某一笔', steps: [
+          '在聊天流里找到那张账单卡片（或问我「我上周那笔 30 块的账」帮你翻出来）；',
+          '点卡片上的「修改」，弹窗里改金额、分类、需要 / 想要 / 情绪、备注、日期；',
+          '点「保存修改」，卡片原地更新，不会新增一笔，预算与图表同步重算。'
         ] },
-        { h: '想改某一笔的具体做法', steps: [
-          '如果是刚记错的：先撤回，再用正确金额重记一次；',
-          '如果是很早以前的：直接补记一笔正确金额，把错的那笔留在账本里当记录（本版本不支持定点删除）；',
-          '想彻底重来：设置 →「清空缓存」不会动账本，需要用「注销账号」清空全部数据——务必先导出。'
+        { h: '删某一笔', steps: [
+          '点卡片上的「撤回」，这一笔立刻从账本和所有统计里移除（任意时间的一笔都能删）；',
+          '只想去掉最近一笔：聊天顶部点「↩ 撤回上一步」，连点可连续往回撤；',
+          '撤回是彻底移除，没有回收站——删错了只能重新记一笔。'
         ] },
         { h: '在哪里核对已有记录', list: [
           '完整版：看板「本月账单流水」，可按分类 / 关键词筛；',
           '简洁版：「明细」屏按月查看；',
           '账单分析：能看分类占比、Top10 大额、高频商户。'
         ] },
-        { h: '为什么不做逐笔编辑', p: '逐笔编辑会牵动预算、诊断、图表三处口径，演示版本优先保证「记一笔」和「看趋势」两条主链路稳定。' +
-          '真需要精细管理时，建议导出 CSV 在表格里改，再导入回来。' }
+        { h: '批量改还是走表格', p: '一次要改几十笔（比如整月分类都错），逐笔点太慢：导出 CSV（设置 · 数据管理 · 导出 CSV）在表格里改，再导入回来。' +
+          '注意导入不会自动去重，导回来前先把原账本清空或按月份筛掉重复区间。' }
       ]
     },
     {
@@ -10449,6 +10579,13 @@
       '<div class="ag-body">' +
       '<p class="ag-lead">我是' + esc(name) + '。不是只会记账的输入框 —— 我能读你的账本、算给你看、' +
       '拦下不该花的钱，也能直接把你带到 App 里任何一个功能。</p>' +
+
+      '<div class="ag-label">AI 用在哪、规则用在哪</div>' +
+      '<ul class="ag-no">' +
+      '<li><b>规则打底</b>：金额、日期、品类、预算周期这些要求「算得准」的部分全部在本机完成，毫秒级、断网也能用，不发任何网络请求。</li>' +
+      '<li><b>AI 兜底</b>：说法太随意、一句话里有好几件事、或金额偏大需要我多问一句时，才交给云端大模型理解，再由我调用本机工具执行（写账、查账、跳转）。</li>' +
+      '<li><b>截图识别</b>：图片交给云端视觉识别；识别不了会自动退回本机文字识别或手动录入，不会卡住你。</li>' +
+      '</ul>' +
 
       '<div class="ag-label">直接说一句，我演示给你看</div>' +
       '<div class="ag-says">' + sayHtml + '</div>' +
@@ -16158,6 +16295,52 @@
     settings: openSettingsPage
   };
 
+  /** 冷静卡的两种回答语义（本地判定，不依赖模型；工具层与消息入口共用同一份）：
+   *   · 拒绝：「不用等 / 现在就吃 / 帮我记上 / 别拦」→ 直接入账，不再追问
+   *   · 放弃：「不买了 / 算了 / 先放着」→ 记进「省下的钱」+ 心愿单
+   * 「不买」优先于「要」：句子里两个方向词同时出现（「不要了，还是想要」）按放弃处理，更保守。
+   * 问句一律不抢（「冷静期还有多久」是在问，不是在做决定）。 */
+  var COOL_REFUSE_RE = /(不用等|不要等|别等|现在就|这就|马上|立刻|别拦|不用冷静|不冷静|不用劝|别劝|还是要买|照样记|照样买|直接记|直接买|帮我记上|帮我记|记上吧|记下吧|就要|不省了|确定(买|要)|确认(买|要)|没记错|没错|就是这笔)/;
+  var COOL_GIVEUP_RE = /(不买了|不要了|不想要了|先不买|先放着|放起来|算了|还是算了|放弃|再想想|过两天再说)/;
+  var COOL_ASK_RE = /[?？]|多久|怎么|为什么|能不能|可以吗|是什么/;
+
+  /** 用户在拒绝冷静（要继续买/现在就要/让我记上） */
+  function coolingRefused(raw) {
+    var t = String(raw || '');
+    return !COOL_GIVEUP_RE.test(t) && COOL_REFUSE_RE.test(t) && !COOL_ASK_RE.test(t);
+  }
+
+  /** 用户在放弃这笔（不买了/算了/先放着） */
+  function coolingGivenUp(raw) {
+    var t = String(raw || '');
+    return COOL_GIVEUP_RE.test(t) && !COOL_ASK_RE.test(t);
+  }
+
+  /**
+   * 上一轮把一笔支出挂起来等用户决定时（冷静期卡 / 剁手冷静法卡还开着），
+   * 用户这一句就是在回答它 —— 本地直接了结，不再交给模型重新判断意图。
+   *
+   * 为什么必须有这一步：「不用等，现在就想吃，帮我记上」原来会被当成一轮新的
+   * 「想买烧烤 50」，模型按提示词再调一次 cooling_check，于是同一笔又被拦一遍、
+   * 又被问一遍（实测：第二张冷静卡 + 「你先选一下：挂在冷静清单，还是照样记账」）。
+   * 用户已经做过决定的事，不该再问第二遍。
+   *
+   * @param {string} raw 用户原话
+   * @return {boolean} 已就地处理则 true，调用方应立即 return
+   */
+  function tryResolvePendingAdd(raw) {
+    if (!cooling && !pendingBill) { return false; }
+    var isNo = coolingGivenUp(raw);
+    var isYes = coolingRefused(raw);
+    if (!isNo && !isYes) { return false; }
+    if (cooling) {
+      if (isYes) { coolingRecord(); } else { coolingSkip(); }
+      return true;
+    }
+    resolveCooldown(isYes);
+    return true;
+  }
+
   /**
    * 消息主入口（C7）：命令 -> 本地意图分类 -> pending 续接 -> 高置信本地执行
    * -> 低置信云端二次裁决 -> 兜底 L3 澄清。
@@ -16171,6 +16354,14 @@
   function sendToAssistant(text) {
     var raw = String(text || '').trim();
     if (!raw) { return; }
+
+    /* ①.前置：上一轮的冷静卡还开着 —— 这句是回答它，就地了结，别再问第二遍。
+       放在所有意图判断之前：这类句子（「现在就吃，帮我记上」）最容易被误判成
+       新一轮「想买 XX」，从而再开一张卡、再追问一次，正是用户反馈的「问太多」。 */
+    if (tryResolvePendingAdd(raw)) {
+      logIntent(raw, 'cooling-resolve', 0.98, 'high', null, 'cooling-reply');
+      return;
+    }
 
     /* P0：纠错待补金额——上一轮问「要改成多少」，这一句若为纯数字，直接改上一笔金额（不新增账单） */
     if (correctionPending && (Date.now() - correctionPending.ts) < 120000) {
@@ -16503,8 +16694,11 @@
       /* ⑥ 兜底：保证永远有东西可点，且一定有一条记账 / 一条省钱 */
       add('balance', '查余额', '查余额', '看看这周期还剩多少', 40);
       add('deal', '今天有啥优惠', '今天有什么优惠', '每天的活动不一样', 38);
-      /* 「App 教学」chip：直达学院「App 教学」Tab（点击拦截见 bindEvents 的 __acaSave 分支） */
-      add('acaSave', 'App 教学', '__acaSave', 'App 省钱技巧与视频教程', 36);
+      /* 「App 教学」chip：直达学院「App 教学」Tab（点击拦截见 bindEvents 的 __acaSave 分支）。
+         权重必须高于查余额/优惠这种兜底项（40/38）：它不是一个「个性化建议」，而是内容入口，
+         学院里那批 App 实操要点如果连入口都被挤出 4 枚之外，就等于不存在。
+         46 分只压兜底，压不过超支 100 / 心愿单 88 / 页面上下文 80 这些真建议。 */
+      add('acaSave', 'App 教学', '__acaSave', 'App 省钱技巧与视频教程', 46);
       add('guide', 'AI 能做什么', '你能做什么', '', 20);
 
       out.sort(function (a, b) { return b.w - a.w; });
@@ -16628,11 +16822,15 @@
   /* 只读诊断入口（控制台 / 自动化测试用）：
        AJ_METRICS_REPORT()  → 跳转成功率、各失败码、建议采纳率
        AJ_NAV_RESOLVE('打开心愿单') → 看解析结果与置信分
-       AJ_SUGGEST_LIST()    → 当前上下文算出来的建议（含 why） */
+       AJ_SUGGEST_LIST()    → 当前上下文算出来的建议（含 why）
+       AJ_KB_SEARCH('淘宝怎么领小样') → 知识库检索原始结果（校验命中卡与分数）
+       AJ_KB_STATS()        → 知识库规模（各类卡数 / 词条数，学院页扩了要能看见） */
   global.AJ_METRICS_REPORT = function () { return AGENT_METRICS.report(); };
   global.AJ_METRICS_CLEAR = function () { AGENT_METRICS.clear(); };
   global.AJ_NAV_RESOLVE = function (q) { return AGENT_NAV.resolve(q); };
   global.AJ_SUGGEST_LIST = function () { return AGENT_SUGGEST.list(); };
+  global.AJ_KB_SEARCH = function (q, scope) { return AGENT_KB.search(q, scope || 'all'); };
+  global.AJ_KB_STATS = function () { return AGENT_KB.stats(); };
 
   /* ---- Dim3：按时间/预算生成动态快捷 chips + 会话级主动提示 ---- */
   var proactiveShown = false;
@@ -16860,9 +17058,18 @@
     if (view === 'chat' || view === 'sai') { renderSceneChips(); maybeProactiveHint(); maybeWishReview(); }
     var tabs = DOC.querySelectorAll('#tabbar .tab, #tabbarSimple .tab');
     var i;
+    /* 简洁版 4 类（2026-10-31）：预算归「明细」、搭子归「省钱」、理财专家归「我的」，
+       这些子视图没有独立一级 tab，按其归属高亮上级入口，避免底部全灰。 */
+    var TAB_HOST = { sbudget: 'slist', sdazai: 'ssave', scoach: 'sprofile' };
+    var tabView = TAB_HOST[view] || view;
     for (i = 0; i < tabs.length; i++) {
       // 用 classList.toggle 保留 tab 上的其他类（如 ui-full-only），避免整类名覆盖导致门控失效
-      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-view') === view);
+      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-view') === tabView);
+    }
+    /* 明细二级分段（流水 / 预算）同步高亮 */
+    var subBtns = DOC.querySelectorAll('.sp-subseg-btn');
+    for (i = 0; i < subBtns.length; i++) {
+      subBtns[i].classList.toggle('active', subBtns[i].getAttribute('data-sub') === view);
     }
     /* 简洁版「省钱」屏：面板常驻在 #spSaveBody 内，切进来时补一次渲染，
        保证首次进入与数据变更后看到的都是最新内容（不弹遮罩、不调 openSaveHub）。 */

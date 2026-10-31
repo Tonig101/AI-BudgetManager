@@ -1,74 +1,87 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""_aca_embed.py — 把 理财学院/理财学院.html 同步进 AI记账.html / index.html 的 acaDoc 内嵌块。
+"""_aca_embed.py — 把 理财学院/理财学院.html 同步进 AI记账.html / index.html 的 acaDoc 块。
 
-背景：学院整页以 <script type="text/plain" id="acaDoc"> 内嵌，主应用用
-document.write 把它灌进同源 iframe。块内出现的 </script> 必须转义成 <\\/script>，
-否则会提前闭合 text/plain 块；主应用加载时会把 <\\/script 还原（见 data-aca-loader）。
+单文件架构下，学院页不是外链 iframe，而是以 `<script type="text/plain" id="acaDoc">`
+的形式整页内嵌，再由启动脚本塞进 iframe 的 srcdoc。所以学院页一改，两个产物里的
+acaDoc 就必须跟着重写，否则应用内看到的还是旧学院。
+
+（本脚本原文件曾丢失，按 index.html 现存的块格式重建。）
+
+唯一需要的转义：内嵌 HTML 里的 `</script>` 必须写成 `<\\/script>`，
+否则 HTML 解析器会在那里提前结束 script 标签。
 
 用法:
-  python _aca_embed.py           # 同步 AI记账.html 与 index.html
-  python _aca_embed.py --check   # 只读核验：两个产物是否已与源文件一致
+  python _aca_embed.py           # 同步两份产物
+  python _aca_embed.py --check   # 只读核验，漂移时退出码 1
 """
+import io
 import os
-import re
 import sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, '理财学院', '理财学院.html')
-TARGETS = ['AI记账.html', 'index.html']
-
-BLOCK = re.compile(
-    r'(<script type="text/plain" id="acaDoc">\n)(.*?)(\n</script>)',
-    re.S,
-)
+HTML_FILES = ['AI\u8bb0\u8d26.html', 'index.html']  # AI记账.html, index.html
+OPEN_TAG = '<script type="text/plain" id="acaDoc">'
+CLOSE_TAG = '</script>'
 
 
-def read_src():
-    with open(SRC, encoding='utf-8') as f:
-        doc = f.read().replace('\r\n', '\n')
-    return doc.rstrip('\n') + '\n'
+def read(name):
+    return io.open(name, encoding='utf-8').read().replace('\r\n', '\n')
 
 
-def escaped(doc):
-    return doc.replace('</script>', '<\\/script>')
+def payload():
+    """学院源文件 → 可直接放进 acaDoc 的文本（前后各留一个换行，与原格式一致）。"""
+    src = read(SRC)
+    if not src.endswith('\n'):
+        src += '\n'
+    return '\n' + src.replace('</script>', '<\\/script>') + '\n'
+
+
+def locate(html):
+    i = html.find(OPEN_TAG)
+    if i < 0:
+        return None
+    start = i + len(OPEN_TAG)
+    end = html.find(CLOSE_TAG, start)
+    if end < 0:
+        return None
+    return start, end
 
 
 def main():
     check = '--check' in sys.argv
-    want = escaped(read_src())
-
-    bad = []
-    for name in TARGETS:
+    want = payload()
+    bad = 0
+    for name in HTML_FILES:
         path = os.path.join(ROOT, name)
-        with open(path, encoding='utf-8') as f:
-            html = f.read()
-
-        m = BLOCK.search(html)
-        if not m:
-            print('[FAIL] %s: 未找到 acaDoc 块' % name)
-            bad.append(name)
+        if not os.path.exists(path):
+            print('[MISS] %s 不存在' % name)
+            bad += 1
             continue
-
-        same = (m.group(2) == want)
+        html = read(path)
+        pos = locate(html)
+        if pos is None:
+            print('[FAIL] %s 找不到 acaDoc 块' % name)
+            bad += 1
+            continue
+        start, end = pos
+        cur = html[start:end]
+        if cur == want:
+            print('[OK  ] %s: 已与源文件一致（%d 字符）' % (name, len(want)))
+            continue
         if check:
-            print('[%s] %s: %s' % ('OK ' if same else 'DIFF', name,
-                                   '已与源文件一致' if same else '需同步（%d vs %d 字节）'
-                                   % (len(m.group(2)), len(want))))
-            if not same:
-                bad.append(name)
-        else:
-            if same:
-                print('[SKIP] %s: 已一致' % name)
-                continue
-            out = html[:m.start(2)] + want + html[m.end(2):]
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write(out)
-            print('[OK ] %s: 已同步学院内嵌块（%d 字节）' % (name, len(want)))
-
-    if bad:
-        return 1
-    return 0
+            print('[DRIFT] %s: acaDoc 与学院源文件不一致（现 %d / 应 %d 字符）'
+                  % (name, len(cur), len(want)))
+            bad += 1
+            continue
+        io.open(path, 'w', encoding='utf-8', newline='\n').write(html[:start] + want + html[end:])
+        print('[SYNC] %s: acaDoc 已更新（%d 字符）' % (name, len(want)))
+    if check:
+        print('CHECK %s' % ('PASS' if bad == 0 else 'FAIL（%d 处漂移）' % bad))
+    else:
+        print('DONE %s' % ('OK' if bad == 0 else '（%d 处失败）' % bad))
+    return 0 if bad == 0 else 1
 
 
 if __name__ == '__main__':

@@ -627,3 +627,4 @@ INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
 [2026-10-31 14:39:56] INFO:     127.0.0.1:62209 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
 [2026-10-31 14:41:06] INFO:     127.0.0.1:61068 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
 [2026-10-31 14:42:26] INFO:     127.0.0.1:49667 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
+[2026-10-31 23:00:58] INFO:     127.0.0.1:56158 - "GET /api/health HTTP/1.1" 200 OK

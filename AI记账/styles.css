@@ -703,12 +703,20 @@ h3 {
   flex-wrap: wrap;
   gap: 7px;
   padding-bottom: 2px;
+  /* 真机系统字号放大时，写死的高子会把文字挤出胶囊、再被 overflow 裁掉上下（只剩中间一条） */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .chip {
   flex: 0 0 auto;
-  height: 28px;
-  padding: 0 12px;
+  /* 用 min-height + 内边距自适应，而不是写死 height：字体被放大时胶囊跟着长高，不会被裁 */
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 12px;
+  box-sizing: border-box;
+  line-height: 1.25;
   border-radius: 999px;
   background: #F2F4F7;
   color: var(--text-2);
@@ -7802,6 +7810,51 @@ body[data-ui-mode="simple"] #spDazaiBody .dz-guide { margin: 0 0 10px; }
 }
 .sp-hero-btn:active { transform: translateY(1px); }
 
+/* 简洁版首页 · 次要操作条（截屏记账）：整宽、贴设计语言，不与 hero 绝对定位按钮抢位 */
+.sp-acts { margin-top: 12px; }
+.sp-act-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid var(--sp-line); background: var(--sp-card); color: var(--sp-text);
+  border-radius: var(--sp-radius); padding: 13px 16px;
+  font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: var(--sp-shadow);
+}
+.sp-act-btn:active { transform: translateY(1px); }
+.sp-act-btn .sp-act-ico {
+  width: 18px; height: 18px; fill: none; stroke: currentColor;
+  stroke-width: 1.9; color: var(--sp-green-dark); flex: 0 0 auto;
+}
+
+/* 简洁版 · 二级分段（明细：流水 / 预算）——预算不再占一级 tab */
+.sp-subseg {
+  display: flex; gap: 6px; margin: 10px 16px 0; padding: 4px;
+  background: var(--sp-card); border-radius: 999px; box-shadow: var(--sp-shadow);
+}
+.sp-subseg-btn {
+  flex: 1 1 0; border: none; background: none; cursor: pointer;
+  padding: 8px 0; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--sp-sub);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.sp-subseg-btn.active { background: var(--sp-green, #07C160); color: #fff; }
+
+/* 简洁版 · 省钱页内「凑单搭子」入口容器 */
+.sp-save-entry { padding: 12px 16px 0; }
+
+/* 简洁版首页 · 攒钱与理财四宫格（理财专家 / 攒钱目标 / 存钱罐 / 心愿单） */
+.sp-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
+.sp-g {
+  border: 1px solid var(--sp-line); background: var(--sp-card); color: var(--sp-text);
+  border-radius: var(--sp-radius); box-shadow: var(--sp-shadow);
+  padding: 12px 4px 10px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer; line-height: 1.2;
+}
+.sp-g:active { transform: translateY(1px); }
+.sp-g-ico {
+  width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+  background: var(--brand-wash, #E8F8EF); color: var(--sp-green-dark);
+}
+.sp-g-ico svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
 /* 快捷分类 */
 .sp-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
 .sp-q {
@@ -9369,6 +9422,8 @@ body[data-view="spiggy"] #panelSimplePiggy { display: flex; }
 .stc-sample { font-size: 12px; color: var(--text-2); line-height: 1.55; overflow-wrap: anywhere; }
 
 /* ---- 简洁版：心愿单小卡 ---- */
+/* hidden 属性必须压过 display:block，否则空态隐藏失效（2026-10-31） */
+.sp-wishcard[hidden] { display: none !important; }
 .sp-wishcard {
   display: block;
   width: 100%;
@@ -13459,7 +13514,7 @@ body[data-view="dazai"] .panel-dazai {
     mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
   }
   .quick-chips::-webkit-scrollbar { display: none; }
-  .chip { height: 32px; padding: 0 13px; font-size: 12.5px; }
+  .chip { min-height: 32px; padding: 5px 13px; font-size: 12.5px; }
 
   .input-row { gap: 8px; }
   .btn-mic { width: 42px; height: 42px; border-radius: 50%; }
