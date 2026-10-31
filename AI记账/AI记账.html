@@ -2143,6 +2143,57 @@ h3 {
   font-size: 15px;
 }
 
+/* ---------------------- 记账弹窗：顶部「支出 / 收入」分段器 ----------------------
+   取代原来的静态标题，也让「记收入」不必在表单和主操作行之间塞一个跳转按钮。
+   轨道总高 40px（3 + 34 + 3），与 .field input 完全对齐。 */
+.modal-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  margin: 0 0 10px;
+  background: var(--line-2);
+  border-radius: 12px;
+}
+
+.modal-seg .seg-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.modal-seg .seg-btn:hover { color: var(--green-ink); }
+
+.modal-seg .seg-btn.is-on {
+  background: #fff;
+  color: var(--green-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.modal-seg .seg-btn:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+
+/* 深色下轨道本身已经比卡片亮，选中态改用提亮浮层，避免「选中=更暗」的反直觉 */
+[data-theme="dark"] .modal-seg .seg-btn.is-on {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+/* 支出/收入两段各自的内容块：显式声明，防止以后给容器加 flex 盖掉 [hidden] */
+.qa-mode[hidden] { display: none; }
+
 .modal p {
   margin: 0 0 4px;
   font-size: 13px;
@@ -3590,6 +3641,25 @@ h3 {
   background: var(--green-soft);
   border-color: rgba(7, 193, 96, 0.4);
   color: var(--green-dark);
+}
+
+/* 收入来源胶囊：圆点右侧补一枚线条图标，选中时跟随文字变绿 */
+.radio-item.has-ico {
+  padding-left: 9px;
+  gap: 6px;
+}
+
+.radio-item.has-ico .src-ico {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  stroke-width: 2;
+  color: var(--text-3);
+  transition: color 0.15s ease;
+}
+
+.radio-item.has-ico:has(input:checked) .src-ico {
+  color: var(--green);
 }
 
 /* ---------------------------- 响应式增量 ---------------------------- */
@@ -39017,7 +39087,7 @@ var SAVE_APPS=[
     {t:'一键保价退差价',d:'买完大件在订单页点「一键保价」，降价会自动退差价，签收后 7 天内都能试。'}
   ]},
 
-  {id:'e1688',name:'1688',cat:'shop',color:'#FF6A00',ini:'阿',intro:'一件代发 · 宿舍拼单',vq:'1688 一件代发 教程',tips:[
+  {id:'e1688',name:'阿里巴巴1688',cat:'shop',color:'#FF6A00',ini:'阿',intro:'一件代发 · 宿舍拼单',vq:'1688 一件代发 教程',tips:[
     {t:'一件代发省一半',d:'搜「一件代发」，买收纳、文具、垃圾袋，单价常是淘宝一半，宿舍几个人拼一单更划算。'},
     {t:'按起批量比价',d:'看清起批量和运费：小件凑到起批量再下单，运费摊薄后才是真便宜。'}
   ]},
@@ -39032,15 +39102,10 @@ var SAVE_APPS=[
     {t:'免费鉴定防踩雷',d:'得物有免费鉴定入口，二手或代购来的鞋先鉴定再付款，别等穿坏了才发现是假货。'}
   ]},
 
-  {id:'xhs',name:'小红书',cat:'shop',color:'#ff2442',ini:'红',intro:'比价 · 避坑 · 避暗广',vq:'小红书 避坑 测评',tips:[
-    {t:'搜索比价',d:'买大件前先搜「XX 平替」「XX 避坑」，参考真实买家反馈，别信网红全推的产品。'},
-    {t:'警惕暗广',d:'「种草」笔记很多是暗广，警惕「精致生活」包装出的消费陷阱。'}
-  ]},
-
-  {id:'xhs_rev',name:'小红书（反向使用）',cat:'shop',color:'#ff2442',ini:'反',intro:'搜平替 · 搜避坑',vq:'小红书 平替 避坑',tips:[
-    {t:'搜平替',d:'买大牌前先搜「品牌 + 平替」，尤其日用品、护肤品，能拔草一半。'},
-    {t:'搜避坑',d:'搜「品牌名 + 避坑 / 差评」，排雷网红店和网红产品。'},
-    {t:'警惕精致生活',d:'别刷「沉浸式 / 精致生活」贴，容易产生「我也要这样生活」的消费幻觉。'}
+  {id:'xhs',name:'小红书',cat:'shop',color:'#ff2442',ini:'红',intro:'搜平替 · 搜避坑 · 防暗广',vq:'小红书 平替 避坑',tips:[
+    {t:'买前搜「平替」',d:'大牌、护肤、日用品先搜「品牌 + 平替」，成分接近的国产同类常便宜一半。'},
+    {t:'搜「避坑」排雷',d:'买前搜「品牌或店名 + 避坑 / 差评」，按最新排序看近 3 个月反馈。'},
+    {t:'警惕暗广与精致生活',d:'「种草」「沉浸式」内容多在卖生活方式，看到「链接在评论区」先找广告标识。'}
   ]},
 
   {id:'meituan',name:'美团',cat:'food',color:'#f5a623',ini:'美',intro:'拼好饭 · 返利红包 · 会员',vq:'外卖 红包 省钱',tips:[
@@ -39074,7 +39139,8 @@ var SAVE_APPS=[
 
   {id:'cotti',name:'库迪咖啡',cat:'food',color:'#B30332',ini:'库',intro:'9.9 不限量 · 联名买一送一',vq:'库迪 9.9 优惠券',tips:[
     {t:'9.9 不限量与联名',d:'库迪常年 9.9 不限量，联名款常做买一送一；两人各用各的账号点，比一人点两杯省。'},
-    {t:'储值卡 8 折以下才充',d:'储值本质是预付，折扣够低才划算；充多了喝不完，等于把钱锁在店里。'}
+    {t:'储值卡 8 折以下才充',d:'储值本质是预付，折扣够低才划算；充多了喝不完，等于把钱锁在店里。'},
+    {t:'外卖下单先领券',d:'美团 / 饿了么 点库迪先领店铺券再叠平台红包，同款常比小程序直点低 2–4 元；两杯起凑满减更划算。'}
   ]},
 
 
@@ -39109,7 +39175,8 @@ var SAVE_APPS=[
 
   {id:'qqmusic',name:'QQ音乐',cat:'fun',color:'#31C27C',ini:'Q',intro:'学生特惠 · 联合会员',vq:'QQ音乐 学生 绿钻 优惠',tips:[
     {t:'学生特惠五折',d:'走学信网认证的「学生特惠」，绿钻豪华版约原价一半，年付比月付再低一档。'},
-    {t:'联合会员更划算',d:'QQ 音乐常和腾讯视频、微信读书出联合会员，打包价低于单买；签到积分也能换天数。'}
+    {t:'联合会员更划算',d:'QQ 音乐常和腾讯视频、微信读书出联合会员，打包价低于单买；签到积分也能换天数。'},
+    {t:'豪华绿钻就够，别升超会',d:'只为听歌买「豪华绿钻」即可；弹窗常引导升「超级会员」，多出来的是听书、K 歌、下载额度，学生特惠也只对绿钻生效。'}
   ]},
 
 
@@ -39143,7 +39210,8 @@ var SAVE_APPS=[
 
   {id:'hello',name:'哈啰',cat:'move',color:'#008CFF',ini:'哈',intro:'顺风车 · 单车月卡',vq:'哈啰 顺风车 单车月卡',tips:[
     {t:'单车月卡按次算',d:'哈啰月卡把单次 1.5 元压到几毛，一天骑两次就回本；只周末骑就买次卡。'},
-    {t:'跨城顺风车比价',d:'同一路线和嘀嗒比价，哈啰常有新客立减；长途选「拼座」成行率更高。'}
+    {t:'跨城顺风车比价',d:'同一路线和嘀嗒比价，哈啰常有新客立减；长途选「拼座」成行率更高。'},
+    {t:'助力车不通用，别停区外',d:'月卡只覆盖单车，助力车（电单车）另按里程计费；停在运营区外要付 5–20 元调度费，还车前先看地图上的停车点。'}
   ]},
 
 
@@ -39288,6 +39356,36 @@ var SAVE_APPS=[
  *   k  视频搜索关键词（B 站 / 抖音 / 小红书共用）
  * ================================================================== */
 var TIP_D={
+'cotti:2':{g:'单杯再省 2–4 元',
+  w:'同一杯库迪，小程序直点常比外卖平台贵：平台上店铺券 + 红包两层能叠加，两杯起还能凑满减。',
+  st:['先在外卖 App 搜「库迪」，进店铺页领「店铺券」。','再叠平台红包（会员红包 / 天天神券），两层可同时用。','凑两杯起，更容易触发满减档位。','下单前对比小程序自提价，自己顺路就直接用自提券。'],
+  ca:'外卖价含配送费，单杯点不一定便宜；自提券和外卖券通常不能混用。',
+  k:'库迪 外卖 优惠券 怎么叠'},
+'qqmusic:2':{g:'一年少花 100+',
+  w:'听歌只需要「豪华绿钻」；弹窗推的「超级会员」多的是听书、K 歌、下载额度，价格却高一档。',
+  st:['会员页认准「豪华绿钻」，学生特惠也只对它生效。','年付比月付便宜约 20%，先确认会长期用再买年卡。','和腾讯视频 / 微信读书的联合会员比总价，常更划算。','开自动续费前先看续费价是否恢复原价。'],
+  ca:'超级会员不是必需；已开超会的到期后降级即可，不影响已下载歌曲本地播放。',
+  k:'QQ音乐 豪华绿钻 超级会员 区别'},
+'hello:2':{g:'避免 5–20 元调度费',
+  w:'哈啰月卡只覆盖脚踏单车，助力车（电单车）按里程另计费；停在运营区外会被收调度费。',
+  st:['还车前看地图上的蓝色停车点，停在点内。','月卡用户骑助力车前先看计价规则，别默认免费。','跨城 / 跨区骑行前确认终点在运营区内。','真被收调度费可在订单页申诉，首次常能减免。'],
+  ca:'各城市规则不同，异地骑行先看当地计价页；调度费通常不退，提前避开。',
+  k:'哈啰 助力车 调度费 停车点'},
+'xhs:0':{g:'护肤日用省 50%',
+  w:'大牌溢价多在品牌和包装，成分、代工厂常有更便宜的同类；大件也一样，先搜再买能砍掉一半冲动消费。',
+  st:['搜「品牌 + 产品名 + 平替」，也搜「产品名 + 避坑」。','大件去 B 站搜「产品名 + 测评」，优先看 10 分钟以上的长测。','对比核心成分和浓度是否接近，别只看包装像不像。','先买小样试，合适再买正装；候选写进备忘录，隔 24 小时再决定。'],
+  ca:'平替不等于等效，护肤先做耳后测试；药品、隐形眼镜别用平替。',
+  k:'大牌 平替 怎么找'},
+'xhs:1':{g:'避开一次踩雷',
+  w:'差评比好评真实，买前搜「避坑」「差评」能提前看到真实缺陷。',
+  st:['搜「品牌或店名 + 避坑」「+ 差评」「+ 踩雷」。','按「最新」排，看近 3 个月的反馈。','重点看评论区里「售后怎么处理」。','把高频问题记下来，下单前逐条确认。'],
+  ca:'竞品恶意差评也存在，多看几条交叉验证，别因一条就否定。',
+  k:'怎么搜 避坑 差评'},
+'xhs:2':{g:'少花冤枉钱',
+  w:'「种草」「沉浸式」「精致生活」内容在卖生活方式，看多了会把别人的日常当自己的刚需。',
+  st:['看到「链接在评论区」先找有没有「广告」标识。','查博主近 30 天是否连推 3 个以上同类品牌。','把「沉浸式」「独居 vlog」设为「不感兴趣」，每周留一天不刷推荐流。','想买的东西先放购物车 48 小时，月底复盘这个月被种草花了多少。'],
+  ca:'不是所有种草都假，但「限时」「最后 3 件」这类词基本是促单话术。',
+  k:'小红书 暗广 怎么识别'},
 'taobao:0':{g:'单次省 20–200 元',
   w:'商家拿新品小样换曝光，你几乎零成本试到大牌护肤、零食、日用品，适合想试新品牌又不想买正装的时候。',
   st:['打开淘宝，直接点顶部搜索框（不用在首页往下翻）。','输入「U先试用」（中间不加空格），回车进活动页。','按「0 元」「包邮」「小样」筛，优先选天猫官方旗舰店。','看清规格（多为 1–5ml）和是否需要付邮费，再点领取。'],
@@ -39383,21 +39481,11 @@ var TIP_D={
   st:['认准标题旁的「自营」标（不是「京东物流」标）。','下单时看预计送达，选「211 限时达」。','出问题在订单页点「申请售后」，选自营上门取件。','外包装留 7 天，退换更顺。'],
   ca:'第三方店铺的「京东配送」不等于自营，售后要走商家，慢很多。',
   k:'京东 自营 售后 区别'},
-'xhs:0':{g:'避开 30% 溢价',
-  w:'大件、护肤、家电的真实口碑和替代方案都在测评里，先搜再买能砍掉一半冲动消费。',
-  st:['搜「产品名 + 平替」「产品名 + 避坑」。','去 B 站搜「产品名 + 测评」，优先看 10 分钟以上的长测。','重点看缺点段落和评论区，那里才是真话。','把 2–3 个候选写进备忘录，隔 24 小时再决定。'],
-  ca:'同一博主反复推同一品牌要警惕恰饭；「全网最低价」基本都是话术。',
-  k:'怎么判断 测评 是不是广告'},
 'bili:0':{g:'省下几千元网课',
   w:'B 站和中国大学 MOOC 有大量名校公开课、软件教程，质量不输付费课。',
   st:['B 站搜「科目 + 考研 / 四六级 + 完整版」，按「最多播放」排。','中国大学 MOOC 搜课程名，优先「国家精品」标。','用「稍后再看」建播放列表，按周排进度。','配套 PDF 在评论区找，别买「资料包」。'],
   ca:'收藏不等于学完，一周只跟 1 门，别同时开五门。',
   k:'B站 免费 学习 资源 推荐'},
-'xhs:1':{g:'少花冤枉钱',
-  w:'「沉浸式」「精致生活」内容在卖生活方式，看多了会把别人的日常当自己的刚需。',
-  st:['看到「链接在评论区」先找有没有「广告」标识。','查博主近 30 天是否连推 3 个以上同类品牌。','把「我也想要」写进备忘录，隔天再看还需不需要。','取关让你频繁产生购买欲的账号。'],
-  ca:'不是所有种草都假，但「限时」「最后 3 件」这类词基本是促单话术。',
-  k:'小红书 暗广 怎么识别'},
 'amap:0':{g:'每单省 3–10 元',
   w:'高德、百度打车聚合了多家平台同时比价，同路线常比单独开一家便宜。',
   st:['用高德地图「打车」，输入目的地。','勾「全部车型」看各平台报价，选最便宜那个。','先领页面上的打车券（常有 5 元无门槛）再下单。','高峰提前 10 分钟叫车，避开动态加价。'],
@@ -39488,21 +39576,6 @@ var TIP_D={
   st:['关注学校礼堂或学生会的公众号、通知群。','每周四看下周排片，热门片提前抢。','带学生证现场购票，多数不支持线上选座。','可以自带零食，多数不查。'],
   ca:'片源有滞后，想第一时间看新片还得去商业影院。',
   k:'校园影院 电影 便宜'},
-'xhs_rev:0':{g:'护肤日用省 50%',
-  w:'大牌溢价多在品牌和包装，成分和代工厂往往有更便宜的同类。',
-  st:['搜「品牌 + 产品名 + 平替」。','看评论里提到的具体产品，再单独搜它的成分表。','对比核心成分和浓度是否接近，而不是看包装像不像。','先买小样试，合适再买正装。'],
-  ca:'平替不等于等效，护肤先做耳后测试；药品、隐形眼镜别用平替。',
-  k:'大牌 平替 怎么找'},
-'xhs_rev:1':{g:'避开一次踩雷',
-  w:'差评比好评真实，买前搜「避坑」「差评」能提前看到真实缺陷。',
-  st:['搜「品牌或店名 + 避坑」「+ 差评」「+ 踩雷」。','按「最新」排，看近 3 个月的反馈。','重点看评论区里「售后怎么处理」。','把高频问题记下来，下单前逐条确认。'],
-  ca:'竞品恶意差评也存在，多看几条交叉验证，别因一条就否定。',
-  k:'怎么搜 避坑 差评'},
-'xhs_rev:2':{g:'每月少花 500+',
-  w:'算法推的「精致生活」是在卖生活方式，看多了会把别人的日常当自己的刚需。',
-  st:['把「沉浸式」「独居 vlog」类内容设为「不感兴趣」。','每周固定一天不刷推荐流。','想买的东西先放购物车 48 小时。','月底复盘：这个月有多少钱是被内容种草的。'],
-  ca:'不消费不等于苦行，把钱留给真正让你开心的事。',
-  k:'消费主义 陷阱 怎么破'},
 'game:0':{g:'便宜 50%–80%',
   w:'Steam 一年多次大促，历史最低价可查，等一等往往就省一半。',
   st:['把想玩的游戏加进愿望单。','去 SteamDB 查历史最低价，心里有个底。','等夏促、冬促，或发行满一年后的小促。','充值走官方或可靠渠道的 Steam 充值卡，常有 8–9 折。'],
@@ -40425,6 +40498,16 @@ var SAVE_VIDS=[
       committed: (flow.committed || []).map(tag),
       last: (flow.last || []).map(tag),
       bills: (state.bills || []).length
+    };
+  };
+  /** 现场排查用：`AJ_COOLING_DEBUG()` 看冷静卡有没有挂着；
+   *  传一句话则返回本地语义判定结果，用来核对「用户说这句算不算回答」（不触发任何入账） */
+  global.AJ_COOLING_DEBUG = function (text) {
+    return {
+      cooling: cooling ? { item: cooling.item, price: cooling.price, alreadyRecorded: !!cooling.alreadyRecorded } : null,
+      pending: pendingBill ? { note: pendingBill.note, amount: pendingBill.amount } : null,
+      refused: (text === undefined) ? null : coolingRefused(text),
+      givenUp: (text === undefined) ? null : coolingGivenUp(text)
     };
   };
   /** 现场排查用：`AJ_AGENT_DEBUG()` 看智能体到底有没有就绪、用的哪个模型 */
@@ -41988,7 +42071,12 @@ var SAVE_VIDS=[
           for (j = 0; j < a.tips.length; j++) {
             var tp = a.tips[j];
             if (!tp || !tp.d) { continue; }
-            lines.push(clean(tp.t) + '：' + clean(tp.d));
+            /* 每条要点以句号收尾，再用空串拼接：学院页的 d 本来就写成了完整句，
+               原来用「；」拼会拼出「……小样。；百亿补贴：……」这种「句号+分号」，
+               44/54 张卡都是这个样子，模型念出来像卡壳。缺句末标点的补一个「。」。 */
+            var dd = clean(tp.d);
+            if (!/[。！？…]$/.test(dd)) { dd += '。'; }
+            lines.push(clean(tp.t) + '：' + dd);
             kws.push(clean(tp.t));
           }
           var catName = (ag.CAT_NAME && ag.CAT_NAME[a.cat]) || '';
@@ -42007,14 +42095,14 @@ var SAVE_VIDS=[
           arr.push({
             type: 'guide', id: 'guide.' + a.id, cat: 'guide', tag: catName || 'App 教学',
             title: clean(a.name) + ' · ' + clean(a.intro),
-            core: lines.join('；'),
+            core: lines.join(''),
             detail: '入口：理财学院 · App 教学（' + clean(a.name) + '）',
             res: '',
             /* vq 是学院页给这个 App 定的搜索词（如「外卖 红包 省钱」），比我自己补的
                通用词更贴用户问法，一起进关键词层 */
             kw: clean(a.name) + ' ' + clean(a.intro) + ' ' + clean(a.vq) + ' ' + kws.join(' ') +
               ' ' + catName + ' 怎么省 在哪 技巧 攻略 教程',
-            text: cut('【' + clean(a.name) + '｜' + clean(a.intro) + '】' + lines.join('；'), MAX_CONTENT),
+            text: cut('【' + clean(a.name) + '｜' + clean(a.intro) + '】' + lines.join(''), MAX_CONTENT),
             certainty: '', source: '理财学院 · App 教学',
             phrases: phOut,
             jump: { guide: a.id, q: clean(a.name), label: clean(a.name) }
@@ -42598,6 +42686,27 @@ var SAVE_VIDS=[
         if (ctx && ctx.amounts.length && !agentGrounded(price, ctx)) {
           return agentFail('价格不在原话里',
             'price ' + price + ' 不在用户原话中（可用：' + ctx.amounts.join(' / ') + '），不要编造');
+        }
+        /* 同一笔的冷静卡还开着（用户还没点决定）就不要再开第二张 ——
+           重复开卡等于把问过的问题再问一遍。这里直接按用户这句的语义办：
+           拒绝冷静就记账，说不买就不记，别再把选择抛回去。 */
+        if (cooling && !cooling.alreadyRecorded && cooling.price &&
+            Math.abs(cooling.price - ENG.round2(price)) < 0.011) {
+          if (coolingRefused(ctx && ctx.raw)) {
+            coolingRecord();
+            return {
+              ok: true,
+              brief: cooling.item + ' ' + money(price) + ' 已按用户要求记上',
+              data: {
+                ok: true, recorded: true, item: cooling.item, price: ENG.round2(price),
+                note: '用户已明确拒绝冷静（就在刚开的那张卡上），这笔已经入账。' +
+                  'final 只需确认「记上了」并给分类，不要再开卡、不要再让用户二选一。'
+              }
+            };
+          }
+          return agentFail('这张冷静卡已经开过了',
+            '「' + cooling.item + '」的冷静卡还在等你，不要重复开卡，也不要把选择再抛回给用户。' +
+            '用户这句话如果是在回答（要买 / 不买），直接照办：要买就调 add_bills 记账，不买就别记。');
         }
         pendingClear();
         startCoolingFlow(item, ENG.round2(price));
@@ -43325,10 +43434,14 @@ var SAVE_VIDS=[
       '2. 疑问句（怎么/吗/多少/能不能/值不值）不是记账；未来计划（明天、打算、约好）要记账时必须提醒「还没发生」。',
       '3. 硬门禁：单笔金额 ≥ ' + coolLimit + '（冷静期阈值）时，无论品类、无论是否刚需，都必须先调 cooling_check ' +
         '开冷静卡，不许直接 add_bills 记账；非刚需的大额消费（球鞋、数码、潮玩、演唱会等）即使不足 ' + coolLimit + ' 也先调 cooling_check。',
+      '   例外（必须遵守）：用户已经明确表达「现在就买 / 现在就吃 / 不用等 / 帮我记上 / 别拦 / 确定要」→ 直接 add_bills 记账，' +
+        '不许再开冷静卡；同一笔的冷静卡还在等他决定时，也不要开第二张。',
       '4. 同一个工具不要重复调用；工具返回 ok:false 就看 error 改参数，或改成问用户。',
       '5. 一律按【你是谁】说话：口语、1~3 句、不列长清单、不复述卡片上已有的数字；' +
         '语气可以直，但不许刻薄、不许说教、不许替用户下「你太穷了 / 你管不住手」这种判断。',
       '6. 记账 / 撤回 / 冷静卡 都由工具自动出卡，final 只补一句有用的话，或留空字符串。',
+      '   卡片上已经有按钮（「先不买」「仍然记下」）时，final 不要再把同样的选择用文字问一遍，choices 留空 —— 那是问第二遍。',
+      '   用户已经回答过的事（说过「现在就吃」「记上」「不买了」）不要再确认、不要再让他二选一，直接办。',
       '7. 品类只能是这些之一：' + cats + '（收入不用填品类）。',
       '8. 回答「还能不能 / 够不够 / 请得起吗 / 该不该买」这类能不能负担的问题，必须先 get_balance，' +
         '需要看花销再加 get_spending；不许只凭花销金额或印象下结论。',
@@ -44897,6 +45010,9 @@ var SAVE_VIDS=[
       answers: [],
       coolDays: 2,
       wishId: '',
+      /* 开卡时间：消息入口只在「刚开卡 5 分钟内」接管一句话回答，
+         免得用户过了很久回来聊别的（「算了」说的是别的事）被误判成放弃这笔。 */
+      ts: Date.now(),
       alreadyRecorded: !!alreadyRecorded
     };
     renderCoolingIntro();
@@ -45017,9 +45133,14 @@ var SAVE_VIDS=[
   /** 结论后选择「仍然购买」：直接入账（已走完冷静流程，不再二次弹冷静期） */
   function coolingRecord() {
     if (!cooling) { return; }
+    /* 品类按商品名判，别再一律写「购物」：剁手冷静法也会被夜宵烧烤、火锅、奶茶触发，
+       全塞进「购物」会让餐饮统计和恩格尔系数偏低，用户在账单分析里会看到一笔分类错的账。 */
+    var guessRaw = '';
+    try { guessRaw = NLP.classify(cooling.item) || ''; } catch (e) { guessRaw = ''; }
+    var guessCat = guessRaw ? agentCategory(guessRaw, 'expense') : '';
     var draft = {
       amount: cooling.price,
-      category: '购物',
+      category: guessCat || '购物',
       note: cooling.item,
       date: ENG.formatDate(new Date()),
       motivation: '情绪',
@@ -48993,23 +49114,53 @@ var SAVE_VIDS=[
     }
   }
 
+  /* 收入来源 → 线条图标：与全站 .bico 同一套描边语言，选中时随文字变绿 */
+  var INCOME_SRC_ICON = {
+    '生活费': 'i-wallet', '工资': 'i-receipt', '兼职': 'i-clipboard',
+    '奖学金': 'i-cap', '助学金': 'i-doc', '红包': 'i-mail',
+    '礼金': 'i-bag', '年终奖': 'i-medal', '奖金': 'i-spark',
+    '分红': 'i-pie', '理财收益': 'i-trend', '退款': 'i-update',
+    '卖闲置': 'i-basket', '借入': 'i-swap', '其他': 'i-cat-other'
+  };
+
   /**
-   * 快捷记账面板（顶栏「＋ 记一笔」）：金额 / 分类 / 备注 / 日期。
+   * 快捷记账面板（顶栏「＋ 记一笔」）：顶部「支出 / 收入」分段器 + 金额 / 分类或来源 / 备注 / 日期。
    * 直接走 commitBill 落账，提交后聊天空出回执、预算条即时刷新。
    * @param {?string} [presetCategory] 预填分类（意图层已知的品类）
    * @param {?string} [presetDate] 预填日期 'YYYY-MM-DD'（L3 表单只让用户填缺的那个）
+   * @param {?string} [presetType] 'income' 时打开即停在「收入」段（记一笔收入入口复用本表单）
    */
-  function openQuickAddModal(presetCategory, presetDate) {
+  function openQuickAddModal(presetCategory, presetDate, presetType) {
     var todayStr = ENG.formatDate(new Date());
     /* C10：日期预填；不合法一律回落到今天（按钮点击时首参会是事件对象，这里统一兜住） */
     var datePrefill = /^\d{4}-\d{2}-\d{2}$/.test(String(presetDate || '')) ? String(presetDate) : todayStr;
     /* 分类预填：只接受合法分类名，避免把事件对象/脏值塞进选择器 */
     var catPrefill = (typeof presetCategory === 'string' &&
       DATA.CATEGORY_KEYS.indexOf(presetCategory) !== -1) ? presetCategory : '';
+    /* 支出 / 收入共用一张表单，由顶部分段器切换；底部不再塞跳转出口 */
+    var startType = presetType === 'income' ? 'income' : 'expense';
+    var srcRadios = '';
+    var i;
+    for (i = 0; i < DATA.INCOME_SOURCES.length; i++) {
+      var s = DATA.INCOME_SOURCES[i];
+      srcRadios += '<label class="radio-item has-ico">' +
+        '<input type="radio" name="incomeSource" value="' + esc(s) + '"' + (i === 0 ? ' checked' : '') + ' />' +
+        '<svg class="bico src-ico" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<use href="#' + (INCOME_SRC_ICON[s] || 'i-cat-other') + '"/></svg>' +
+        '<span>' + esc(s) + '</span>' +
+        '</label>';
+    }
+
     var box = openModal('' +
-      '<h4>记一笔</h4>' +
-      '<p>金额和分类必填，备注可选。记完预算条会立刻更新。</p>' +
+      /* 顶部「支出 / 收入」分段器：身份在这张卡上切换，不再弹第二个弹窗 */
+      '<div class="modal-seg" role="tablist" aria-label="记账类型">' +
+      '<button type="button" class="seg-btn" role="tab" data-act="qa-type" data-type="expense" aria-selected="false">支出</button>' +
+      '<button type="button" class="seg-btn" role="tab" data-act="qa-type" data-type="income" aria-selected="false">收入</button>' +
+      '</div>' +
+      '<p id="qaSub"></p>' +
       '<label class="field"><span>金额（¥）</span><input id="qaAmount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" /></label>' +
+      /* 支出专属：分类 + 这笔属于 */
+      '<div class="qa-mode" data-pane="expense">' +
       '<div class="field"><span>分类</span>' + catPickerHtml('qaCategory', catPrefill) + '</div>' +
       /* 「这笔属于」：给账单卡的情绪/想要标签一个真实来源，也是冷静期判定的依据 */
       '<div class="field"><span>这笔属于</span><div class="radio-group" data-act="qa-kind">' +
@@ -49017,22 +49168,66 @@ var SAVE_VIDS=[
       '<label class="radio-item"><input type="radio" name="qaKind" value="want" /><span>想要</span></label>' +
       '<label class="radio-item"><input type="radio" name="qaKind" value="mood" /><span>情绪消费</span></label>' +
       '</div></div>' +
-      '<label class="field"><span>备注</span><input id="qaNote" type="text" placeholder="例如：黄焖鸡米饭" maxlength="30" /></label>' +
+      '</div>' +
+      /* 收入专属：来源（15 项，各带语义线条图标） */
+      '<div class="qa-mode" data-pane="income">' +
+      '<div class="field"><span>来源</span><div class="radio-group">' + srcRadios + '</div></div>' +
+      '</div>' +
+      '<label class="field"><span id="qaNoteLabel">备注</span>' +
+      '<input id="qaNote" type="text" placeholder="例如：黄焖鸡米饭" maxlength="30" /></label>' +
       '<label class="field"><span>日期</span><input id="qaDate" type="date" value="' + datePrefill + '" /></label>' +
-      /* 想记收入却被弹窗困成支出的出口（复用 .btn-mini，不新增 CSS） */
-      '<p>要记生活费/兼职收入？<button type="button" class="btn-mini" data-act="qa-to-income">记收入 →</button></p>' +
       '<div class="modal-actions">' +
       '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
       '<button type="button" class="btn-ok" data-act="quick-add-save">记好了</button>' +
       '</div>');
     bindCatPicker(box, 'qaCategory');
 
+    var subEl = box.querySelector('#qaSub');
+    var noteLabel = box.querySelector('#qaNoteLabel');
+    var noteEl = box.querySelector('#qaNote');
+    var dateEl = box.querySelector('#qaDate');
+    var okBtn = box.querySelector('[data-act="quick-add-save"]');
+    var curType = startType;
+
+    /* 切换「支出 / 收入」：只换掉两者真正不同的那一段，金额/备注/日期是共用的 */
+    function applyType(t) {
+      var n;
+      curType = t === 'income' ? 'income' : 'expense';
+      var segs = box.querySelectorAll('[data-act="qa-type"]');
+      for (n = 0; n < segs.length; n++) {
+        var on = segs[n].getAttribute('data-type') === curType;
+        segs[n].classList.toggle('is-on', on);
+        segs[n].setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+      var panes = box.querySelectorAll('.qa-mode');
+      for (n = 0; n < panes.length; n++) {
+        panes[n].hidden = panes[n].getAttribute('data-pane') !== curType;
+      }
+      if (curType === 'income') {
+        subEl.textContent = '生活费、兼职、奖学金都记在这里，不会算进支出统计。';
+        noteLabel.textContent = '备注（可选）';
+        noteEl.placeholder = '例如：10 月生活费';
+        okBtn.textContent = '确认入账';
+        dateEl.setAttribute('max', todayStr);
+      } else {
+        subEl.textContent = '金额和分类必填，备注可选。记完预算条会立刻更新。';
+        noteLabel.textContent = '备注';
+        noteEl.placeholder = '例如：黄焖鸡米饭';
+        okBtn.textContent = '记好了';
+        dateEl.removeAttribute('max');
+      }
+    }
+    applyType(startType);
+
+    var segBtns = box.querySelectorAll('[data-act="qa-type"]');
+    var k;
+    for (k = 0; k < segBtns.length; k++) {
+      segBtns[k].addEventListener('click', function () {
+        applyType(this.getAttribute('data-type'));
+      });
+    }
+
     box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
-    /* 想记收入的出口：关掉本弹窗、直接进「记一笔收入」表单 */
-    box.querySelector('[data-act="qa-to-income"]').addEventListener('click', function () {
-      closeModal();
-      openIncomeModal();
-    });
     box.querySelector('[data-act="quick-add-save"]').addEventListener('click', function () {
       var amount = Number(box.querySelector('#qaAmount').value);
       if (!isFinite(amount) || amount <= 0) {
@@ -49040,9 +49235,31 @@ var SAVE_VIDS=[
         box.querySelector('#qaAmount').focus();
         return;
       }
-      var category = box.querySelector('#qaCategory').value;
       var note = box.querySelector('#qaNote').value.trim();
-      var date = box.querySelector('#qaDate').value || todayStr;
+      var dateRaw = box.querySelector('#qaDate').value || todayStr;
+      var date = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : todayStr;
+
+      /* 收入：走单独的落账字段（category 固定、source 来自来源选择），不参与支出统计 */
+      if (curType === 'income') {
+        var checked = box.querySelector('input[name="incomeSource"]:checked');
+        var source = checked ? checked.value : '其他';
+        closeModal();
+        switchView('chat');
+        startFlow([{
+          date: date,
+          amount: ENG.round2(amount),
+          category: DATA.INCOME_CATEGORY,
+          source: source,
+          note: note || source,
+          motivation: '刚需',
+          want: false,
+          type: 'income'
+        }]);
+        showToast('已入账 ' + money(amount), 'ok');
+        return;
+      }
+
+      var category = box.querySelector('#qaCategory').value;
       /* 与聊天记账对齐：走同一套情绪/想要推断，再被用户的三选覆盖 */
       var motive = NLP.detectMotivation(note + ' ' + category);
       var picked = box.querySelector('input[name="qaKind"]:checked');
@@ -49051,7 +49268,7 @@ var SAVE_VIDS=[
       if (kind === 'mood') { motive = { motivation: '情绪', want: true }; }
       if (kind === 'need') { motive = { motivation: '刚需', want: false }; }
       var draft = {
-        date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr,
+        date: date,
         amount: ENG.round2(amount),
         category: DATA.CATEGORY_KEYS.indexOf(category) !== -1 ? category : '其他',
         note: note || category,
@@ -50526,62 +50743,12 @@ var SAVE_VIDS=[
     return null;
   }
 
-  /** 记收入表单 */
+  /**
+   * 记收入：不再单独开一张弹窗，直接复用「记一笔」表单并停在「收入」段。
+   * 入口（菜单 / 意图路由 / 对外 API）全部保持原样，调用方无感。
+   */
   function openIncomeModal() {
-    var todayStr = ENG.formatDate(new Date());
-    var radios = '';
-    var i;
-    for (i = 0; i < DATA.INCOME_SOURCES.length; i++) {
-      var s = DATA.INCOME_SOURCES[i];
-      radios += '<label class="radio-item">' +
-        '<input type="radio" name="incomeSource" value="' + esc(s) + '"' + (i === 0 ? ' checked' : '') + ' />' +
-        '<span>' + esc(s) + '</span>' +
-        '</label>';
-    }
-
-    var box = openModal('' +
-      '<h4>记一笔收入</h4>' +
-      '<p>生活费、兼职、奖学金都记在这里，不会算进支出统计。</p>' +
-      '<label class="field"><span>金额（¥）</span>' +
-      '<input data-field="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="例如 2000" /></label>' +
-      '<div class="field"><span>来源</span><div class="radio-group">' + radios + '</div></div>' +
-      '<label class="field"><span>日期</span>' +
-      '<input data-field="date" type="date" max="' + todayStr + '" value="' + todayStr + '" /></label>' +
-      '<label class="field"><span>备注（可选）</span>' +
-      '<input data-field="note" type="text" placeholder="例如 10 月生活费" /></label>' +
-      '<div class="modal-actions">' +
-      '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
-      '<button type="button" class="btn-ok" data-act="income-save">确认入账</button>' +
-      '</div>');
-
-    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
-    box.querySelector('[data-act="income-save"]').addEventListener('click', function () {
-      var amountInput = box.querySelector('[data-field="amount"]');
-      var amount = Number(amountInput.value);
-      if (!isFinite(amount) || amount <= 0) {
-        amountInput.focus();
-        return;
-      }
-      var checked = box.querySelector('input[name="incomeSource"]:checked');
-      var source = checked ? checked.value : '其他';
-      var date = box.querySelector('[data-field="date"]').value;
-      var note = box.querySelector('[data-field="note"]').value.trim();
-      closeModal();
-      switchView('chat');
-      startFlow([{
-        date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr,
-        amount: ENG.round2(amount),
-        category: DATA.INCOME_CATEGORY,
-        source: source,
-        note: note || source,
-        motivation: '刚需',
-        want: false,
-        type: 'income'
-      }]);
-    });
-
-    var focusInput = box.querySelector('[data-field="amount"]');
-    if (focusInput) { focusInput.focus(); }
+    openQuickAddModal(null, null, 'income');
   }
 
   /**
@@ -56182,6 +56349,57 @@ var SAVE_VIDS=[
     settings: openSettingsPage
   };
 
+  /** 冷静卡的两种回答语义（本地判定，不依赖模型；工具层与消息入口共用同一份）：
+   *   · 拒绝：「不用等 / 现在就吃 / 帮我记上 / 别拦」→ 直接入账，不再追问
+   *   · 放弃：「不买了 / 算了 / 先放着」→ 记进「省下的钱」+ 心愿单
+   * 「不买」优先于「要」：句子里两个方向词同时出现（「不要了，还是想要」）按放弃处理，更保守。
+   * 问句一律不抢（「冷静期还有多久」是在问，不是在做决定）。 */
+  var COOL_REFUSE_RE = /(不用等|不要等|别等|现在就|这就|马上|立刻|别拦|不用冷静|不冷静|不用劝|别劝|还是要买|还是想买|还是买吧|照样记|照样买|直接记|直接买|帮我记上|帮我记|记上吧|记下吧|就要|不省了|确定(买|要)|确认(买|要)|没记错|没错|就是这笔)/;
+  var COOL_GIVEUP_RE = /(不买了|不要了|不想要了|先不买|先放着|放起来|算了|还是算了|放弃|再想想|过两天再说)/;
+  var COOL_ASK_RE = /[?？]|吗|多久|怎么|为什么|能不能|可以吗|是什么/;
+
+  /** 用户在拒绝冷静（要继续买/现在就要/让我记上） */
+  function coolingRefused(raw) {
+    var t = String(raw || '');
+    return !COOL_GIVEUP_RE.test(t) && COOL_REFUSE_RE.test(t) && !COOL_ASK_RE.test(t);
+  }
+
+  /** 用户在放弃这笔（不买了/算了/先放着） */
+  function coolingGivenUp(raw) {
+    var t = String(raw || '');
+    return COOL_GIVEUP_RE.test(t) && !COOL_ASK_RE.test(t);
+  }
+
+  /**
+   * 上一轮把一笔支出挂起来等用户决定时（冷静期卡 / 剁手冷静法卡还开着），
+   * 用户这一句就是在回答它 —— 本地直接了结，不再交给模型重新判断意图。
+   *
+   * 为什么必须有这一步：「不用等，现在就想吃，帮我记上」原来会被当成一轮新的
+   * 「想买烧烤 50」，模型按提示词再调一次 cooling_check，于是同一笔又被拦一遍、
+   * 又被问一遍（实测：第二张冷静卡 + 「你先选一下：挂在冷静清单，还是照样记账」）。
+   * 用户已经做过决定的事，不该再问第二遍。
+   *
+   * @param {string} raw 用户原话
+   * @return {boolean} 已就地处理则 true，调用方应立即 return
+   */
+  function tryResolvePendingAdd(raw) {
+    if (!cooling && !pendingBill) { return false; }
+    /* 只在卡刚弹出的一小段窗口内接管：过期的卡还挂在内存里，用户这句「算了」
+       很可能说的是别的事，不能替他放弃一笔钱。注意只「不接管」，不销毁会话——
+       卡片还在屏幕上，用户随时可以点按钮，销毁会让按钮变成哑的。 */
+    var COOL_REPLY_WINDOW = 5 * 60 * 1000;
+    if (cooling && cooling.ts && (Date.now() - cooling.ts) > COOL_REPLY_WINDOW) { return false; }
+    var isNo = coolingGivenUp(raw);
+    var isYes = coolingRefused(raw);
+    if (!isNo && !isYes) { return false; }
+    if (cooling) {
+      if (isYes) { coolingRecord(); } else { coolingSkip(); }
+      return true;
+    }
+    resolveCooldown(isYes);
+    return true;
+  }
+
   /**
    * 消息主入口（C7）：命令 -> 本地意图分类 -> pending 续接 -> 高置信本地执行
    * -> 低置信云端二次裁决 -> 兜底 L3 澄清。
@@ -56195,6 +56413,14 @@ var SAVE_VIDS=[
   function sendToAssistant(text) {
     var raw = String(text || '').trim();
     if (!raw) { return; }
+
+    /* ①.前置：上一轮的冷静卡还开着 —— 这句是回答它，就地了结，别再问第二遍。
+       放在所有意图判断之前：这类句子（「现在就吃，帮我记上」）最容易被误判成
+       新一轮「想买 XX」，从而再开一张卡、再追问一次，正是用户反馈的「问太多」。 */
+    if (tryResolvePendingAdd(raw)) {
+      logIntent(raw, 'cooling-resolve', 0.98, 'high', null, 'cooling-reply');
+      return;
+    }
 
     /* P0：纠错待补金额——上一轮问「要改成多少」，这一句若为纯数字，直接改上一笔金额（不新增账单） */
     if (correctionPending && (Date.now() - correctionPending.ts) < 120000) {
@@ -59859,7 +60085,10 @@ html.aca-lock,html.aca-lock body{overflow:hidden}
   .lesson-view{position:fixed;inset:0;z-index:60;background:var(--bg);display:none;
     overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .lesson-view::-webkit-scrollbar{width:0;height:0;display:none}
-  body.lesson-open .lesson-view{display:block;animation:lvIn .28s ease}
+  body.lesson-open #lessonView{display:block;animation:lvIn .28s ease}
+  /* 两个全屏页（课程页 / 技巧详情页）互斥：同一时刻只可能显示一个，防止互相盖住变成白屏 */
+  body.tip-open #lessonView{display:none!important}
+  body.lesson-open #tipView{display:none!important}
   @keyframes lvIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
   /* 滚动后才浮出的轻量顶栏 */
@@ -60257,10 +60486,10 @@ html.aca-lock,html.aca-lock body{overflow:hidden}
   <section class="tab-panel" id="tab-save">
     <div class="card">
       <div class="card-title"><span class="dot"></span>常用 App 教学指南</div>
-      <div class="muted">54 款高频 App 的实操课：先看 UP 主和精选视频，再照「领券 → 比价 → 防坑」动手。每条技巧都标了去哪搜教程。</div>
+      <div class="muted">53 款高频 App 的实操课：先看 UP 主和精选视频，再照「领券 → 比价 → 防坑」动手。每条技巧都标了去哪搜教程。</div>
       <div class="sv-stats">
-        <span class="sv-stat"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2.5"/><path d="M8 6V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1"/></svg><b id="svStatApps">54</b> 款 App</span>
-        <span class="sv-stat"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.5 10.9V15h7v-1.1A6 6 0 0 0 12 3z"/></svg><b id="svStatTips">118</b> 条技巧</span>
+        <span class="sv-stat"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2.5"/><path d="M8 6V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v1"/></svg><b id="svStatApps">53</b> 款 App</span>
+        <span class="sv-stat"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10.5 21h3"/><path d="M12 3a6 6 0 0 0-3.5 10.9V15h7v-1.1A6 6 0 0 0 12 3z"/></svg><b id="svStatTips">119</b> 条技巧</span>
         <span class="sv-stat"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M10 9.2v5.6l4.8-2.8z"/></svg><b id="svStatVids">0</b> 个视频入口</span>
         <span class="sv-stat"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9 6.8 19.6l1-5.8-4.3-4.1 5.9-.9L12 3.5z"/></svg>已收藏 <b id="svStatFav">0</b></span>
       </div>
@@ -61285,7 +61514,7 @@ var SAVE_LOGOS={
   xianyu:'data:image/webp;base64,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',
   douyin:'data:image/webp;base64,UklGRn4EAABXRUJQVlA4WAoAAAAQAAAAPwAAPwAAQUxQSNwAAAABgBzbdtvmcyWVEJwx7MvZbiGVoNSDw1qjMugCAO24c05fMwnQx/t7/vHWExET0CZy4/DJWRuNrBqr2y2iFhXubFLzwkDyd4dlQVT2Z++cBM1SqMrPc+g76py+quG3y92rB7a0mI4q/xslw4RInNc+JgBqE0DiD7W9WbAxIEuGJVWF/vEw9w9cmDMPY8iSAUuqyouNsQ9OAIwASNHX8yhiAlnib3gaTRdqmB+vdy/fLL2edsn1w/OPqKJhkMTvs35JVJSHdz6pZjQrL7ienLmCWkRbt1U0wJ9h7IjaVlA4IHwDAAAQEwCdASpAAEAAPj0YiUMiIaEY+c5IIAPEtgBlHO0tXsu71n4AyUvnI/Y/cBvEf9e6mfmA/Wv9dOwj9AHyAfrh1inoIfrp6Un7M/Bj+z/7M+zTR6Mfz/N8NssyIbaYSEJ9ABbgAI1etMRTV1P2t/7lm/sD7SkHHCx4rEcFJ27u5YJ4ivoLInXi3natQOGj6Z3es+2MUSw7gxoyHA3EkHlrAAD+/u6qgGS6SHOXBT03mo/v5FZf9vjBrn+ynvLbLqlbkIEtx5Qv/UyI9HkQzCIT2HJlxDVzlVG49+PmEDvY5/Sy5RMRDf66wP//G9ZWYfDgqPY0TUEXCvBI3EyLT8fWXzvWEuR76fp6ik2sOMI/LTkizRLkP/GH+//mmPfyUc5BcqD/c9w8l18mh5ZqCft5jvMPm6vYoewfM+KH/dYWcz6f59LfeFNze7JxXsPe+ssTnTj/bvl8e2C8Pkh+qZrNVvhbyXvEa3YdInp5cRHWbZgefTHJMITUtO8S0BSTJXZFfBjEYBZbsnvZtz+FiJNvAPBCD9fN+8rKjIECLO6/yBD9K8o2bj8uCEH3OQnzvzqgLolRBQEcenFMYlwzBvp2gnLKgqc/9TyEKVv/6k86e0DcbnA/XBtfutPd2s9MM6/R9AnBfpWpH91o+bs1O8xqSulytd4HkbX7Nb7sYwVEf6Ynt3PfPYVDng5NAzapImYVmdzjsDhgFscMGbop+K4w28XHhDoP8npovoqbpun8Wel/YZcljdn4XGL6a4r0lfFVp+/33m3xv2YaSb9tAi6gJMbqU39Z06JSbrqhvrEhr0pkDt6rxVwWnAJjqTjf+aNva/sLx/OvFcjBX2GOwgOOHdGo59OIP+jZG7ThIUl7tTr3mcN123YR3BEVBOITgOOApN41MkI7VDbVhyf+knoVHdHe6X9kykhSAEM3X4vNYoAaYxEY1tH7ivHFw2skiwtIectb1gRe45gV0qfmD/pvRAeeoyfGHbjvo78F/u+mmVgy/w58O70QmU/4hvF9Y3zWhuJP7OlXWbPrCPxYtFt+S9wcFAvHzhDSa6GUwP0SkXgDI+KejhnGgWMklT0hsZmtS8HovjhGHm6vLuKD70z/4NehRktSEVEH+9Y4AiwEy0d5pIBkPXEbl1YFdKZNOQHf9TGja7iHZLLLYVWHcK7Q5Kx7id9vS+wAAAAA',
   meituan:'data:image/webp;base64,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',
-  jd:'data:image/webp;base64,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',
+  jd:'data:image/webp;base64,UklGRtgCAABXRUJQVlA4IMwCAAAwEwCdASpAAEAAPjEUiEKiISEVCzbkIAMEtgBhIOi/M/xA7LrOPR+Ql5M8AcfgbzQr7Ge2w8wH6x/sB7tP9P/XLyAPkA/VXrgPQa8rr9nfhC/bv0h9WBTVroP7F+RUcAW8z5TPlo+jf9icz/3ZBS3DmBTbl1LgU0Enq24B7rpV94g62VkoVj/BCiAQnuBwMBIzVZhrVVDi5L79hRRrp0GXRQAA/v2TTk1Z6dQREj+UDrhB9Rp+D4mL78v/L1MxyOApv7ref7ree2vb7jWcAOGyNPs7+//j+/8D/uvmBgge1Fdf1vQCPiuEkTdxG/AvOCPx+clfhTkeKgv5CQH/gRmPW84x0V31RyGbjTCY1r7AEtrX0GKoWEVkZ8u+sUH1Gn4BtRuczAgIRGZbqB1z0dSII40a9NvnLNj3afOXhzqNP6AbJF/O8aHoMUp/WvOdrJM+I2RIh7MmtZYKQ2dy+yp+bdgF/DYu6I3XO4kXteWwVR/3PJbwjyHkHoWS9RI2S9o67NUNacJ/7Uz/8/H5O7EuTB7BbZOWsS8ugXBaIuGrMbsfvYzl79S6Kw/+O2DKs9gEOW+4y6LDSGdSGnmFRPN2dqj7Dfmb/c97oZcSonx6NAzo8i7DZiYJ4fWXRuoIxyzG9wTCxF4/vzQcDK0bXqvcJ9pyliT4MHY7NNE+6ZlACZ3q/0Brw9ClDnAnnvX9+Kp51sW+3d0PMOTPSwYUyhTnvfHmT1XGCdefNtzt0bM39voBX/t/uf5hoGm7omOU7Ej+XjJZse+xaDG/7bCLUmjIhTov8NOyWOb68+8DdARnpYX6Qlwd3llo1DzdWMXZuqTiMD+0kZ/fX4irifdkM2iudkd0K8lfCPW5g8rGMF4yNuLepl6zfi5q53/h0DFw05HgELvE7/X7667WRB9mTYTKVjk4DysE2iw1ArTkssMmxlvc5leIwsP2kNgAAA==',
   bili:'data:image/webp;base64,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',
   amap:'data:image/webp;base64,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',
   mooc:'data:image/webp;base64,UklGRgACAABXRUJQVlA4IPQBAACQDQCdASpAAEAAPkUci0OioaEb+gQAKAREtABnGwCcj/E/yK5nzffwl/qvkA/gGkA/Tn9a+D/3wDpTv2d/arEAOwBkAXq5H7FtAFk+TrCdGDovMKvJ/t+XunLPgwRrd/SjauiCCGWvTPBn8M6S9sAsqSSfLgAA/vz/Fj9RV+p6tQD8K9066d8NKb//nejcaHPGJir/mhDPVyW4VFXb76vGBRqe4Of/GIzPM4G7Bq45hOwzmJqiBoLAe0JvTc16THsQ6nb1h8ZY8tDP/Sw/5eLfCdImco4YYjXZsHF2EzWpwe4eWFho2DYXwsYjLorW57ZGwSGz4YZKyV0kT62xzNFaB0w/4NAPRwOfivXJd/znvxMmRw2VcJ0seSDUTqYj8FV8MOb1q3teeQu4rTwV+l9L5XcsCV9v6k84pBGP8rFZlYuf+2XFHsRsHN8i1/f5UWv9ZHyMXRBP/97M/v8iZaspbc/qz6hfe1g15kDkAidzREBKZbZtqHCHmvkBk55rC/xOwAf/mUzODv8yAqhR2sI3i8MKyGxhjL60OKAgwotd1h6qbDUBaP+ISN5PY0MczoHgtSXAf/s0hkCaVUIhJw3SIXXfz780NKUI8CVrSzybrFWwpA0E6l8RsE9laa/ohbb5DQ8BBr96g+KkMWbQrH7GAAAAAA==',
@@ -61293,7 +61522,6 @@ var SAVE_LOGOS={
   member:'data:image/webp;base64,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',
   movie:'data:image/webp;base64,UklGRiwEAABXRUJQVlA4ICAEAABQFgCdASpAAEAAPj0YiUOiIaEd+24AIAPEtgBiENd8AOyOkF0/8Of235/rfXvdh9n5npAfbN6pfSA8xP669Uj/OeoB+rXWo+gB5X/sjftP6PP//pl72bH//zHk7/kvBPaY/puS3fTeJPSRzKvHX9HewV+qf/CYcQq8SaoGgJGyigrDBeza1CI8m/oC5POPxtwQYs6ce6HtFrG+hIjCPYPOjWkyzHE3CFWR1AQtdEZTVhzpWa1fvj3nhPkAAP7u09njvXNTWhhofsevAFtakfDroPZ1I2QCd2aGgKLVrZNTvuiFdUUlc+WEoSwrmnQQYmqrrkmP9LLpAvZUXrHFC09W2WolWi8hyHxspmP8Xb/+PH5/RQOV80MwaNWULa1lCzcmX28MXpAnfaZGoJPtvWMLF6RMDY9fVYRmICsnvprLtvhnUCn+Iv+/CDRc7vsx+qnhZcwmblCcddw7HHvvH9xB1lPtekndIGvxNTBnd1vh2+XnGDPcs7/tn1MCjea9Dhycn3s9iyaa5TJLBoHMomrJqJec+fi4LHjmPOwlpiGH4o7jBA5tGklNSiDmg2Vi5IvYI0PQB/9q82f8lndAMVtRSzgw4Q3W1ai9gCb+ONBfwFMwrqrIQdBs2rwG2uJ4YFg+gXB/Hxk3iz88DCLTYRO6e1sa5PVB6CBF1+awrFdqUJzP5Y/hA+EXley/kj93bZn005KtRpHiJpZMlmyd++3bIrZWkdjSUTO595AmrSRggJ+zMDUjvvJi4mY5kpIxKCRj6zAAx6kCGDMMB96kjzqd84lw3unzxRk1zN7Pu+CXG3DjYh7jYhoVhn/z/vhGdk1bv/otzR3MUtEOzx4I64qXdWNXSbtLLqgq322bO/6cjioZ2Z3p9z2IL5r7+H38aYYSpaG0CENUpBGHgLnUHZO0kpfna5wqRjByJ1BpMjp73udDrIRUecPDFai/RnK/UNdWmgu1VJXen9rrknf51PFYtUmDaMSlqhd8T287IyK4uNVq0x1BBQUOmj2z6CuoMT8shxEj8TBwsk/gxJh/Oxc5HUpoHGv1otPKGmgB2nM+1Rsev5kXJe6qJRLKqGTy54I8W1x7tXkkpLkqwyM68xZLzQaY1XVTuuGCpFlrZFoyk61++Jg9+5mksirp/gCm4MWlHeaNusOevX90YJQeaQuDqxktQw41/vnmV9jB4A/BiPK77y0AvU9sJ9+U5fAXC5xAnvENDsnb11p7CG0Gba6xT61wfBuvjMlnph5rbEC651g5EvTmqpksnjtCc/Hy5S4Fje7PXZNfSFD/btrXBykzbuNM4aP3qseGOAT8WMMA6LvFbn7o6QT98MKH+WF/NZ3s3dQg87WGA5fKFboftiRfx/7/iJSjsnczMRofFClagLRC6frp5D2dJe9gU8jHAAA=',
   phone:'data:image/webp;base64,UklGRjoEAABXRUJQVlA4IC4EAAAQFgCdASpAAEAAPkkai0QioaEXDJaoKASEtgBkoAg8v4enh8yG63ZwHiKf5X0bv4B0gP1k9Cv1e+gB/ZP9v1gHoAeVp+5nwF/sx+6vwE/sZ1AH//677J9iO9fRtBxHkB3g7UO6DwA0gU6d/Q/97yQfPn/h/wHwC/qr/tPXK9kP7Mp4wygG87LH8HaZy4fZoNs/rGkXVDyouhtHkUYaS/xdWC6ovfceFsFVHFByAQiQnGLHzWmfD60gAAD+/okcC4Fo7/8t3k/1QI2oep1eN/a+P8dhjEvH9JP/4L1rKVWRf/+QtbLNKl2CBrK8+va6/VeOMx0mq+rnzqA2op9pqcsWLpzJ1yX3Wv6QykxqBz149H/Reg/zPUrOdw82DCt+S9fd8POfYkT71Iv+RvuhPeudzlFPo3Zx+TNy6EjjqJL7NkpX41F/58vEEl61SCxGnwY+DelMxhukOdtasdcYMbAY5+XnpLMfCnIAj3GW95hTxaiB5gLZX8mW17nXT1KNiza3YvD/GEHPvhUcBT/Ds7yJRNXGagAOLXR+2OmtMobvf8gHdStTFb91y22W5R0cwRGLApdZHdqVaH2vB4Vvr1OsUKbXLvBLQBGG0mJuWm0CqkSlG48oP3fIym64U9Imo8V5LC8Xr0/EpbaFP+08LTB4o8u6Vj387eNprJ9lEHeUF8ZUa/7gnVWwtq6HkQLFd7yRA1QVB8QZdYSOjwTvYlfDschwBoKMyzzK1YrR9XcI1lpCQGoEVP3rvnuDY3sjgi+UUH1WvMnyqbXgs0cKLc5k4aAr7uDB6PTAq42OfV1ophG/FBIiZC8XziwuuVu7HghLWQ4Cn9RWbOgX6bOBFeOlcC5fOo+K24nD8GfsWYIB+FAGb+LNDyv/GmCtEAs2N38ktDwBCdwye04mIRfKlbUvMwifMCKMCED0eJAFYLNEbG8M+XU5u5xCvyx+gemEi6tsjbYrQzFA/rt7RiLW1RzM7AMU10ki1LE2lpHgdiB76b+hl/UdWWdTq5qA18jJzWunyMC845gb9sNFm0S8BwZVvLh9s5MKq2lxaKN0XFSEn5oRILPS4ePlmOPjt/9maAKUhVTgBLYjYk/6YBmvUR3/2E13RorUBiO/AiNVbpzcjzXk7tbNYyn81qkTLwp4pG3pzmei/jjxa1f5dObW+k03rtFPGDmOo8/vE5Re95z3qc1MTRLs/wSNwyVjV0mJzFlb52xRhplxPS4gW16aKOvxjyJ9aFsORTXu/XMebtkOH+ooGncjW91xjN+ZwTyo7dB+QZumvdecpH8faQuGNIBKOr/SXE0ySDeFPf49tKRr+ZqxBxmkpA8eNx/nP0ivIZq0jvA/6GRZ9M2H0PPy5DC0RtmcAP0HUR0B/GlUCeV2kcp2qWLlBV+QAX2xQSDjBe+EjrXQObc4sTZQAAAAAA==',
-  xhs_rev:'data:image/webp;base64,UklGRpwEAABXRUJQVlA4WAoAAAAQAAAAPwAAPwAAQUxQSJgAAAABcNyAbtWYtnv8v4MhloAZGAKxB4yQGxPgW8IpkiVj3/OkHquIUNC2DZNdCMsgnIju3cTZzYuGeeapuxOd6PCthxClPBLDUH8PRJ9+WZPsXjx2SevSf+jcsAODm3M7bki2sZ1DFFVDYKoSw8xJzMwhYWaSOIs6MFSyw8MMvv19jd9/t+O9Be9NeG/DeyPeW/HejPd2+N/gBFZQOCDeAwAAkBQAnQEqQABAAD49GopDIiGhGAz8gCADxLYAZzPcfVfxm/ID5Iqg/X/u7xHZsOuP8Z9uXaA8TnpHeYD+F/0D9kOxt6AH6q9Zz6AH7O+lx+w/weftv+0HwD/sZS7fvP5P5PB8L4AHg3tTf2SCA5UL/W89PucbmfCB1qNqiWr3LoB8qh9fc9wuEikrWWOqPIPdS3SfxaR/bU4ZfFG1Cvi4YZV85VZsPBSCad4SfQAA/u93+SUXcni//LwWTKNuP//gEf8Fe/gr3wAASalIXZm5IawJEZhlNngVQbjSd39zu9Nfsjn2C5e7i8P5q/sqP7bNFUxJ2o3FM1MVL1UR4lakWwjfk+nv4BgGdU5y/uN0qt4y7csulvMoJezY+/jr2y3SM42HyEfce7W6n8P+Y0o1mpf+LrQG3Q5naVvKi8dBl2xpY4jdvOf6Y+MTZK8sVHLHC2cVi2cWjtUNgfG36ygSBI2Xobp3juIVOzI1srZ1t9uD0OeO/D/G6cqM8Wz9bvxXS5K38XkgJp2QqCltx28+d0lSBO5P0g4uMg0FuA4wIRNMnkRR8jtpZ7a8As/EnPW5XGrKF3BswTD6umy5lWkQ2z5R3KMYuR0zCwQhzVJjIivgHoT53eDp2ipErzd88LfEMEtFJqur/5D/nqKttPrD2vwDaEmc9y17QeRCLKAgF795RJiqtSavnRE1Su2wHeevALMecxQEDfxsUvyW1tf3vH0DcAsuvdzYjCJLzrbUiFB1UoTpjYb8WNHzDvvfHmDpOSUh6qi0WAzi3f2AfgyvMJy0ff8UDb89GGyt9PTGKGTEGfBLFsNVrwVZWUfpr/hQZcKfCN6b3fFVOB8nrs7kvOXkhHtE4pvgqJ2JZ4M0lm/nuLsJo21b0/Jrx9Pj3EOPC+L2qobIX1P2WciqfjqLsmc3yerhfEWe74y/b+WkiuAq5ch9a7+g6DP/1xs1lxSpnWr10Rd/6Vq3H06daObSMc+FfaO8yoNPAg4VePH9us+enhim/li4SLaz0Go5gC1T8ZZmu2fy6Rc8wymtFiFTmvo6J9dLEbMHfrPIGW6f3bwJpZABx/9x9edX7ERNklNWBweqSkf38cBYQHQbziV1Y3En8ldM4lkDFCUWpMzBLLrDT4Guz02PbmozyRPM3clZLNxBKvCgh+aZJrbudZiB2/72TrV2ssTGSjNj0g1sYI2r5A4BWHv8Ph1vJID3uMtSEt4ec/u/6oFTZTYrovOdbYmwettaGZ5SalYKPNQ/ApfMg5w35Gv/7DGl9bx7AaUKytLDBJn8nGMGy9KotS9DbC05IqAAOWewv4fFS4wA',
   train:'data:image/webp;base64,UklGRgoFAABXRUJQVlA4IP4EAACQGQCdASpAAEAAPkkcjEQioaEYDAUAKASEtgBTo3s8C9I/Dn9kv8l8p9Tft/394w2AP6r+IHuxcO/1L8oP8BwAH6Mf3v8Y/5n//+IB+lv7Ae0l6gP039gD+sfxf0gPYA9AD9VfSE/5n+g+Cr9l/+v/qPgH/V3/gfn+jkHEfpaMX3+U9UjRd9M+wL+r3+83jNpbBaqZGO6uFovCS0xM/JQn+6A5QSq6jhGvaQHqHWroA+NrfsDo8KKVM2e09kZ0bQMuRp11KWC3ZWXRJ4XmFC5KIxszN2AA/vAqg/+SzyipXyW///L4gfIxny8iIkBu8qH5eWr+O6VsK2mwSoPoUMuIZ7vYaxjC7L8+HfQhUUxEMIweDVQnFL9yFxECyw3yIijkHZ3Sv1EXnpFa55nVGLygIlOT8Wwo2JUfwC8ISQPDNQ4/thjJSyqs7Zzs4SVOL8eQpuniIDapQEpXTUCI0+F1d5nkloTlNU+RX2eRjzLi0tnpAR49LzO2FXfzD0taDetVj30oLFxRFiu7VgpAw+bCsuZ5A91fB6GStNq2bvZ9VaLt6mZOn7yVXdsv4foqZK+958WA6QDvuv0PoETZY1MGIYgn5ZFTXDa21/L3OXDKpFn42LUpTIKe+TxYqK+UTgpRIxa4JmQGMKOUjWWHXC0f4mbXH1zEZ/GdeVpIpv8bHvYnFU24FwZs88tb0rjSqdX5MmUEd6pt4qO6ZLhQx0IIodL+0avHfMRVdDCjX1RyBXksr1YDZlao/jcx86XqFevnxhFXYIV2I/+lpTex1QNnaqTNzxoyYv/+g+j/wNETJ/OfkmwNMfm817tJqLhOv/+pymHW0gjqks8onCZMaEo35noQSBSi0njRvrVKOd3lgmmWhM6zlmlQzBsBPk94P79lm3hNWn56w89z1CRct4U26JZL/Nlg9CQK7FUKaRxvD95Jlwe3rvnL1fubSg99xN7ZQOJ/9zwIU63DkcRPwvGj7U7EBR3MQXwYuLrQQLp9/8KJiEvmYg/0Wuo9Yx2avst9G+xk2z7GnX/+pX3yUUeqzuV76rUO5rR6ULjVQd7G4k3tnsiGPWXez83If0dD0fZGetmr1QsRKpEh9U10u5Q2I3/wo0q8w9VIaUif8wPnabgM1+d2pGnMjVVNLrvZzc196YmqVtPrmhK9V/3yRc8u3vxekntHP+BvH/Q4N6DMzMzaL8iAB50+Oq0uu+hV+6e1vovd2Ez7o10WV9or+Yt2luPKzkW0I0hlAJ2nt1F6vxvvl1c7vXuu5wOicAzkcLj6eMPxfeDfFQp+2rhHVGDeTLmfuI3TQA/S4wCAQGvVsJ8lZ+4Lcuey2a0z/wsT8lhenHkkAc7XmVVRyzLoLiMDDd+l8jb82wqOGjlcCSvsXSOutY5Y+uLV5OGBGcMBd4NaU9kFhhCVesMG1/uiYFNeVFSMuer8t5N0EXH524NxuCg4CfZSJ1965cpRnsRa2Hkxx/ZWAPvyuRPRB9XT/9+krrQS4yzDKfv6PZNLk5T1U+7UZ/DIWgMVKOzQ3/QozSWl4PMD/TfqIfg7GAXYAAVpKF9rO7saev6eFmdcfGD1hxERnl/IyOkmfqdOsjeeBW1dOE6OdrLJAZ4DAl6IhA+8rbJG/3Bxhi7OXVX8ZYfyJIEZqV1YO15WgUrf8jIme4cpiJkDytG3bp+oPzPJ4rZnq/4Pv8kD/33fu/CcAAA=',
   tmall:'data:image/webp;base64,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',
   kuaishou:'data:image/webp;base64,UklGRvAEAABXRUJQVlA4IOQEAACQGwCdASpAAEAAPkkgjESioiEUDf2oKASEtgBgiqC/APwA6/R9PJfwg/cP/PfLHT36b92tv/Qz1wfYPtp99fqA8Sn+q9RH9cvUB/Dv6/+r3s7f0n2J+gB/OP7l6QHsGegb5ZfsRfth+yXtKZoB2Bf4blXvZHKEvjuHnai/w2+kcd/o3+o4wNLdMo8g3097A36yf7/sLrSQb+xqq2UpmEGmbi/Uf+FgJdeK2HxjvC0C266D/RptNKi2XEvOSeNDcfxDS5bPSF9kgGc2jXLNsGp3HaTXKFpJVok3TeRKMxQaabeOwZgAAPy8NywjR13rLAfapZa03Jzn7k/vuwifwFvmRPvcBEnGQ7TDMFPLUgt69I0ebzOJKMrAPRHKSX8Xl7F0FQnf6rf68FoldcUjpGPUDF7dZwfBnqh//PEfkMWCge/NICM9/eSAeuPv9BFdLDmOs+61fiXLD+ulDf+PC3KsfA6lPhEnYcvn46XMpnHLGpt6Q5NLXPE49Nd/HAdA+AZwAtcw57NRY8nduWECLIaXrJg//g8nE6MtfLML3qGPFezhlkMYN5Y/U8hdNRwGZvectfoPoGeLVDrwKz4ncFnKYkImyBbLT+NgrGAnLn+VqtGhy3d5bZDEEMEBhnkZudsVvK/L5FSDn1FlZwt9EgkJRvC8FZHd5l6ObRf43Bzam15wQhxx/s8Ih0K1fUPYxdUKlp31FNceQQQifdgB9GxxB6VZU4tSnM2G/3PYDQ/HyfHHss551gsUyK9WlIN+Gcb+9HsPkxCMq7qcfD7JL4ktOksPLj/PrsQWN3oJG7rwpA7eyuDRdvZV0e1XcvWRXN0aeEPg7IS7PEm+072e6drR/DG6lOjCW0YDJyyfFnfVtOV24Jv+uVwfi4yn78NDTfEe28gVHOKA3okN2uZ4S2bD/nK6NfHH9lq/zn4FxewyFgNI1RKVfSx+HwixIlpWQ3D/xuQlJYGK3FSnVcD3bYX6A8yhZY/AKmMBs8OLu1Fh8uI91XO8XPEmWL7iXmRg6+C8nXqGPUZik705TA2I+UYjd/a+8wPQr00sWS+RIV9aYdW7ExuIVLbAw4dNAzk568CtWWq+timPKQdo4ACKNfzm45809RMHYRYF5tIOvgwh/7v9Bz8lFY3q382gqD7XHWhMIC5Bi7t1HVAVfUnolaldHA9TRzpPXfdyXQ06VT3EJv0si6CdOc2RqejuJ1/KdlkaZTgIgcGWlBq2phzI+CPxDfLhJRxUY9Hg5ui//wZTMaErxWN4xi/yvGByEX33VjxhwnmG4bhErjxbbB8pGHzexPl1nvEqbsRr/ed6zR6JC5yyp2i9oKTAdg/9DghflONjO6PH6G+8GTzXfDS1XqPvtDEPK1KhFUTTudNLu/E3446nOWmFpalnKcYR90Ba3PV1wud3MXMs9bn8Y8W49KeyCMEd8YYMuneedLxpeLGxE3kWZYOF/mcRQgOt/eahU2Loe+qmoN7LhNS9Csx28kNPSt4mSxv17G1j5CptR39+R2ujm+FMZiCRUXWP8M4TZYNFgT+zBwhRRTAZknqd004iqMMc1AxpOs4v/P96o1ubPL/ttQhxTMprR942TyX0eZIXe+RSAibTbRzfzc+ZG4stZgoC+sBX7ZTnd6rMM0ymmBAukTBNJoR0KnyJarzjlGC2C8gA',
@@ -61359,7 +61587,7 @@ var SAVE_APPS=[
     {t:'一键保价退差价',d:'买完大件在订单页点「一键保价」，降价会自动退差价，签收后 7 天内都能试。'}
   ]},
 
-  {id:'e1688',name:'1688',cat:'shop',color:'#FF6A00',ini:'阿',intro:'一件代发 · 宿舍拼单',vq:'1688 一件代发 教程',tips:[
+  {id:'e1688',name:'阿里巴巴1688',cat:'shop',color:'#FF6A00',ini:'阿',intro:'一件代发 · 宿舍拼单',vq:'1688 一件代发 教程',tips:[
     {t:'一件代发省一半',d:'搜「一件代发」，买收纳、文具、垃圾袋，单价常是淘宝一半，宿舍几个人拼一单更划算。'},
     {t:'按起批量比价',d:'看清起批量和运费：小件凑到起批量再下单，运费摊薄后才是真便宜。'}
   ]},
@@ -61374,15 +61602,10 @@ var SAVE_APPS=[
     {t:'免费鉴定防踩雷',d:'得物有免费鉴定入口，二手或代购来的鞋先鉴定再付款，别等穿坏了才发现是假货。'}
   ]},
 
-  {id:'xhs',name:'小红书',cat:'shop',color:'#ff2442',ini:'红',intro:'比价 · 避坑 · 避暗广',vq:'小红书 避坑 测评',tips:[
-    {t:'搜索比价',d:'买大件前先搜「XX 平替」「XX 避坑」，参考真实买家反馈，别信网红全推的产品。'},
-    {t:'警惕暗广',d:'「种草」笔记很多是暗广，警惕「精致生活」包装出的消费陷阱。'}
-  ]},
-
-  {id:'xhs_rev',name:'小红书（反向使用）',cat:'shop',color:'#ff2442',ini:'反',intro:'搜平替 · 搜避坑',vq:'小红书 平替 避坑',tips:[
-    {t:'搜平替',d:'买大牌前先搜「品牌 + 平替」，尤其日用品、护肤品，能拔草一半。'},
-    {t:'搜避坑',d:'搜「品牌名 + 避坑 / 差评」，排雷网红店和网红产品。'},
-    {t:'警惕精致生活',d:'别刷「沉浸式 / 精致生活」贴，容易产生「我也要这样生活」的消费幻觉。'}
+  {id:'xhs',name:'小红书',cat:'shop',color:'#ff2442',ini:'红',intro:'搜平替 · 搜避坑 · 防暗广',vq:'小红书 平替 避坑',tips:[
+    {t:'买前搜「平替」',d:'大牌、护肤、日用品先搜「品牌 + 平替」，成分接近的国产同类常便宜一半。'},
+    {t:'搜「避坑」排雷',d:'买前搜「品牌或店名 + 避坑 / 差评」，按最新排序看近 3 个月反馈。'},
+    {t:'警惕暗广与精致生活',d:'「种草」「沉浸式」内容多在卖生活方式，看到「链接在评论区」先找广告标识。'}
   ]},
 
   {id:'meituan',name:'美团',cat:'food',color:'#f5a623',ini:'美',intro:'拼好饭 · 返利红包 · 会员',vq:'外卖 红包 省钱',tips:[
@@ -61416,7 +61639,8 @@ var SAVE_APPS=[
 
   {id:'cotti',name:'库迪咖啡',cat:'food',color:'#B30332',ini:'库',intro:'9.9 不限量 · 联名买一送一',vq:'库迪 9.9 优惠券',tips:[
     {t:'9.9 不限量与联名',d:'库迪常年 9.9 不限量，联名款常做买一送一；两人各用各的账号点，比一人点两杯省。'},
-    {t:'储值卡 8 折以下才充',d:'储值本质是预付，折扣够低才划算；充多了喝不完，等于把钱锁在店里。'}
+    {t:'储值卡 8 折以下才充',d:'储值本质是预付，折扣够低才划算；充多了喝不完，等于把钱锁在店里。'},
+    {t:'外卖下单先领券',d:'美团 / 饿了么 点库迪先领店铺券再叠平台红包，同款常比小程序直点低 2–4 元；两杯起凑满减更划算。'}
   ]},
 
 
@@ -61451,7 +61675,8 @@ var SAVE_APPS=[
 
   {id:'qqmusic',name:'QQ音乐',cat:'fun',color:'#31C27C',ini:'Q',intro:'学生特惠 · 联合会员',vq:'QQ音乐 学生 绿钻 优惠',tips:[
     {t:'学生特惠五折',d:'走学信网认证的「学生特惠」，绿钻豪华版约原价一半，年付比月付再低一档。'},
-    {t:'联合会员更划算',d:'QQ 音乐常和腾讯视频、微信读书出联合会员，打包价低于单买；签到积分也能换天数。'}
+    {t:'联合会员更划算',d:'QQ 音乐常和腾讯视频、微信读书出联合会员，打包价低于单买；签到积分也能换天数。'},
+    {t:'豪华绿钻就够，别升超会',d:'只为听歌买「豪华绿钻」即可；弹窗常引导升「超级会员」，多出来的是听书、K 歌、下载额度，学生特惠也只对绿钻生效。'}
   ]},
 
 
@@ -61485,7 +61710,8 @@ var SAVE_APPS=[
 
   {id:'hello',name:'哈啰',cat:'move',color:'#008CFF',ini:'哈',intro:'顺风车 · 单车月卡',vq:'哈啰 顺风车 单车月卡',tips:[
     {t:'单车月卡按次算',d:'哈啰月卡把单次 1.5 元压到几毛，一天骑两次就回本；只周末骑就买次卡。'},
-    {t:'跨城顺风车比价',d:'同一路线和嘀嗒比价，哈啰常有新客立减；长途选「拼座」成行率更高。'}
+    {t:'跨城顺风车比价',d:'同一路线和嘀嗒比价，哈啰常有新客立减；长途选「拼座」成行率更高。'},
+    {t:'助力车不通用，别停区外',d:'月卡只覆盖单车，助力车（电单车）另按里程计费；停在运营区外要付 5–20 元调度费，还车前先看地图上的停车点。'}
   ]},
 
 
@@ -61630,6 +61856,36 @@ var SAVE_APPS=[
  *   k  视频搜索关键词（B 站 / 抖音 / 小红书共用）
  * ================================================================== */
 var TIP_D={
+'cotti:2':{g:'单杯再省 2–4 元',
+  w:'同一杯库迪，小程序直点常比外卖平台贵：平台上店铺券 + 红包两层能叠加，两杯起还能凑满减。',
+  st:['先在外卖 App 搜「库迪」，进店铺页领「店铺券」。','再叠平台红包（会员红包 / 天天神券），两层可同时用。','凑两杯起，更容易触发满减档位。','下单前对比小程序自提价，自己顺路就直接用自提券。'],
+  ca:'外卖价含配送费，单杯点不一定便宜；自提券和外卖券通常不能混用。',
+  k:'库迪 外卖 优惠券 怎么叠'},
+'qqmusic:2':{g:'一年少花 100+',
+  w:'听歌只需要「豪华绿钻」；弹窗推的「超级会员」多的是听书、K 歌、下载额度，价格却高一档。',
+  st:['会员页认准「豪华绿钻」，学生特惠也只对它生效。','年付比月付便宜约 20%，先确认会长期用再买年卡。','和腾讯视频 / 微信读书的联合会员比总价，常更划算。','开自动续费前先看续费价是否恢复原价。'],
+  ca:'超级会员不是必需；已开超会的到期后降级即可，不影响已下载歌曲本地播放。',
+  k:'QQ音乐 豪华绿钻 超级会员 区别'},
+'hello:2':{g:'避免 5–20 元调度费',
+  w:'哈啰月卡只覆盖脚踏单车，助力车（电单车）按里程另计费；停在运营区外会被收调度费。',
+  st:['还车前看地图上的蓝色停车点，停在点内。','月卡用户骑助力车前先看计价规则，别默认免费。','跨城 / 跨区骑行前确认终点在运营区内。','真被收调度费可在订单页申诉，首次常能减免。'],
+  ca:'各城市规则不同，异地骑行先看当地计价页；调度费通常不退，提前避开。',
+  k:'哈啰 助力车 调度费 停车点'},
+'xhs:0':{g:'护肤日用省 50%',
+  w:'大牌溢价多在品牌和包装，成分、代工厂常有更便宜的同类；大件也一样，先搜再买能砍掉一半冲动消费。',
+  st:['搜「品牌 + 产品名 + 平替」，也搜「产品名 + 避坑」。','大件去 B 站搜「产品名 + 测评」，优先看 10 分钟以上的长测。','对比核心成分和浓度是否接近，别只看包装像不像。','先买小样试，合适再买正装；候选写进备忘录，隔 24 小时再决定。'],
+  ca:'平替不等于等效，护肤先做耳后测试；药品、隐形眼镜别用平替。',
+  k:'大牌 平替 怎么找'},
+'xhs:1':{g:'避开一次踩雷',
+  w:'差评比好评真实，买前搜「避坑」「差评」能提前看到真实缺陷。',
+  st:['搜「品牌或店名 + 避坑」「+ 差评」「+ 踩雷」。','按「最新」排，看近 3 个月的反馈。','重点看评论区里「售后怎么处理」。','把高频问题记下来，下单前逐条确认。'],
+  ca:'竞品恶意差评也存在，多看几条交叉验证，别因一条就否定。',
+  k:'怎么搜 避坑 差评'},
+'xhs:2':{g:'少花冤枉钱',
+  w:'「种草」「沉浸式」「精致生活」内容在卖生活方式，看多了会把别人的日常当自己的刚需。',
+  st:['看到「链接在评论区」先找有没有「广告」标识。','查博主近 30 天是否连推 3 个以上同类品牌。','把「沉浸式」「独居 vlog」设为「不感兴趣」，每周留一天不刷推荐流。','想买的东西先放购物车 48 小时，月底复盘这个月被种草花了多少。'],
+  ca:'不是所有种草都假，但「限时」「最后 3 件」这类词基本是促单话术。',
+  k:'小红书 暗广 怎么识别'},
 'taobao:0':{g:'单次省 20–200 元',
   w:'商家拿新品小样换曝光，你几乎零成本试到大牌护肤、零食、日用品，适合想试新品牌又不想买正装的时候。',
   st:['打开淘宝，直接点顶部搜索框（不用在首页往下翻）。','输入「U先试用」（中间不加空格），回车进活动页。','按「0 元」「包邮」「小样」筛，优先选天猫官方旗舰店。','看清规格（多为 1–5ml）和是否需要付邮费，再点领取。'],
@@ -61725,21 +61981,11 @@ var TIP_D={
   st:['认准标题旁的「自营」标（不是「京东物流」标）。','下单时看预计送达，选「211 限时达」。','出问题在订单页点「申请售后」，选自营上门取件。','外包装留 7 天，退换更顺。'],
   ca:'第三方店铺的「京东配送」不等于自营，售后要走商家，慢很多。',
   k:'京东 自营 售后 区别'},
-'xhs:0':{g:'避开 30% 溢价',
-  w:'大件、护肤、家电的真实口碑和替代方案都在测评里，先搜再买能砍掉一半冲动消费。',
-  st:['搜「产品名 + 平替」「产品名 + 避坑」。','去 B 站搜「产品名 + 测评」，优先看 10 分钟以上的长测。','重点看缺点段落和评论区，那里才是真话。','把 2–3 个候选写进备忘录，隔 24 小时再决定。'],
-  ca:'同一博主反复推同一品牌要警惕恰饭；「全网最低价」基本都是话术。',
-  k:'怎么判断 测评 是不是广告'},
 'bili:0':{g:'省下几千元网课',
   w:'B 站和中国大学 MOOC 有大量名校公开课、软件教程，质量不输付费课。',
   st:['B 站搜「科目 + 考研 / 四六级 + 完整版」，按「最多播放」排。','中国大学 MOOC 搜课程名，优先「国家精品」标。','用「稍后再看」建播放列表，按周排进度。','配套 PDF 在评论区找，别买「资料包」。'],
   ca:'收藏不等于学完，一周只跟 1 门，别同时开五门。',
   k:'B站 免费 学习 资源 推荐'},
-'xhs:1':{g:'少花冤枉钱',
-  w:'「沉浸式」「精致生活」内容在卖生活方式，看多了会把别人的日常当自己的刚需。',
-  st:['看到「链接在评论区」先找有没有「广告」标识。','查博主近 30 天是否连推 3 个以上同类品牌。','把「我也想要」写进备忘录，隔天再看还需不需要。','取关让你频繁产生购买欲的账号。'],
-  ca:'不是所有种草都假，但「限时」「最后 3 件」这类词基本是促单话术。',
-  k:'小红书 暗广 怎么识别'},
 'amap:0':{g:'每单省 3–10 元',
   w:'高德、百度打车聚合了多家平台同时比价，同路线常比单独开一家便宜。',
   st:['用高德地图「打车」，输入目的地。','勾「全部车型」看各平台报价，选最便宜那个。','先领页面上的打车券（常有 5 元无门槛）再下单。','高峰提前 10 分钟叫车，避开动态加价。'],
@@ -61830,21 +62076,6 @@ var TIP_D={
   st:['关注学校礼堂或学生会的公众号、通知群。','每周四看下周排片，热门片提前抢。','带学生证现场购票，多数不支持线上选座。','可以自带零食，多数不查。'],
   ca:'片源有滞后，想第一时间看新片还得去商业影院。',
   k:'校园影院 电影 便宜'},
-'xhs_rev:0':{g:'护肤日用省 50%',
-  w:'大牌溢价多在品牌和包装，成分和代工厂往往有更便宜的同类。',
-  st:['搜「品牌 + 产品名 + 平替」。','看评论里提到的具体产品，再单独搜它的成分表。','对比核心成分和浓度是否接近，而不是看包装像不像。','先买小样试，合适再买正装。'],
-  ca:'平替不等于等效，护肤先做耳后测试；药品、隐形眼镜别用平替。',
-  k:'大牌 平替 怎么找'},
-'xhs_rev:1':{g:'避开一次踩雷',
-  w:'差评比好评真实，买前搜「避坑」「差评」能提前看到真实缺陷。',
-  st:['搜「品牌或店名 + 避坑」「+ 差评」「+ 踩雷」。','按「最新」排，看近 3 个月的反馈。','重点看评论区里「售后怎么处理」。','把高频问题记下来，下单前逐条确认。'],
-  ca:'竞品恶意差评也存在，多看几条交叉验证，别因一条就否定。',
-  k:'怎么搜 避坑 差评'},
-'xhs_rev:2':{g:'每月少花 500+',
-  w:'算法推的「精致生活」是在卖生活方式，看多了会把别人的日常当自己的刚需。',
-  st:['把「沉浸式」「独居 vlog」类内容设为「不感兴趣」。','每周固定一天不刷推荐流。','想买的东西先放购物车 48 小时。','月底复盘：这个月有多少钱是被内容种草的。'],
-  ca:'不消费不等于苦行，把钱留给真正让你开心的事。',
-  k:'消费主义 陷阱 怎么破'},
 'game:0':{g:'便宜 50%–80%',
   w:'Steam 一年多次大促，历史最低价可查，等一等往往就省一半。',
   st:['把想玩的游戏加进愿望单。','去 SteamDB 查历史最低价，心里有个底。','等夏促、冬促，或发行满一年后的小促。','充值走官方或可靠渠道的 Steam 充值卡，常有 8–9 折。'],
@@ -62225,7 +62456,7 @@ var SAVE_FAV_KEY='saveguide_favs';
 var svFavs={},svCat='all',svQ='',svFavOnly=false,svBuilt=false;
 var SV_STAR='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9 6.8 19.6l1-5.8-4.3-4.1 5.9-.9L12 3.5z"/></svg>';
 
-var SV_MIGRATE={'xhs_bili:0':'xhs:0','xhs_bili:1':'bili:0','xhs_bili:2':'xhs:1','ride:0':'amap:0','ride:1':'didi:0','ride:2':'didi:1','mooc:1':'cnki:0','ota:0':'ctrip:0','ota:1':'fliggy:1'};
+var SV_MIGRATE={'xhs_bili:0':'xhs:0','xhs_bili:1':'bili:0','xhs_bili:2':'xhs:2','xhs_rev:0':'xhs:0','xhs_rev:1':'xhs:1','xhs_rev:2':'xhs:2','ride:0':'amap:0','ride:1':'didi:0','ride:2':'didi:1','mooc:1':'cnki:0','ota:0':'ctrip:0','ota:1':'fliggy:1'};
 function svLoadFavs(){
   var moved=false;
   try{

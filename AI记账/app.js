@@ -514,6 +514,16 @@
       bills: (state.bills || []).length
     };
   };
+  /** 现场排查用：`AJ_COOLING_DEBUG()` 看冷静卡有没有挂着；
+   *  传一句话则返回本地语义判定结果，用来核对「用户说这句算不算回答」（不触发任何入账） */
+  global.AJ_COOLING_DEBUG = function (text) {
+    return {
+      cooling: cooling ? { item: cooling.item, price: cooling.price, alreadyRecorded: !!cooling.alreadyRecorded } : null,
+      pending: pendingBill ? { note: pendingBill.note, amount: pendingBill.amount } : null,
+      refused: (text === undefined) ? null : coolingRefused(text),
+      givenUp: (text === undefined) ? null : coolingGivenUp(text)
+    };
+  };
   /** 现场排查用：`AJ_AGENT_DEBUG()` 看智能体到底有没有就绪、用的哪个模型 */
   global.AJ_AGENT_DEBUG = function () {
     return {
@@ -2075,7 +2085,12 @@
           for (j = 0; j < a.tips.length; j++) {
             var tp = a.tips[j];
             if (!tp || !tp.d) { continue; }
-            lines.push(clean(tp.t) + '：' + clean(tp.d));
+            /* 每条要点以句号收尾，再用空串拼接：学院页的 d 本来就写成了完整句，
+               原来用「；」拼会拼出「……小样。；百亿补贴：……」这种「句号+分号」，
+               44/54 张卡都是这个样子，模型念出来像卡壳。缺句末标点的补一个「。」。 */
+            var dd = clean(tp.d);
+            if (!/[。！？…]$/.test(dd)) { dd += '。'; }
+            lines.push(clean(tp.t) + '：' + dd);
             kws.push(clean(tp.t));
           }
           var catName = (ag.CAT_NAME && ag.CAT_NAME[a.cat]) || '';
@@ -2094,14 +2109,14 @@
           arr.push({
             type: 'guide', id: 'guide.' + a.id, cat: 'guide', tag: catName || 'App 教学',
             title: clean(a.name) + ' · ' + clean(a.intro),
-            core: lines.join('；'),
+            core: lines.join(''),
             detail: '入口：理财学院 · App 教学（' + clean(a.name) + '）',
             res: '',
             /* vq 是学院页给这个 App 定的搜索词（如「外卖 红包 省钱」），比我自己补的
                通用词更贴用户问法，一起进关键词层 */
             kw: clean(a.name) + ' ' + clean(a.intro) + ' ' + clean(a.vq) + ' ' + kws.join(' ') +
               ' ' + catName + ' 怎么省 在哪 技巧 攻略 教程',
-            text: cut('【' + clean(a.name) + '｜' + clean(a.intro) + '】' + lines.join('；'), MAX_CONTENT),
+            text: cut('【' + clean(a.name) + '｜' + clean(a.intro) + '】' + lines.join(''), MAX_CONTENT),
             certainty: '', source: '理财学院 · App 教学',
             phrases: phOut,
             jump: { guide: a.id, q: clean(a.name), label: clean(a.name) }
@@ -3433,10 +3448,14 @@
       '2. 疑问句（怎么/吗/多少/能不能/值不值）不是记账；未来计划（明天、打算、约好）要记账时必须提醒「还没发生」。',
       '3. 硬门禁：单笔金额 ≥ ' + coolLimit + '（冷静期阈值）时，无论品类、无论是否刚需，都必须先调 cooling_check ' +
         '开冷静卡，不许直接 add_bills 记账；非刚需的大额消费（球鞋、数码、潮玩、演唱会等）即使不足 ' + coolLimit + ' 也先调 cooling_check。',
+      '   例外（必须遵守）：用户已经明确表达「现在就买 / 现在就吃 / 不用等 / 帮我记上 / 别拦 / 确定要」→ 直接 add_bills 记账，' +
+        '不许再开冷静卡；同一笔的冷静卡还在等他决定时，也不要开第二张。',
       '4. 同一个工具不要重复调用；工具返回 ok:false 就看 error 改参数，或改成问用户。',
       '5. 一律按【你是谁】说话：口语、1~3 句、不列长清单、不复述卡片上已有的数字；' +
         '语气可以直，但不许刻薄、不许说教、不许替用户下「你太穷了 / 你管不住手」这种判断。',
       '6. 记账 / 撤回 / 冷静卡 都由工具自动出卡，final 只补一句有用的话，或留空字符串。',
+      '   卡片上已经有按钮（「先不买」「仍然记下」）时，final 不要再把同样的选择用文字问一遍，choices 留空 —— 那是问第二遍。',
+      '   用户已经回答过的事（说过「现在就吃」「记上」「不买了」）不要再确认、不要再让他二选一，直接办。',
       '7. 品类只能是这些之一：' + cats + '（收入不用填品类）。',
       '8. 回答「还能不能 / 够不够 / 请得起吗 / 该不该买」这类能不能负担的问题，必须先 get_balance，' +
         '需要看花销再加 get_spending；不许只凭花销金额或印象下结论。',
@@ -5005,6 +5024,9 @@
       answers: [],
       coolDays: 2,
       wishId: '',
+      /* 开卡时间：消息入口只在「刚开卡 5 分钟内」接管一句话回答，
+         免得用户过了很久回来聊别的（「算了」说的是别的事）被误判成放弃这笔。 */
+      ts: Date.now(),
       alreadyRecorded: !!alreadyRecorded
     };
     renderCoolingIntro();
@@ -9106,23 +9128,53 @@
     }
   }
 
+  /* 收入来源 → 线条图标：与全站 .bico 同一套描边语言，选中时随文字变绿 */
+  var INCOME_SRC_ICON = {
+    '生活费': 'i-wallet', '工资': 'i-receipt', '兼职': 'i-clipboard',
+    '奖学金': 'i-cap', '助学金': 'i-doc', '红包': 'i-mail',
+    '礼金': 'i-bag', '年终奖': 'i-medal', '奖金': 'i-spark',
+    '分红': 'i-pie', '理财收益': 'i-trend', '退款': 'i-update',
+    '卖闲置': 'i-basket', '借入': 'i-swap', '其他': 'i-cat-other'
+  };
+
   /**
-   * 快捷记账面板（顶栏「＋ 记一笔」）：金额 / 分类 / 备注 / 日期。
+   * 快捷记账面板（顶栏「＋ 记一笔」）：顶部「支出 / 收入」分段器 + 金额 / 分类或来源 / 备注 / 日期。
    * 直接走 commitBill 落账，提交后聊天空出回执、预算条即时刷新。
    * @param {?string} [presetCategory] 预填分类（意图层已知的品类）
    * @param {?string} [presetDate] 预填日期 'YYYY-MM-DD'（L3 表单只让用户填缺的那个）
+   * @param {?string} [presetType] 'income' 时打开即停在「收入」段（记一笔收入入口复用本表单）
    */
-  function openQuickAddModal(presetCategory, presetDate) {
+  function openQuickAddModal(presetCategory, presetDate, presetType) {
     var todayStr = ENG.formatDate(new Date());
     /* C10：日期预填；不合法一律回落到今天（按钮点击时首参会是事件对象，这里统一兜住） */
     var datePrefill = /^\d{4}-\d{2}-\d{2}$/.test(String(presetDate || '')) ? String(presetDate) : todayStr;
     /* 分类预填：只接受合法分类名，避免把事件对象/脏值塞进选择器 */
     var catPrefill = (typeof presetCategory === 'string' &&
       DATA.CATEGORY_KEYS.indexOf(presetCategory) !== -1) ? presetCategory : '';
+    /* 支出 / 收入共用一张表单，由顶部分段器切换；底部不再塞跳转出口 */
+    var startType = presetType === 'income' ? 'income' : 'expense';
+    var srcRadios = '';
+    var i;
+    for (i = 0; i < DATA.INCOME_SOURCES.length; i++) {
+      var s = DATA.INCOME_SOURCES[i];
+      srcRadios += '<label class="radio-item has-ico">' +
+        '<input type="radio" name="incomeSource" value="' + esc(s) + '"' + (i === 0 ? ' checked' : '') + ' />' +
+        '<svg class="bico src-ico" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<use href="#' + (INCOME_SRC_ICON[s] || 'i-cat-other') + '"/></svg>' +
+        '<span>' + esc(s) + '</span>' +
+        '</label>';
+    }
+
     var box = openModal('' +
-      '<h4>记一笔</h4>' +
-      '<p>金额和分类必填，备注可选。记完预算条会立刻更新。</p>' +
+      /* 顶部「支出 / 收入」分段器：身份在这张卡上切换，不再弹第二个弹窗 */
+      '<div class="modal-seg" role="tablist" aria-label="记账类型">' +
+      '<button type="button" class="seg-btn" role="tab" data-act="qa-type" data-type="expense" aria-selected="false">支出</button>' +
+      '<button type="button" class="seg-btn" role="tab" data-act="qa-type" data-type="income" aria-selected="false">收入</button>' +
+      '</div>' +
+      '<p id="qaSub"></p>' +
       '<label class="field"><span>金额（¥）</span><input id="qaAmount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" /></label>' +
+      /* 支出专属：分类 + 这笔属于 */
+      '<div class="qa-mode" data-pane="expense">' +
       '<div class="field"><span>分类</span>' + catPickerHtml('qaCategory', catPrefill) + '</div>' +
       /* 「这笔属于」：给账单卡的情绪/想要标签一个真实来源，也是冷静期判定的依据 */
       '<div class="field"><span>这笔属于</span><div class="radio-group" data-act="qa-kind">' +
@@ -9130,22 +9182,66 @@
       '<label class="radio-item"><input type="radio" name="qaKind" value="want" /><span>想要</span></label>' +
       '<label class="radio-item"><input type="radio" name="qaKind" value="mood" /><span>情绪消费</span></label>' +
       '</div></div>' +
-      '<label class="field"><span>备注</span><input id="qaNote" type="text" placeholder="例如：黄焖鸡米饭" maxlength="30" /></label>' +
+      '</div>' +
+      /* 收入专属：来源（15 项，各带语义线条图标） */
+      '<div class="qa-mode" data-pane="income">' +
+      '<div class="field"><span>来源</span><div class="radio-group">' + srcRadios + '</div></div>' +
+      '</div>' +
+      '<label class="field"><span id="qaNoteLabel">备注</span>' +
+      '<input id="qaNote" type="text" placeholder="例如：黄焖鸡米饭" maxlength="30" /></label>' +
       '<label class="field"><span>日期</span><input id="qaDate" type="date" value="' + datePrefill + '" /></label>' +
-      /* 想记收入却被弹窗困成支出的出口（复用 .btn-mini，不新增 CSS） */
-      '<p>要记生活费/兼职收入？<button type="button" class="btn-mini" data-act="qa-to-income">记收入 →</button></p>' +
       '<div class="modal-actions">' +
       '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
       '<button type="button" class="btn-ok" data-act="quick-add-save">记好了</button>' +
       '</div>');
     bindCatPicker(box, 'qaCategory');
 
+    var subEl = box.querySelector('#qaSub');
+    var noteLabel = box.querySelector('#qaNoteLabel');
+    var noteEl = box.querySelector('#qaNote');
+    var dateEl = box.querySelector('#qaDate');
+    var okBtn = box.querySelector('[data-act="quick-add-save"]');
+    var curType = startType;
+
+    /* 切换「支出 / 收入」：只换掉两者真正不同的那一段，金额/备注/日期是共用的 */
+    function applyType(t) {
+      var n;
+      curType = t === 'income' ? 'income' : 'expense';
+      var segs = box.querySelectorAll('[data-act="qa-type"]');
+      for (n = 0; n < segs.length; n++) {
+        var on = segs[n].getAttribute('data-type') === curType;
+        segs[n].classList.toggle('is-on', on);
+        segs[n].setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+      var panes = box.querySelectorAll('.qa-mode');
+      for (n = 0; n < panes.length; n++) {
+        panes[n].hidden = panes[n].getAttribute('data-pane') !== curType;
+      }
+      if (curType === 'income') {
+        subEl.textContent = '生活费、兼职、奖学金都记在这里，不会算进支出统计。';
+        noteLabel.textContent = '备注（可选）';
+        noteEl.placeholder = '例如：10 月生活费';
+        okBtn.textContent = '确认入账';
+        dateEl.setAttribute('max', todayStr);
+      } else {
+        subEl.textContent = '金额和分类必填，备注可选。记完预算条会立刻更新。';
+        noteLabel.textContent = '备注';
+        noteEl.placeholder = '例如：黄焖鸡米饭';
+        okBtn.textContent = '记好了';
+        dateEl.removeAttribute('max');
+      }
+    }
+    applyType(startType);
+
+    var segBtns = box.querySelectorAll('[data-act="qa-type"]');
+    var k;
+    for (k = 0; k < segBtns.length; k++) {
+      segBtns[k].addEventListener('click', function () {
+        applyType(this.getAttribute('data-type'));
+      });
+    }
+
     box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
-    /* 想记收入的出口：关掉本弹窗、直接进「记一笔收入」表单 */
-    box.querySelector('[data-act="qa-to-income"]').addEventListener('click', function () {
-      closeModal();
-      openIncomeModal();
-    });
     box.querySelector('[data-act="quick-add-save"]').addEventListener('click', function () {
       var amount = Number(box.querySelector('#qaAmount').value);
       if (!isFinite(amount) || amount <= 0) {
@@ -9153,9 +9249,31 @@
         box.querySelector('#qaAmount').focus();
         return;
       }
-      var category = box.querySelector('#qaCategory').value;
       var note = box.querySelector('#qaNote').value.trim();
-      var date = box.querySelector('#qaDate').value || todayStr;
+      var dateRaw = box.querySelector('#qaDate').value || todayStr;
+      var date = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : todayStr;
+
+      /* 收入：走单独的落账字段（category 固定、source 来自来源选择），不参与支出统计 */
+      if (curType === 'income') {
+        var checked = box.querySelector('input[name="incomeSource"]:checked');
+        var source = checked ? checked.value : '其他';
+        closeModal();
+        switchView('chat');
+        startFlow([{
+          date: date,
+          amount: ENG.round2(amount),
+          category: DATA.INCOME_CATEGORY,
+          source: source,
+          note: note || source,
+          motivation: '刚需',
+          want: false,
+          type: 'income'
+        }]);
+        showToast('已入账 ' + money(amount), 'ok');
+        return;
+      }
+
+      var category = box.querySelector('#qaCategory').value;
       /* 与聊天记账对齐：走同一套情绪/想要推断，再被用户的三选覆盖 */
       var motive = NLP.detectMotivation(note + ' ' + category);
       var picked = box.querySelector('input[name="qaKind"]:checked');
@@ -9164,7 +9282,7 @@
       if (kind === 'mood') { motive = { motivation: '情绪', want: true }; }
       if (kind === 'need') { motive = { motivation: '刚需', want: false }; }
       var draft = {
-        date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr,
+        date: date,
         amount: ENG.round2(amount),
         category: DATA.CATEGORY_KEYS.indexOf(category) !== -1 ? category : '其他',
         note: note || category,
@@ -10639,62 +10757,12 @@
     return null;
   }
 
-  /** 记收入表单 */
+  /**
+   * 记收入：不再单独开一张弹窗，直接复用「记一笔」表单并停在「收入」段。
+   * 入口（菜单 / 意图路由 / 对外 API）全部保持原样，调用方无感。
+   */
   function openIncomeModal() {
-    var todayStr = ENG.formatDate(new Date());
-    var radios = '';
-    var i;
-    for (i = 0; i < DATA.INCOME_SOURCES.length; i++) {
-      var s = DATA.INCOME_SOURCES[i];
-      radios += '<label class="radio-item">' +
-        '<input type="radio" name="incomeSource" value="' + esc(s) + '"' + (i === 0 ? ' checked' : '') + ' />' +
-        '<span>' + esc(s) + '</span>' +
-        '</label>';
-    }
-
-    var box = openModal('' +
-      '<h4>记一笔收入</h4>' +
-      '<p>生活费、兼职、奖学金都记在这里，不会算进支出统计。</p>' +
-      '<label class="field"><span>金额（¥）</span>' +
-      '<input data-field="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="例如 2000" /></label>' +
-      '<div class="field"><span>来源</span><div class="radio-group">' + radios + '</div></div>' +
-      '<label class="field"><span>日期</span>' +
-      '<input data-field="date" type="date" max="' + todayStr + '" value="' + todayStr + '" /></label>' +
-      '<label class="field"><span>备注（可选）</span>' +
-      '<input data-field="note" type="text" placeholder="例如 10 月生活费" /></label>' +
-      '<div class="modal-actions">' +
-      '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
-      '<button type="button" class="btn-ok" data-act="income-save">确认入账</button>' +
-      '</div>');
-
-    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
-    box.querySelector('[data-act="income-save"]').addEventListener('click', function () {
-      var amountInput = box.querySelector('[data-field="amount"]');
-      var amount = Number(amountInput.value);
-      if (!isFinite(amount) || amount <= 0) {
-        amountInput.focus();
-        return;
-      }
-      var checked = box.querySelector('input[name="incomeSource"]:checked');
-      var source = checked ? checked.value : '其他';
-      var date = box.querySelector('[data-field="date"]').value;
-      var note = box.querySelector('[data-field="note"]').value.trim();
-      closeModal();
-      switchView('chat');
-      startFlow([{
-        date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayStr,
-        amount: ENG.round2(amount),
-        category: DATA.INCOME_CATEGORY,
-        source: source,
-        note: note || source,
-        motivation: '刚需',
-        want: false,
-        type: 'income'
-      }]);
-    });
-
-    var focusInput = box.querySelector('[data-field="amount"]');
-    if (focusInput) { focusInput.focus(); }
+    openQuickAddModal(null, null, 'income');
   }
 
   /**
@@ -16300,9 +16368,9 @@
    *   · 放弃：「不买了 / 算了 / 先放着」→ 记进「省下的钱」+ 心愿单
    * 「不买」优先于「要」：句子里两个方向词同时出现（「不要了，还是想要」）按放弃处理，更保守。
    * 问句一律不抢（「冷静期还有多久」是在问，不是在做决定）。 */
-  var COOL_REFUSE_RE = /(不用等|不要等|别等|现在就|这就|马上|立刻|别拦|不用冷静|不冷静|不用劝|别劝|还是要买|照样记|照样买|直接记|直接买|帮我记上|帮我记|记上吧|记下吧|就要|不省了|确定(买|要)|确认(买|要)|没记错|没错|就是这笔)/;
+  var COOL_REFUSE_RE = /(不用等|不要等|别等|现在就|这就|马上|立刻|别拦|不用冷静|不冷静|不用劝|别劝|还是要买|还是想买|还是买吧|照样记|照样买|直接记|直接买|帮我记上|帮我记|记上吧|记下吧|就要|不省了|确定(买|要)|确认(买|要)|没记错|没错|就是这笔)/;
   var COOL_GIVEUP_RE = /(不买了|不要了|不想要了|先不买|先放着|放起来|算了|还是算了|放弃|再想想|过两天再说)/;
-  var COOL_ASK_RE = /[?？]|多久|怎么|为什么|能不能|可以吗|是什么/;
+  var COOL_ASK_RE = /[?？]|吗|多久|怎么|为什么|能不能|可以吗|是什么/;
 
   /** 用户在拒绝冷静（要继续买/现在就要/让我记上） */
   function coolingRefused(raw) {
@@ -16330,6 +16398,11 @@
    */
   function tryResolvePendingAdd(raw) {
     if (!cooling && !pendingBill) { return false; }
+    /* 只在卡刚弹出的一小段窗口内接管：过期的卡还挂在内存里，用户这句「算了」
+       很可能说的是别的事，不能替他放弃一笔钱。注意只「不接管」，不销毁会话——
+       卡片还在屏幕上，用户随时可以点按钮，销毁会让按钮变成哑的。 */
+    var COOL_REPLY_WINDOW = 5 * 60 * 1000;
+    if (cooling && cooling.ts && (Date.now() - cooling.ts) > COOL_REPLY_WINDOW) { return false; }
     var isNo = coolingGivenUp(raw);
     var isYes = coolingRefused(raw);
     if (!isNo && !isYes) { return false; }

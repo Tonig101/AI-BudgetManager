@@ -2128,6 +2128,57 @@ h3 {
   font-size: 15px;
 }
 
+/* ---------------------- 记账弹窗：顶部「支出 / 收入」分段器 ----------------------
+   取代原来的静态标题，也让「记收入」不必在表单和主操作行之间塞一个跳转按钮。
+   轨道总高 40px（3 + 34 + 3），与 .field input 完全对齐。 */
+.modal-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  margin: 0 0 10px;
+  background: var(--line-2);
+  border-radius: 12px;
+}
+
+.modal-seg .seg-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.modal-seg .seg-btn:hover { color: var(--green-ink); }
+
+.modal-seg .seg-btn.is-on {
+  background: #fff;
+  color: var(--green-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.modal-seg .seg-btn:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+
+/* 深色下轨道本身已经比卡片亮，选中态改用提亮浮层，避免「选中=更暗」的反直觉 */
+[data-theme="dark"] .modal-seg .seg-btn.is-on {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+/* 支出/收入两段各自的内容块：显式声明，防止以后给容器加 flex 盖掉 [hidden] */
+.qa-mode[hidden] { display: none; }
+
 .modal p {
   margin: 0 0 4px;
   font-size: 13px;
@@ -3575,6 +3626,25 @@ h3 {
   background: var(--green-soft);
   border-color: rgba(7, 193, 96, 0.4);
   color: var(--green-dark);
+}
+
+/* 收入来源胶囊：圆点右侧补一枚线条图标，选中时跟随文字变绿 */
+.radio-item.has-ico {
+  padding-left: 9px;
+  gap: 6px;
+}
+
+.radio-item.has-ico .src-ico {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  stroke-width: 2;
+  color: var(--text-3);
+  transition: color 0.15s ease;
+}
+
+.radio-item.has-ico:has(input:checked) .src-ico {
+  color: var(--green);
 }
 
 /* ---------------------------- 响应式增量 ---------------------------- */
