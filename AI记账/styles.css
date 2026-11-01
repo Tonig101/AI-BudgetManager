@@ -23,16 +23,22 @@
   --orange-soft: #FEF3E2;
   --red: #EF4444;
   --red-soft: #FEE2E2;
-  /* ---- 中性 ---- */
-  --bg: #F8F9FA;
-  --canvas: #F8F9FA;
+  /* ---- 中性 ----
+     --app-bg：简洁版 / 完整版两套外壳共用的页面底色（方案 A4）。
+     取两版原值 #F4F6F8 / #F8F9FA 的中点，切换 UI 类型时不再有底色跳变。 */
+  --app-bg: #F6F7F9;
+  --bg: var(--app-bg);
+  --canvas: var(--app-bg);
   --card: #FFFFFF;
   --text: #0F172A;
   --text-2: #64748B;
   --text-3: #667085; /* 设计稿为 #98A2B3；为保证 11px 小字达到 WCAG AA（4.5:1）加深一档 */
   --line: #E5E7EB;
   --line-2: #F2F4F7;
-  /* ---- 圆角 ---- */
+  /* ---- 圆角 ----
+     两级圆角规范（方案 A5 / B4）：卡片级 radius / radius-sm，强调层（移动 Hero、
+     桌面卡与弹层）用 radius / radius-modal。新增圆角先来这里找层级，不要再随手写死。
+     简洁版：卡 16px（--sp-radius）/ 强调 20px（Hero）；完整版：卡 20px / 弹层 28px。 */
   --radius: 20px;
   --radius-sm: 12px;
   --radius-modal: 28px;
@@ -4828,6 +4834,17 @@ body.font-scale-xl .set-arrow { font-size: 18.5px; }
 .budget-bar.state-danger .bb-progress i { background: var(--danger); }
 .budget-bar.state-danger .bb-status { background: var(--danger-soft); color: var(--danger-deep); }
 
+/* 方案 B3 警示色降噪：期末预测红块已经把「会超支」讲到最重时，
+   「紧张」降级为灰底描边的次级状态 —— 同一时刻只有最重一级用语义色。 */
+.budget-bar.state-muted .bb-dot,
+.budget-bar.state-muted .bb-progress i { background: var(--text-3); }
+.budget-bar.state-muted .bb-status {
+  background: var(--line-2); color: var(--text-2); border: 1px solid var(--line);
+}
+.badge.state-muted {
+  background: var(--line-2); color: var(--text-2); border: 1px solid var(--line);
+}
+
 /* 深色下悬停预算条：浅色 hover 底色 #FBFCFD 会让整条变白，
    而条内文字（--text #E9EDF3）也是浅色 → 白底浅字，几乎不可读（实测对比度≈1.05:1）。
    深色改用「抬升面」做悬停高亮，既保留可点击反馈，又不会反转明暗。 */
@@ -7826,14 +7843,19 @@ svg.di-emoji {
 :root {
   --sp-green: #07C160;
   --sp-green-dark: #059048;
-  --sp-bg: #F4F6F8;
+  --sp-bg: var(--app-bg, #F6F7F9); /* 方案 A4：与完整版共用页面底色 */
   --sp-card: #FFFFFF;
   --sp-text: #1A1D21;
   --sp-sub: #8A939C;
   --sp-line: #EEF1F4;
   --sp-red: #EF5350;
+  /* 方案 A5：简洁版圆角只留两级 —— 卡片 16px（--sp-radius）/ Hero 强调 20px。
+     新增圆角一律引用变量，不再写死 14px 这类「漏网值」。 */
   --sp-radius: 16px;
-  --sp-shadow: 0 2px 12px rgba(16, 24, 40, 0.06);
+  /* 方案 M4：阴影分两档 —— 卡片「贴地档」（阴影 + 1px 描边配合），
+     弹层/气泡等悬浮物用 --sp-shadow-float。 */
+  --sp-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.05);
+  --sp-shadow-float: 0 8px 28px rgba(16, 24, 40, 0.12);
 }
 
 /* 简洁版整体容器：默认隐藏，simple 模式接管 */
@@ -7894,21 +7916,43 @@ body[data-ui-mode="simple"] #spDazaiBody .dz-guide { margin: 0 0 10px; }
   box-shadow: 0 2px 8px rgba(7, 193, 96, 0.35);
 }
 
-/* 可滚动主体 */
-.sp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 16px 24px; }
+/* 可滚动主体：底部留出 --aj-pet-reserve（阿账停靠时由 JS 写入），
+   方案 A2：流水/页脚滚到底不再被宠物与气泡盖住 */
+.sp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 16px calc(24px + var(--aj-pet-reserve, 0px)); }
 .sp-sec {
   display: flex; align-items: baseline; justify-content: space-between;
   margin: 20px 2px 10px; font-size: 15px; font-weight: 700; color: var(--sp-text);
 }
 .sp-sec-sub { font-size: 12px; font-weight: 400; color: var(--sp-sub); }
 
-/* 首页 · 剩余金额大卡 */
+/* 首页 · 剩余金额大卡（方案 M1：品牌渐变 + 右上白色圆环装饰，呼应存钱罐意象；
+   渐变与 logo 同源 135deg，暗色用夜场版渐变（M8）） */
 .sp-hero {
-  background: linear-gradient(135deg, #07C160, #0bb968);
+  background:
+    radial-gradient(120% 160% at 100% 0%, rgba(255, 255, 255, 0.14) 0%, transparent 45%),
+    linear-gradient(135deg, #07C160, #059048);
   border-radius: 20px; padding: 22px 20px; color: #fff; position: relative;
+  overflow: hidden;
   box-shadow: 0 8px 24px rgba(7, 193, 96, 0.28);
 }
-.sp-hero-num { font-size: 40px; font-weight: 800; letter-spacing: 0.5px; line-height: 1.1; }
+.sp-hero::before {
+  content: "";
+  position: absolute; right: -34px; top: -40px;
+  width: 118px; height: 118px; border: 14px solid rgba(255, 255, 255, 0.10);
+  border-radius: 50%; pointer-events: none;
+}
+/* 方案 M7：记账成功的一次绿色脉冲（JS 挂 .pulse，动画结束即回落） */
+@keyframes spHeroPulse {
+  0% { box-shadow: 0 8px 24px rgba(7, 193, 96, 0.28); }
+  35% { box-shadow: 0 8px 34px rgba(7, 193, 96, 0.55); }
+  100% { box-shadow: 0 8px 24px rgba(7, 193, 96, 0.28); }
+}
+.sp-hero.pulse { animation: spHeroPulse 0.9s ease; }
+/* 方案 M3：金额一律等宽数字，列表金额列上下严格对齐 */
+.sp-hero-num {
+  font-size: 40px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
 .sp-hero-sub { font-size: 13px; opacity: 0.92; margin-top: 6px; }
 .sp-hero-sub b { font-weight: 700; }
 .sp-hero-btn {
@@ -7972,22 +8016,32 @@ body[data-ui-mode="simple"] #spDazaiBody .dz-guide { margin: 0 0 10px; }
   font-size: 13px; color: var(--sp-text); box-shadow: var(--sp-shadow);
 }
 .sp-q:active { transform: scale(0.97); }
-.sp-q-ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 22px; }
+/* 方案 M2：快捷分类容器统一中性 wash，分类语义只留在图标本色上，
+   消除「一套页面两套配色逻辑」的彩虹感（暗色走半透明白）。 */
+.sp-q-ico {
+  width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 22px;
+  background: var(--sp-q-wash, #F0F4F3);
+}
 
 /* 流水列表 */
 .sp-bills { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .sp-bill {
   display: flex; align-items: center; gap: 12px; background: var(--sp-card);
-  border-radius: 14px; padding: 12px 14px; box-shadow: var(--sp-shadow);
+  border: 1px solid var(--sp-line); /* 方案 M4：贴地档 = 阴影 + 1px 描边 */
+  border-radius: var(--sp-radius); padding: 12px 14px; box-shadow: var(--sp-shadow);
 }
 .sp-bill-ico { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-size: 19px; flex: 0 0 auto; }
 .sp-bill-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .sp-bill-main b { font-size: 14px; color: var(--sp-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sp-bill-main small { font-size: 12px; color: var(--sp-sub); margin-top: 2px; }
-.sp-bill-amt { font-size: 15px; font-weight: 700; color: var(--sp-text); }
+.sp-bill-amt { font-size: 15px; font-weight: 700; color: var(--sp-text); font-variant-numeric: tabular-nums; } /* M3 */
 .sp-bill-amt.inc { color: var(--sp-green); }
 .sp-empty { list-style: none; text-align: center; color: var(--sp-sub); font-size: 13px; padding: 24px 0; }
 .sp-empty-block { padding: 48px 0; }
+/* 方案 M5：空状态从一行灰字升级为「阿账打盹」简笔画 + 陪伴文案 */
+.sp-empty-art { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 0 12px; }
+.sp-empty-art .sp-empty-svg { width: 96px; height: 64px; opacity: 0.9; }
+.sp-empty-art p { margin: 0; font-size: 13px; color: var(--sp-sub); }
 
 /* 明细 · 月份切换 */
 .sp-month { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 6px 0 14px; }
@@ -7996,11 +8050,17 @@ body[data-ui-mode="simple"] #spDazaiBody .dz-guide { margin: 0 0 10px; }
   width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
   background: var(--sp-card); color: var(--sp-text); font-size: 18px; box-shadow: var(--sp-shadow);
 }
+/* 方案 A1：统计卡恢复 16px 页边距（此前满宽出血、与同页 16px 网格断裂）；
+   方案 A5：圆角收敛到 --sp-radius，消灭硬编码 14px */
 .sp-month-sum {
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 6px;
+  padding: 0 16px;
 }
-.sp-month-sum > div { background: var(--sp-card); border-radius: 14px; padding: 14px; box-shadow: var(--sp-shadow); }
-.sp-month-sum b { display: block; font-size: 20px; font-weight: 800; color: var(--sp-text); }
+.sp-month-sum > div {
+  background: var(--sp-card); border: 1px solid var(--sp-line);
+  border-radius: var(--sp-radius); padding: 14px; box-shadow: var(--sp-shadow);
+}
+.sp-month-sum b { display: block; font-size: 20px; font-weight: 800; color: var(--sp-text); font-variant-numeric: tabular-nums; } /* M3 */
 .sp-month-sum small { font-size: 12px; color: var(--sp-sub); }
 .sp-month-sum .sp-inc b { color: var(--sp-green); }
 .sp-day { margin-top: 16px; }
@@ -8061,7 +8121,7 @@ body[data-ui-mode="simple"] #spDazaiBody .dz-guide { margin: 0 0 10px; }
 
 /* 简洁版底部 Tab（始终可见） */
 body[data-ui-mode="simple"] #tabbarSimple { display: flex; }
-#tabbarSimple .tab { flex-direction: column; gap: 2px; font-size: 11px; }
+#tabbarSimple .tab { flex-direction: column; gap: 2px; font-size: 12px; } /* 方案 A3：11→12px */
 #tabbarSimple .t-ico { font-size: 19px; line-height: 1; }
 #tabbarSimple .tab.active::after { top: auto; bottom: 5px; }
 
@@ -8077,16 +8137,26 @@ body[data-ui-mode="simple"] #tabbarSimple {
    「省钱助手」「理财专家」在 390px 下差 0.3px 被省略成「省钱…」「理财…」。 */
 #tabbarSimple .tab { min-width: 0; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 360px) {
-  #tabbarSimple .tab { font-size: 10px; gap: 1px; }
+  /* 方案 A3：小屏维持 11px 下限，不放大也不缩到 10px 以下 */
+  #tabbarSimple .tab { font-size: 11px; gap: 1px; }
   #tabbarSimple .t-ico { font-size: 17px; }
 }
 
 /* 深色模式下的简洁版 */
 [data-theme="dark"] body[data-ui-mode="simple"] { background: #12151A; }
 [data-theme="dark"] .simple-shell { box-shadow: none; }
-[data-theme="dark"] .sp-hero { box-shadow: 0 8px 24px rgba(7, 193, 96, 0.2); }
+/* 方案 M8：Hero 渐变换夜场版（深绿→更深绿），装饰环与阴影同氛围 */
+[data-theme="dark"] .sp-hero {
+  background:
+    radial-gradient(120% 160% at 100% 0%, rgba(255, 255, 255, 0.08) 0%, transparent 45%),
+    linear-gradient(135deg, #059048, #036B35);
+  box-shadow: 0 8px 24px rgba(7, 193, 96, 0.2);
+}
 [data-theme="dark"] .sp-hero-num,
 [data-theme="dark"] .sp-hero-sub { color: #fff; }
+/* 方案 M8：#E8F8EF 淡绿 wash 在暗底上发荧光，压成半透明品牌绿 */
+[data-theme="dark"] .sp-g-ico { background: rgba(7, 193, 96, 0.15); }
+[data-theme="dark"] .sp-q-ico { background: rgba(255, 255, 255, 0.07); } /* M2 */
 
 /* =========================================================
    简洁版 · AI 对话记账
@@ -8238,8 +8308,10 @@ body[data-ui-mode="simple"] #saveHubSheet .savehub-view { min-height: 0; positio
 body[data-ui-mode="simple"] #saveHubSheet .sheet-body {
   overflow-y: auto;
   /* QA 实测：padding-bottom 需 ≥ 渐隐层高度（20px），否则滚到底时最后一行
-     底边会伸进渐变带约 4.8px，末字下沿被压淡。 */
-  padding: 0 0 22px;
+     底边会伸进渐变带约 4.8px，末字下沿被压淡。
+     方案 A2：再叠加 --aj-pet-reserve（阿账停靠高度），页脚按钮行 + 说明
+     滚到底也能完整露在宠物上方。 */
+  padding: 0 0 calc(22px + var(--aj-pet-reserve, 0px));
   gap: 10px;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -8319,6 +8391,15 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab {
   background: var(--sp-card);
   border-color: var(--sp-line);
 }
+/* 上面 (0,3,2) 的底色覆盖会压过 .atab.active（0,2,0）与
+   [data-theme="dark"] .atab.active（0,2,1），选中态绿底被吃掉
+   （实测 active 变白底近黑字）。这里以更高权重显式补回；绿底 +
+   近黑字是全站选中态既定组合，浅/深色通用。 */
+body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #08120C;
+}
 /* 右缘渐隐：仅当 7 个胶囊放不下且尚未滚到头时由 JS 挂 .hub-fade
    （app.js bindEvents），放得下时不渐隐，避免完整可见的「说明」被误淡 */
 body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs.hub-fade {
@@ -8336,7 +8417,8 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs.hub-fade {
   --sp-text: #E6E9ED;
   --sp-sub: #9AA3AD;
   --sp-line: #2A2F37;
-  --sp-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  --sp-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --sp-shadow-float: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
 /* =========================================================
@@ -11206,7 +11288,10 @@ body:has(.modal-mask:not([hidden])) .mascot {
   stroke-linejoin: round;
 }
 
-.pet-pick-card.active .ppc-ico svg { stroke: var(--text); }
+/* 选中态只加深「通用线性图标」的线条；.ppc-art 整图上色形象（存钱罐精灵/记账小管家）
+   必须豁免——否则与上方 svg:not(.mico){stroke:none} 同权重但靠后，选中瞬间
+   插画根节点被染 var(--text)，无自带描边的大色块（头/帽/耳）全部浮出黑边。 */
+.pet-pick-card.active .ppc-ico:not(.ppc-art) svg { stroke: var(--text); }
 
 .pet-pick-card b {
   font-size: 13px;

@@ -635,3 +635,4 @@ INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
 [2026-11-01 13:15:18] INFO:     Waiting for application startup.
 [2026-11-01 13:15:18] INFO:     Application startup complete.
 [2026-11-01 13:15:18] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-11-01 15:26:31] INFO:     127.0.0.1:56822 - "GET /api/deals/search?keyword=%E5%8E%9F%E7%A5%9E&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK

@@ -4642,6 +4642,15 @@
       }
       petReact(isIncome ? 'income_logged' : 'bill_logged',
         { amount: bill.amount, cat: bill.category, note: bill.note, count: cnt });
+      /* 方案 M7：记账成功 → 简洁版 Hero 一次绿色脉冲（金额已在 renderSimple 里刷新） */
+      if (DOC.body.getAttribute('data-ui-mode') === 'simple') {
+        var heroEl = DOC.querySelector('.sp-hero');
+        if (heroEl) {
+          heroEl.classList.remove('pulse');
+          void heroEl.offsetWidth; /* 强制重排，连续记账也能重放动画 */
+          heroEl.classList.add('pulse');
+        }
+      }
     }
     return bill;
   }
@@ -6155,7 +6164,19 @@
     var ratio = total > 0 ? Math.max(0, Math.min(1, bs.remaining / total)) : 0;
     var label = bs.isOver ? '已超支' : (bs.status === 'tight' ? '紧张' : '安全');
 
-    bar.className = 'budget-bar state-' + bs.status;
+    /* 方案 B3 警示色降噪：期末预测已判「会超支」（红色块在场）时，
+       「紧张」降级为灰底描边的次级状态 —— 同屏只保留最重一级语义色。
+       已实际超支（isOver）不受影响，红色该亮还得亮。 */
+    var muted = false;
+    if (!bs.isOver && bs.status === 'tight') {
+      try {
+        var fd = forecastData(ov);
+        muted = !!(fd && fd.level === 'over');
+      } catch (e) { /* 预测模块缺失时保持原样 */ }
+    }
+    var stateCls = muted ? 'state-muted' : bs.status;
+
+    bar.className = 'budget-bar ' + stateCls;
     $('bbAmount').textContent = money(bs.remaining);
     $('bbDaily').textContent = money(bs.dailyAllowance);
     $('bbDays').textContent = ov.cycle.remainingDays + ' 天';
@@ -6166,7 +6187,7 @@
     var stateChip = $('budgetStateChip');
     if (stateChip) {
       stateChip.textContent = label;
-      stateChip.className = 'badge state-' + bs.status;
+      stateChip.className = 'badge ' + stateCls;
     }
   }
 
@@ -6876,8 +6897,23 @@
     if (DOC.body && DOC.body.getAttribute('data-view') === 'ssave') { renderSaveHubPanel(); }
   }
 
+  /** 方案 M5：空状态插画 —— 阿账打盹简笔画 + 陪伴文案（「报错感」变「陪伴感」）
+   *  @param {string} text 文案  @param {string} [tag] 容器标签：ul 内用 li（默认），div 内传 div */
+  function spEmptyArtHtml(text, tag) {
+    var t = tag === 'div' ? 'div' : 'li';
+    return '<' + t + ' class="sp-empty sp-empty-art">' +
+      '<svg class="sp-empty-svg" viewBox="0 0 96 64" aria-hidden="true">' +
+      '<ellipse cx="44" cy="54" rx="30" ry="5" fill="rgba(7,193,96,0.10)"/>' +
+      '<path d="M16 46 q-6 -16 10 -24 q4 -12 18 -12 q14 0 18 12 q16 8 10 24 q-2 8 -28 8 q-26 0 -28 -8 Z" fill="#fff" stroke="#D6E4DC" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M34 30 q3 3 6 0 M50 30 q3 3 6 0" stroke="#8FA69B" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M42 40 q4 3 8 0" stroke="#8FA69B" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
+      '<text x="76" y="20" font-size="13" font-weight="700" fill="#07C160" font-family="inherit">z</text>' +
+      '<text x="84" y="11" font-size="10" font-weight="700" fill="#9ADBB4" font-family="inherit">z</text>' +
+      '</svg><p>' + esc(text || '今天还没花钱，阿账替你开心') + '</p></' + t + '>';
+  }
+
   function spBillListHtml(bills, emptyText) {
-    if (!bills.length) { return '<li class="sp-empty">' + esc(emptyText || '暂无记录') + '</li>'; }
+    if (!bills.length) { return spEmptyArtHtml(emptyText || '今天还没花钱，阿账替你开心'); }
     var html = '';
     var i;
     for (i = 0; i < bills.length; i++) {
@@ -6910,7 +6946,9 @@
     for (i = 0; i < SP_QUICK_CATS.length; i++) {
       var c = SP_QUICK_CATS[i];
       q += '<button type="button" class="sp-q" data-cat="' + esc(c) + '">' +
-        '<span class="sp-q-ico" style="' + spCatTileStyle(c) + '">' + spCatIcon(c) + '</span>' +
+        /* 方案 M2：容器 wash 统一中性色（见 .sp-q-ico），分类语义只留图标本色，
+           消除餐饮绿/交通蓝/购物紫的彩虹感 */
+        '<span class="sp-q-ico" style="--sc:' + categoryColor(c) + ';--sc-ink:' + categoryInk(c) + '">' + spCatIcon(c) + '</span>' +
         esc(c) + '</button>';
     }
     $('spQuick').innerHTML = q;
@@ -6946,7 +6984,7 @@
     var dates = Object.keys(byDate).sort().reverse();
     updateBillExpandBtn('btnSpBillExpand', monthBills.length, dates.length, spListOpen);
     if (!dates.length) {
-      $('spListBody').innerHTML = '<div class="sp-empty sp-empty-block">本月还没有记账，记一笔就会出现在这里</div>';
+      $('spListBody').innerHTML = spEmptyArtHtml('本月还没有记账，记一笔就会出现在这里', 'div');
       return;
     }
     var todayStr = ENG.formatDate(new Date());
@@ -17801,6 +17839,12 @@
     };
     hubTabsEl.addEventListener('scroll', updateHubTabsFade, { passive: true });
     global.addEventListener('resize', updateHubTabsFade);
+    /* bindEvents 执行时简洁版省钱页可能还没切进视口（display:none 下
+       scrollWidth=0 会被误判「放得下」），用 ResizeObserver 盯住页签行
+       本身的尺寸变化：从不可见变可见、字号缩放、视口变化都会触发重查。 */
+    if (global.ResizeObserver) {
+      new global.ResizeObserver(updateHubTabsFade).observe(hubTabsEl);
+    }
     updateHubTabsFade();
     $('saveHubMask').addEventListener('click', function (e) {
       if (e.target === $('saveHubMask')) { closeSaveHub(); }
@@ -18174,6 +18218,7 @@
       $('btnMore').classList.remove('active');
       if (!item) { return; }
       var act = item.getAttribute('data-act');
+      /* 方案 B1：原顶栏低频按钮全部改走菜单 action，行为与原按钮一致 */
       if (act === 'export') { exportAllCsv(); }
       if (act === 'import') { openImportSheet(); }
       if (act === 'reset') { confirmReset(); }
@@ -18400,6 +18445,7 @@
     $('btnClosePiggy').addEventListener('click', closePiggySheet);
     $('btnPiggyCard').addEventListener('click', openPiggySheet);
     $('btnPiggyTop').addEventListener('click', openPiggySheet);
+    /* 顶栏「存钱罐」入口已按方案 B1 收进「⋯」菜单（moreMenu data-act="piggy"） */
     $('piggyMask').addEventListener('click', function (e) {
       if (e.target === $('piggyMask')) { closePiggySheet(); }
     });
@@ -18657,6 +18703,26 @@
     var c = petClamp(x, y);
     petEl.style.left = c.x + 'px';
     petEl.style.top = c.y + 'px';
+  }
+
+  /**
+   * 方案 A2（拖拽吸附）：松手落点若与底部页脚（简洁版 #tabbarSimple /
+   * 完整版手机框内 #tabbar）相交，吸附到页脚上方 12px，
+   * 保证页脚按钮永远可点 —— 用户不会故意把宠物停在页脚上。
+   * @returns {boolean} 是否发生了吸附（吸附后需要重新取 rect 存位置）
+   */
+  function petSnapAboveFooter() {
+    if (!petEl) { return false; }
+    var ft = DOC.getElementById('tabbarSimple') || DOC.getElementById('tabbar');
+    if (!ft) { return false; }
+    var fr = ft.getBoundingClientRect();
+    if (!fr || !fr.height) { return false; } /* 另一套 UI 的页脚是 display:none */
+    var r = petEl.getBoundingClientRect();
+    if (r.bottom > fr.top + 4 && r.top < fr.bottom) {
+      petPlace(r.left, fr.top - r.height - 12);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -19604,10 +19670,15 @@ function petRecallIcon() {
     var vh = global.innerHeight || 640;
     var vw = global.innerWidth || 360;
     var lim = vh - 24;
-    var tb = $('tabbar');
-    if (tb) {
-      var tr = tb.getBoundingClientRect();
-      if (tr && tr.width && tr.top > 0) { lim = Math.min(lim, tr.top - 6); }
+    /* 方案 A2：简洁版页脚（#tabbarSimple）与完整版页脚（#tabbar）都纳入避让，
+       哪个可见避哪个 —— 此前只查 #tabbar，简洁版宠物会坐在标签栏上 */
+    var tbs = [$('tabbarSimple'), $('tabbar')];
+    for (var i = 0; i < tbs.length; i++) {
+      var tb = tbs[i];
+      if (tb) {
+        var tr = tb.getBoundingClientRect();
+        if (tr && tr.width && tr.height && tr.top > 0) { lim = Math.min(lim, tr.top - 6); }
+      }
     }
     var comp = DOC.querySelector('.chat-composer');
     if (comp) {
@@ -19852,10 +19923,12 @@ function petRecallIcon() {
       petDrag = false;
       petEl.classList.remove('dragging');
       try { petEl.releasePointerCapture(e.pointerId); } catch (err) {}
+      /* 方案 A2：落点压到页脚上就吸附到页脚上方，再按吸附后的位置存档 */
+      var snapped = petSnapAboveFooter();
       var r = petEl.getBoundingClientRect();
       petSavePos(r.left, r.top);
       petApplyReserve();
-      if (moved) { petMoved = true; petDropLine(); }
+      if (moved) { petMoved = true; if (!snapped) { petDropLine(); } }
       if (!moved) { petPoke(); }
     }
     petEl.addEventListener('pointerdown', down);
@@ -19873,11 +19946,13 @@ function petRecallIcon() {
       if (!petMoved) {
         var d = petDefaultPos();
         petPlace(d.x, d.y);
+        petSnapAboveFooter(); /* 方案 A2：视口变化后也别停在页脚上 */
         petApplyReserve();
         return;
       }
       var rr = petEl.getBoundingClientRect();
       petPlace(rr.left, rr.top);
+      petSnapAboveFooter(); /* 方案 A2 */
       petApplyReserve();
     });
 
