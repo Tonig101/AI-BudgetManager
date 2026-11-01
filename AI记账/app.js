@@ -1887,10 +1887,12 @@
             var ptxt = '每年约 ' + x.month + ' 月 ' + x.day + ' 日' + (x.warmup ? '（提前 ' + x.warmup + ' 天预热）' : '') +
               '。力度：' + clean(x.depth) + '。适合买：' + clean(x.bestFor) + '。';
             arr.push({
+              /* 标题必须自带日期：原来只写「双11」，卡片上就两个词「双11 / 平台大促」，
+                 用户看不出它说的是哪一天、也不知道点进去落在哪儿。 */
               type: 'deal', id: 'promo.' + x.id, cat: 'promo', tag: '平台大促',
-              title: clean(x.name),
+              title: clean(x.name) + ' 大促 · ' + x.month + ' 月 ' + x.day + ' 日',
               core: ptxt, detail: '', res: '',
-              kw: clean(x.name) + ' 大促 电商 全品类 囤货',
+              kw: clean(x.name) + ' 大促 电商 全品类 囤货 ' + x.month + ' 月 ' + x.day + ' 日',
               text: cut(ptxt, MAX_CONTENT),
               certainty: '长期有效', source: '',
               phrases: [clean(x.name)],
@@ -2187,6 +2189,27 @@
       var qgExt = ext ? grams(ext) : [];
       var appSelf = APPSELF.test(query);
       var apiQ = APIQ.test(query);
+      /* 外部品牌问句：问句里点名了某张 App 教学卡的品牌（得物 / 古茗 / 嘀嗒…），
+         又没有「这个App / 你们」这类自指词时，问的是那个平台怎么省钱，
+         不是本产品怎么用。实测「得物怎么用」：app.start / app.capture /
+         app.undo 因为 kw 里有「怎么用」顶到前三，得物卡只排第 4。
+         强自指词窄于 APPSELF：裸「怎么用」不算自指——它同时命中 APPSELF 和 APIQ，
+         但「得物怎么用」显然在问得物。 */
+      var extBrand = false;
+      var qsNoSpAll = norm2(query).replace(/\s+/g, '');
+      if (!/这个|你们|你能|有什么功能|本应用/.test(qsNoSpAll)) {
+        for (i = 0; i < idx.cards.length && !extBrand; i++) {
+          var cb = idx.cards[i];
+          if (cb.type !== 'guide' || !cb.phrases) { continue; }
+          for (k = 0; k < cb.phrases.length; k++) {
+            if (cb.phrases[k] &&
+                qsNoSpAll.indexOf(String(cb.phrases[k]).replace(/\s+/g, '')) !== -1) {
+              extBrand = true;
+              break;
+            }
+          }
+        }
+      }
       var bonus = {};
       var i, k;
 
@@ -2250,8 +2273,13 @@
             if (c.phrases[p2] && qsNoSp.indexOf(String(c.phrases[p2]).replace(/\s+/g, '')) !== -1) { s += 5; break; }
           }
         }
-        /* 自指问句：「这个 App 怎么用」问的是产品本身，产品卡加权压过同分的外部知识卡 */
-        if (c.type === 'app' && (appSelf || apiQ)) { s += 10; }
+        /* 自指问句：「这个 App 怎么用」问的是产品本身，产品卡加权压过同分的外部知识卡；
+           但点名了外部品牌（得物怎么用）时反过来：产品卡压到 1/4，对口的品牌卡加分，
+           相关资料才不会变成一排本产品功能说明。 */
+        if (c.type === 'app' && (appSelf || apiQ)) {
+          if (extBrand) { s *= 0.25; } else { s += 10; }
+        }
+        if (c.type === 'guide' && extBrand && gBrand) { s += 6; }
         if (catHit[c.cat]) { s += (c.type === 'saving' ? 2.0 : 0.5); }
         if (c.type === 'guide' && !gBrand) { s *= 0.55; }
         if (s > 0) { hits.push({ card: c, score: s }); }
@@ -3256,9 +3284,11 @@
       return { ico: 'clipboard', name: 'App 教学' + (h.tag ? ' · ' + h.tag : '') };
     }
     if (h.type === 'deal') {
-      if (jp.band) { return { ico: 'scale', name: '价格带' }; }
-      if (String(h.id || '').indexOf('promo.') === 0) { return { ico: 'trend', name: '平台大促' }; }
-      return { ico: 'ticket', name: '优惠日历' };
+      /* 副标题就是「点下去会去哪儿」：三张卡分别落到比价 / 优惠日历 / 全年大促，
+         所以每一类都要写清面板名，不能只写「价格带」「优惠日历」这种内部叫法。 */
+      if (jp.band) { return { ico: 'scale', name: '省钱助手 · 比价' }; }
+      if (String(h.id || '').indexOf('promo.') === 0) { return { ico: 'trend', name: '省钱助手 · 全年大促' }; }
+      return { ico: 'ticket', name: '省钱助手 · 优惠日历' };
     }
     var cn = '';
     if (SAV && typeof SAV.catMeta === 'function' && h.cat) {
@@ -3452,7 +3482,9 @@
         '不许再开冷静卡；同一笔的冷静卡还在等他决定时，也不要开第二张。',
       '4. 同一个工具不要重复调用；工具返回 ok:false 就看 error 改参数，或改成问用户。',
       '5. 一律按【你是谁】说话：口语、1~3 句、不列长清单、不复述卡片上已有的数字；' +
-        '语气可以直，但不许刻薄、不许说教、不许替用户下「你太穷了 / 你管不住手」这种判断。',
+        '语气可以直，但不许刻薄、不许说教、不许替用户下「你太穷了 / 你管不住手」这种判断。' +
+        '唯一例外：用户问某 App / 平台怎么用、怎么省钱（search_kb 命中 App 教学卡）时，' +
+        '把那张卡的要点逐条讲全，一条一句，宁多勿漏——「怎么用」答成一句话等于没答。',
       '6. 记账 / 撤回 / 冷静卡 都由工具自动出卡，final 只补一句有用的话，或留空字符串。',
       '   卡片上已经有按钮（「先不买」「仍然记下」）时，final 不要再把同样的选择用文字问一遍，choices 留空 —— 那是问第二遍。',
       '   用户已经回答过的事（说过「现在就吃」「记上」「不买了」）不要再确认、不要再让他二选一，直接办。',
@@ -14132,6 +14164,57 @@
 
   /* ---------------- 今天 ---------------- */
 
+  /**
+   * 某个大促的「下一次」日期（含今天）：大促是固定月日，按年滚动。
+   * deals.js 只暴露 nextPromo（最近一场），没有「指定的这一场是几号」；
+   * AI 的每张大促卡都要跳到自己的那一行，所以这里按同样口径单独算一次。
+   */
+  function promoNextDate(p, from) {
+    if (!p || !p.month || !p.day) { return null; }
+    var t = from || dealsNow();
+    var base = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    var y;
+    for (y = base.getFullYear(); y <= base.getFullYear() + 1; y++) {
+      var dt = new Date(y, p.month - 1, p.day);
+      if (dt.getTime() >= base.getTime()) { return dt; }
+    }
+    return null;
+  }
+
+  /**
+   * 全年大促一栏：给 AI 的「平台大促」卡一个固定落点。
+   *
+   * 原来大促卡点下去是 openSaveHub('radar','today') + 找 [data-deal-id]，
+   * 而「今天」页只渲染当日活动与常驻优惠，大促只可能出现在 dealsTodayHtml 的
+   * 那一张「下一场」横幅里（而且这个函数在合并面板后基本不再被调用）——
+   * 于是点「双11」开着省钱助手、页面纹丝不动，用户说「跳转链接不明」就是这个。
+   * 这里把 6 场大促全部列出来，每行一个锚点，点哪张卡就滚到哪一行。
+   */
+  function promoStripHtml() {
+    if (!dealsReady() || !DEALS.PROMOS || !DEALS.PROMOS.length) { return ''; }
+    var t = dealsNow();
+    var np = DEALS.nextPromo(t);
+    var nextId = np && np.promo ? np.promo.id : '';
+    var rows = '';
+    var ps = DEALS.PROMOS;
+    var i;
+    for (i = 0; i < ps.length; i++) {
+      var p = ps[i];
+      var dt = promoNextDate(p, t);
+      var days = dt ? DEALS.daysBetween(t, dt) : -1;
+      var when = dt ? (dt.getMonth() + 1) + ' 月 ' + dt.getDate() + ' 日' : '';
+      var left = days < 0 ? '' : (days === 0 ? '就是今天' : '还有 ' + days + ' 天');
+      rows += '<div class="promo-row' + (p.id === nextId ? ' is-next' : '') + '"' +
+        ' data-deal-id="' + esc(p.id) + '" data-promo-id="' + esc(p.id) + '">' +
+        '<b>' + esc(p.name) + '</b>' +
+        '<span class="pr-when">' + esc(when) + (left ? ' · ' + left : '') + '</span>' +
+        '<span class="pr-why">' + esc(p.depth) + ' · 适合买：' + esc(p.bestFor) + '</span>' +
+        '</div>';
+    }
+    return '<div class="sv-sec">全年大促（按固定日期，每年滚一次）</div>' +
+      '<div class="promo-strip">' + rows + '</div>';
+  }
+
   function savingsTodayHtml() {
     var ctx = savingsCtx();
     var sum = savingsSumSummary();
@@ -14146,11 +14229,15 @@
     }
     ctx.excludeNames = radarNames;
 
-    html += '<div class="sv-hero">' +
-      '<div class="sv-hero-num"><b>' + money(sum.monthSaved) + '</b><small>本周期省下</small></div>' +
-      '<div class="sv-hero-num"><b>' + sum.monthCount + '</b><small>本周期打卡</small></div>' +
-      '<div class="sv-hero-num"><b>' + money(sum.totalSaved) + '</b><small>累计省下</small></div>' +
-      '</div>';
+    /* 三格战绩只在真有数字时出现。全 0 的头像一屏高、信息量却是零，
+       新用户打开先看到的应该是有什么可省，不是三个 ¥0.00。 */
+    if (sum.monthSaved || sum.monthCount || sum.totalSaved) {
+      html += '<div class="sv-hero">' +
+        '<div class="sv-hero-num"><b>' + money(sum.monthSaved) + '</b><small>本周期省下</small></div>' +
+        '<div class="sv-hero-num"><b>' + sum.monthCount + '</b><small>本周期打卡</small></div>' +
+        '<div class="sv-hero-num"><b>' + money(sum.totalSaved) + '</b><small>累计省下</small></div>' +
+        '</div>';
+    }
 
     html += SAV.todayCardHtml(ctx);
 
@@ -14180,17 +14267,23 @@
     if (limited.length) {
       html += '<div class="sv-sec">今天有活动的品牌</div>';
       for (var rk = 0; rk < limited.length; rk++) {
-        html += SAV.entryCardHtml(radarAsEntry(limited[rk]), { noActs: true, saveLabel: limited[rk].tag || '活动' });
+        /* 外层挂锚点：AI 的「优惠日历」卡点进来要能滚到对应品牌，不能开着面板停在那儿 */
+        html += '<div class="sv-anchor" data-deal-id="' + esc(limited[rk].id) + '">' +
+          SAV.entryCardHtml(radarAsEntry(limited[rk]), { noActs: true, saveLabel: limited[rk].tag || '活动' }) +
+          '</div>';
       }
     }
     if (always.length) {
       html += '<div class="sv-sec">常驻优惠（不用等）</div><div class="deals-pills">';
       for (var al = 0; al < always.length; al++) {
-        html += '<span class="deals-pill" title="' + esc(always[al].tip) + '">' + esc(always[al].name) +
+        html += '<span class="deals-pill" title="' + esc(always[al].tip) + '"' +
+          ' data-deal-id="' + esc(always[al].id) + '">' + esc(always[al].name) +
           '·' + esc(always[al].title) + '</span>';
       }
       html += '</div>';
     }
+
+    html += promoStripHtml();
 
     return html;
   }
@@ -14501,7 +14594,7 @@
   }
 
   /** 详情：把「怎么操作」拆成可核对的字段，避免用户被一句口号忽悠 */
-  function savingsDetailHtml(e) {
+  function savingsDetailHtml(e, variant) {
     var day = savingsDay();
     var hits = 0;
     for (var i = 0; i < savingsDb.logs.length; i++) {
@@ -14509,18 +14602,18 @@
     }
     var rows = [
       ['完整做法', e.action],
-      ['什么时候能用', SAV.triggerText(e)],
+      ['什么时候', SAV.triggerText(e)],
       ['时段', SAV.whenText(e) || '不限时段'],
       ['场景 / 场合', SAV.sceneText(e)],
       ['能省多少', SAV.saveRangeText(e)],
       ['门槛', e.gate],
       ['适合谁', e.who],
       ['坑在哪', e.risk],
-      ['关联账本分类', (e.billCats || []).join(' / ') || '—'],
+      ['账本分类', (e.billCats || []).join(' / ') || '—'],
       ['数据来源', e.source || '—'],
       ['我的打卡', hits ? '共 ' + hits + ' 次' + (SAV.isChecked(savingsDb.logs, e.id, day) ? '（今天已打卡）' : '') : '还没打卡过']
     ];
-    var html = '<div class="sv-detail">';
+    var html = '<div class="sv-detail' + (variant ? ' sv-detail-' + variant : '') + '">';
     for (var k = 0; k < rows.length; k++) {
       html += '<div class="sv-detail-row"><span class="sv-detail-k">' + esc(rows[k][0]) + '</span>' +
         '<span class="sv-detail-v">' + esc(rows[k][1]) + '</span></div>';
@@ -14741,28 +14834,87 @@
 
   /* ---------------- 口径说明 ---------------- */
 
+  /* 说明页的 10 个消费场景，与图谱整理口径一致 */
+  var SV_ABOUT_CATS = ['连锁快餐', '简餐外卖', '校园食堂', '茶饮咖啡', '零食夜市',
+    '商超日用', '娱乐社交', '交通出行', '学习考证', '促销节点'];
+
+  /* 金额口径的四种估算方式：图标 + 名称 + 一句话 */
+  var SV_ABOUT_RULES = [
+    { ico: 'i-receipt', name: '固定省额', txt: '原文给了明确差价，直接算。' },
+    { ico: 'i-abacus', name: '折扣比', txt: '原文说「打几折」且能给到原价基准，才乘出金额；给不出基准就只显示折扣，不硬凑钱数。' },
+    { ico: 'i-scale', name: '区间', txt: '原文只说「省几十」这类，取区间中位数，界面上显示区间。' },
+    { ico: 'i-think', name: '无法量化', txt: '保温杯、图书馆这类长期习惯，照样能打卡，但不进金额累计——否则等于编数字。' }
+  ];
+
   function savingsAboutHtml() {
     var sum = savingsSumSummary();
     var html = '';
+    var i;
+
     html += '<div class="sv-about">';
-    html += '<p><b>这 100 条从哪来？</b>来自《大学生全网省钱与防割韭菜图谱》100 条实操，按「连锁快餐 / 简餐外卖 / 校园食堂 / 茶饮咖啡 / 零食夜市 / 商超日用 / 娱乐社交 / 交通出行 / 学习考证 / 促销节点」10 类各 10 条整理。</p>';
-    html += '<p><b>金额怎么算的？</b>每条动作带一个估算方式：</p>' +
-      '<ul class="sv-ul">' +
-      '<li><b>固定省额</b>：原文给了明确差价，直接算。</li>' +
-      '<li><b>折扣比</b>：原文说「打几折」且能给到原价基准，才乘出金额；给不出基准就只显示折扣，不硬凑钱数。</li>' +
-      '<li><b>区间</b>：原文只说「省几十」这类，取区间中位数，界面上显示区间。</li>' +
-      '<li><b>无法量化</b>：保温杯、图书馆这类长期习惯，照样能打卡，但不进金额累计——否则等于编数字。</li>' +
-      '</ul>';
-    html += '<p><b>三个标签什么意思？</b></p>' +
-      '<ul class="sv-ul">' +
-      '<li><span class="sv-tag sv-tag-varies">力度常变</span> 会员日折扣、百亿补贴这类，力度每期不同，别拿旧价当承诺。</li>' +
-      '<li><span class="sv-tag sv-tag-local">以你学校为准</span> 依赖具体校区 / 门店（食堂档口、教师食堂、南城香），到店先确认。</li>' +
-      '<li>无标签 = 规则稳定，按日期算就行。</li>' +
-      '</ul>';
-    html += '<p><b>红线：</b>所有金额都是估算区间，不承诺最低价，不写死平台实时价。真下单前以商家当期页面为准。</p>';
-    html += '<p><b>活动日期</b>由本地日期算法推算（周几 / 每月几号 / 固定月日 / 时间区间），不联网抓取，所以离线也能用。</p>';
-    html += '<p class="sv-note">你现在的打卡库：' + sum.count + ' 条记录，累计 ' + money(sum.totalSaved) +
-      '；存放于浏览器本地，键名 <code>ai_jizhang_savings_v1</code>，与账单分开。清掉它不会影响你的账本。</p>';
+
+    /* ① 概览：100 条这个数字本身就是最好的开场，不用一整段文字去说 */
+    html += '<div class="sv-ab-hero">' +
+      '<div class="sv-ab-num"><b>100</b><span>条实操</span></div>' +
+      '<div class="sv-ab-meta">' +
+      '<b>《大学生全网省钱与防割韭菜图谱》</b>' +
+      '<span>10 个消费场景 × 各 10 条</span>' +
+      '</div>' +
+      '</div>';
+    html += '<div class="sv-cat-chips">';
+    for (i = 0; i < SV_ABOUT_CATS.length; i++) {
+      html += '<span class="sv-cat-chip">' + SV_ABOUT_CATS[i] + '</span>';
+    }
+    html += '</div>';
+
+    /* ② 金额口径：四条规则要能扫读，所以每条一行「图标 + 名称 + 说明」 */
+    html += '<div class="sv-block">';
+    html += '<div class="sv-block-h">金额怎么算</div>';
+    for (i = 0; i < SV_ABOUT_RULES.length; i++) {
+      var r = SV_ABOUT_RULES[i];
+      html += '<div class="sv-rule">' +
+        '<span class="sv-rule-ico"><svg class="bico" viewBox="0 0 24 24" aria-hidden="true"><use href="#' + r.ico + '"/></svg></span>' +
+        '<div class="sv-rule-body"><b>' + r.name + '</b><span>' + r.txt + '</span></div>' +
+        '</div>';
+    }
+    html += '</div>';
+
+    /* ③ 标签图例：直接把内容里真会出现的标签摆出来，所见即所得 */
+    html += '<div class="sv-block">';
+    html += '<div class="sv-block-h">三个标签什么意思</div>';
+    html += '<div class="sv-legend">' +
+      '<span class="sv-tag sv-tag-varies">力度常变</span>' +
+      '<span class="sv-legend-txt">会员日折扣、百亿补贴这类，力度每期不同，别拿旧价当承诺。</span>' +
+      '</div>';
+    html += '<div class="sv-legend">' +
+      '<span class="sv-tag sv-tag-local">以你学校为准</span>' +
+      '<span class="sv-legend-txt">依赖具体校区 / 门店（食堂档口、教师食堂、南城香），到店先确认。</span>' +
+      '</div>';
+    html += '<div class="sv-legend">' +
+      '<span class="sv-tag sv-tag-none">无标签</span>' +
+      '<span class="sv-legend-txt">规则稳定，按日期算就行。</span>' +
+      '</div>';
+    html += '</div>';
+
+    /* ④ 红线：唯一需要「拦住用户」的信息，给足视觉重量 */
+    html += '<div class="sv-redline">' +
+      '<svg class="bico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-alert"/></svg>' +
+      '<span><b>真下单前以商家当期页面为准。</b>所有金额都是估算区间，不承诺最低价，也不写死平台实时价。</span>' +
+      '</div>';
+
+    /* ⑤ 技术细节收进页脚：用户需要时才看，不占正文注意力 */
+    html += '<div class="sv-about-foot">';
+    html += '<div class="sv-foot-line">' +
+      '<svg class="bico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-clock"/></svg>' +
+      '<span>活动日期由本地算法推算（周几 / 每月几号 / 固定月日 / 时间区间），不联网，离线可用。</span>' +
+      '</div>';
+    html += '<div class="sv-foot-line">' +
+      '<svg class="bico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-piggy"/></svg>' +
+      '<span>打卡库现有 <b>' + sum.count + '</b> 条、累计 <b>' + money(sum.totalSaved) + '</b>，' +
+      '存在浏览器本地（<code>ai_jizhang_savings_v1</code>），与账单分开，清掉不影响账本。</span>' +
+      '</div>';
+    html += '</div>';
+
     html += '</div>';
     return html;
   }
@@ -16897,6 +17049,7 @@
        AJ_NAV_RESOLVE('打开心愿单') → 看解析结果与置信分
        AJ_SUGGEST_LIST()    → 当前上下文算出来的建议（含 why）
        AJ_KB_SEARCH('淘宝怎么领小样') → 知识库检索原始结果（校验命中卡与分数）
+       AJ_KB_CARD('双十一什么时候买最便宜') → 直接拿到「相关资料」卡的 HTML（含真实跳转属性，验证点得动）
        AJ_KB_STATS()        → 知识库规模（各类卡数 / 词条数，学院页扩了要能看见） */
   global.AJ_METRICS_REPORT = function () { return AGENT_METRICS.report(); };
   global.AJ_METRICS_CLEAR = function () { AGENT_METRICS.clear(); };
@@ -16904,6 +17057,7 @@
   global.AJ_SUGGEST_LIST = function () { return AGENT_SUGGEST.list(); };
   global.AJ_KB_SEARCH = function (q, scope) { return AGENT_KB.search(q, scope || 'all'); };
   global.AJ_KB_STATS = function () { return AGENT_KB.stats(); };
+  global.AJ_KB_CARD = function (q, scope) { return kbCardHtml(AGENT_KB.search(q, scope || 'all')); };
 
   /* ---- Dim3：按时间/预算生成动态快捷 chips + 会话级主动提示 ---- */
   var proactiveShown = false;
@@ -17339,14 +17493,21 @@
         else if (kbSettings) { openSettingsGroup(kbSettings); }
         else if (kbAppPanel) { agentGoFeature(kbAppPanel); }
         else if (kbDeal) {
+          var dealId = String(kbDeal).replace(/"/g, '');
           openSaveHub('radar', 'today');
           setTimeout(function () {
-            var card = document.querySelector('[data-deal-id="' + kbDeal.replace(/"/g, '') + '"]');
-            if (card && card.scrollIntoView) {
-              card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              card.classList.add('deal-flash');
-              setTimeout(function () { card.classList.remove('deal-flash'); }, 1800);
+            var card = document.querySelector('[data-deal-id="' + dealId + '"], [data-promo-id="' + dealId + '"]');
+            if (!card) {
+              /* 找不到落点时必须说一句：原来这里静默 return，用户点了像没反应，
+                 才会觉得「这个跳转链接不明」。 */
+              showToast('已打开省钱助手·今天；这条活动不在今天，点「14 天日历」看接下来两周');
+              return;
             }
+            if (card.scrollIntoView) {
+              card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            card.classList.add('deal-flash');
+            setTimeout(function () { card.classList.remove('deal-flash'); }, 1800);
           }, 380);
         }
         else if (kbBand) { openSaveHub('radar', 'compare'); }
@@ -17628,6 +17789,19 @@
       var b = e.target.closest ? e.target.closest('[data-hub-tab]') : null;
       if (b) { switchSaveHub(b.getAttribute('data-hub-tab')); }
     });
+    /* 页签行右缘渐隐开关（简洁版 styles.css 的 .hub-fade mask 配套）：
+       只在「7 个胶囊放不下且还没滚到最右」时挂类。页签是 7 个固定胶囊，
+       scrollWidth 只随视口宽度/字号缩放变，监听 scroll + resize 即够；
+       简洁版页签常驻可见，init 时首查一次即可生效。 */
+    var hubTabsEl = $('hubTabs');
+    var updateHubTabsFade = function () {
+      var fits = hubTabsEl.scrollWidth <= hubTabsEl.clientWidth + 1;
+      var atEnd = hubTabsEl.scrollLeft + hubTabsEl.clientWidth >= hubTabsEl.scrollWidth - 2;
+      hubTabsEl.classList.toggle('hub-fade', !fits && !atEnd);
+    };
+    hubTabsEl.addEventListener('scroll', updateHubTabsFade, { passive: true });
+    global.addEventListener('resize', updateHubTabsFade);
+    updateHubTabsFade();
     $('saveHubMask').addEventListener('click', function (e) {
       if (e.target === $('saveHubMask')) { closeSaveHub(); }
     });
@@ -17779,14 +17953,24 @@
         return;
       }
       if (what === 'detail') {
-        savingsOpen[id] = !savingsOpen[id];
-        /* 只重画列表，保持滚动位置 */
-        var l1 = $('svList');
-        if (l1) {
+        var listEl = $('svList');
+        if (listEl) {
+          savingsOpen[id] = !savingsOpen[id];
+          /* 只重画列表，保持滚动位置 */
           var body = $('savingsPane').parentNode;
           var keep = body ? body.scrollTop : 0;
-          l1.innerHTML = savingsListHtml();
+          listEl.innerHTML = savingsListHtml();
           if (body) { body.scrollTop = keep; }
+          return;
+        }
+        /* 「今天」「省钱账」的卡片不在 #svList 里，原先点详情只翻转了 savingsOpen
+           却没人重画，按钮是死的。卡片现在只留标题 + 一句做法，详情必须真能打开，
+           否则被收起来的信息就成了黑洞。 */
+        var detailEntry = SAV.byId(id);
+        if (detailEntry) {
+          var dbox = openModal('<h4>' + esc(detailEntry.title) + '</h4>' + savingsDetailHtml(detailEntry, 'modal') +
+            '<div class="modal-actions"><button type="button" class="btn-cancel" data-act="modal-cancel">关闭</button></div>');
+          dbox.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
         }
         return;
       }

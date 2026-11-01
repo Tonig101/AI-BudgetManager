@@ -628,3 +628,10 @@ INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
 [2026-10-31 14:41:06] INFO:     127.0.0.1:61068 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
 [2026-10-31 14:42:26] INFO:     127.0.0.1:49667 - "GET /api/deals/search?keyword=%E6%89%8B%E6%9C%BA&pages=2&limit=30&offset=0 HTTP/1.1" 200 OK
 [2026-10-31 23:00:58] INFO:     127.0.0.1:56158 - "GET /api/health HTTP/1.1" 200 OK
+[2026-11-01 13:15:15] [service] ==========================================================
+[2026-11-01 13:15:15] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-11-01 13:15:16] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-11-01 13:15:18] INFO:     Started server process [20896]
+[2026-11-01 13:15:18] INFO:     Waiting for application startup.
+[2026-11-01 13:15:18] INFO:     Application startup complete.
+[2026-11-01 13:15:18] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)

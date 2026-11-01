@@ -682,13 +682,17 @@
   function entryCardHtml(entry, opts) {
     opts = opts || {};
     if (!entry) { return ''; }
-    var m = catMeta(entry.cat);
     var checked = !!opts.checked;
     var q = opts.q || '';
     var saveLabel = opts.saveLabel || saveText(entry);
 
-    var html = '<div class="sv-card' + (checked ? ' is-checked' : '') + '" data-sv-id="' + esc(entry.id) + '">';
+    /* 搜索时把做法放开几行：命中词可能落在被截掉的第二三行，
+       卡片只留一行会让「我明明搜到了却看不到」变成明显的怪现象。 */
+    var html = '<div class="sv-card' + (checked ? ' is-checked' : '') + (q ? ' is-search' : '') + '" data-sv-id="' + esc(entry.id) + '">';
 
+    /* 标题行：图标 + 标题 + 能省多少。卡片只负责回答「这条值不值得看」。
+       门槛 / 适合谁 / 完整做法 / 时段 / 数据来源都在「详情」里——
+       卡片上再抄一份，等于把数据库字段直接倒进列表，密度高但信息量没增加。 */
     html += '<div class="sv-card-top">' +
       '<div class="sv-head">' + entryIconHtml(entry, 'md') +
       '<b class="sv-title">' + highlight(entry.title, q) + '</b></div>' +
@@ -697,21 +701,23 @@
 
     html += '<p class="sv-action">' + highlight(entry.action, q) + '</p>';
 
-    html += '<div class="sv-meta">' +
-      '<span class="sv-pill">门槛：' + esc(entry.gate) + '</span>' +
-      '<span class="sv-pill">适合：' + esc(entry.who) + '</span>' +
-      certTag(entry.certainty) +
-      '</div>';
+    /* 风险留着：这是「防割韭菜」最实的证据，不能藏进详情。
+       但从整块实底警告降成一行淡色附注——不该让每张卡都染成警示色。 */
+    html += '<div class="sv-risk-line">' + svIcon('alert') +
+      '<span>' + esc(entry.risk) + '</span></div>';
 
-    html += '<div class="sv-risk">' + svIcon('alert') + esc(entry.risk) + '</div>';
-
-    if (!opts.noActs) {
-      html += '<div class="sv-acts">' +
-        '<button type="button" class="btn-mini' + (checked ? '' : ' primary') + '" data-sv-act="toggle" data-sv-id="' + esc(entry.id) + '">' +
-        (checked ? '✓ 今天用了（点击撤销）' : '✓ 今天用了') +
-        '</button>' +
-        '<button type="button" class="btn-mini" data-sv-act="detail" data-sv-id="' + esc(entry.id) + '">详情</button>' +
-        '</div>';
+    /* 动作行：按钮在左，可信度标签靠右（它只是个限定词，不该跟标题抢首屏） */
+    var cert = certTag(entry.certainty);
+    if (!opts.noActs || cert) {
+      html += '<div class="sv-acts">';
+      if (!opts.noActs) {
+        html += '<button type="button" class="btn-mini' + (checked ? '' : ' primary') + '" data-sv-act="toggle" data-sv-id="' + esc(entry.id) + '">' +
+          (checked ? '✓ 今天用了（点击撤销）' : '✓ 今天用了') +
+          '</button>' +
+          '<button type="button" class="btn-mini" data-sv-act="detail" data-sv-id="' + esc(entry.id) + '">详情</button>';
+      }
+      if (cert) { html += '<span class="sv-acts-cert">' + cert + '</span>'; }
+      html += '</div>';
     }
 
     html += '</div>';

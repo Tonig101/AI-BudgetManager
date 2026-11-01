@@ -2110,6 +2110,11 @@ h3 {
   padding: 18px;
   box-shadow: 0 16px 48px rgba(16, 24, 40, 0.18);
   animation: pop 0.2s ease;
+  /* 内容长的弹窗（如省钱详情 11 个字段）会顶出屏幕、把底部按钮裁掉。
+     限制在视口内并让弹层自己滚，按钮才始终够得着。 */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 @keyframes pop {
@@ -6632,6 +6637,31 @@ svg.di-emoji {
   color: var(--text-2);
 }
 
+/* ---------- 全年大促（今天页底部，给 AI 的「大促」卡一个能滚到的落点） ---------- */
+.promo-strip { display: flex; flex-direction: column; gap: 6px; }
+
+.promo-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 9px 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.promo-row b { font-size: 13px; color: var(--text); }
+.promo-row .pr-when { font-size: 11.5px; color: var(--text-3); align-self: center; white-space: nowrap; }
+.promo-row .pr-why { grid-column: 1 / -1; font-size: 11.5px; line-height: 1.55; color: var(--text-2); }
+
+.promo-row.is-next {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: linear-gradient(135deg, #FFF7E6, #FEF3E2);
+}
+.promo-row.is-next b { color: var(--amber-deep); }
+.promo-row.is-next .pr-when,
+.promo-row.is-next .pr-why { color: var(--amber-deep); opacity: 0.9; }
+
 .deals-note {
   margin: 4px 0 0;
   font-size: 11.5px;
@@ -7627,6 +7657,15 @@ svg.di-emoji {
   border-color: rgba(245, 158, 11, 0.35);
 }
 
+[data-theme="dark"] .promo-row { background: var(--card); }
+[data-theme="dark"] .promo-row.is-next {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+[data-theme="dark"] .promo-row.is-next b,
+[data-theme="dark"] .promo-row.is-next .pr-when,
+[data-theme="dark"] .promo-row.is-next .pr-why { color: #F5C26B; }
+
 [data-theme="dark"] .deals-promo-banner b,
 [data-theme="dark"] .deals-promo-banner span,
 [data-theme="dark"] .deals-promo,
@@ -8173,6 +8212,19 @@ body[data-ui-mode="simple"] #saveHubSheet .sheet-head {
   background: transparent;
   border-bottom: none;
 }
+/* meta 行重排：日期靠左作第一个信息、统计靠 margin-left:auto 收到右端。
+   原先两个元素都 margin-left:auto，日期被孤零零推到最右、左半行全空。 */
+body[data-ui-mode="simple"] #saveHubSheet .sheet-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+body[data-ui-mode="simple"] #saveHubSheet .deals-head-date {
+  margin-left: 0;
+  padding-right: 0;
+  font-size: 12px;
+  color: var(--sp-sub);
+}
 body[data-ui-mode="simple"] #saveHubTitle,
 body[data-ui-mode="simple"] #btnCloseSaveHub { display: none; }
 
@@ -8192,14 +8244,25 @@ body[data-ui-mode="simple"] #saveHubSheet .sheet-body {
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+
 /* 内容区是内部滚动，手机上滚动条默认不可见，容易以为内容被切掉了。
-   底部加一层渐隐，明确提示「下面还有，可以继续滑」。 */
-body[data-ui-mode="simple"] #saveHubSheet .savehub-view::after {
+   底部加一层渐隐，明确提示「下面还有，可以继续滑」。
+   ⚠️ 这层渐隐曾挂在 .savehub-view 上并写死 bottom: 42px —— 等于假设页脚恒为 42px。
+   而页脚里有 4 个按钮 + 一段说明，窄屏会换行：610px 实测 67px、420px 实测 107px，
+   于是渐隐层直接盖在按钮上（按钮下半截被吃掉 / 第二行被拦腰切断）。
+   改为锚定在页脚上边缘（bottom: 100%），页脚多高都不会再压到按钮。 */
+body[data-ui-mode="simple"] #saveHubSheet .sheet-foot {
+  position: relative;
+  padding: 10px 0 0;
+  background: transparent;
+  border-top: none;
+}
+body[data-ui-mode="simple"] #saveHubSheet .sheet-foot::before {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 42px;
+  bottom: 100%;
   height: 20px;
   background: linear-gradient(to bottom, rgba(0, 0, 0, 0), var(--bg));
   pointer-events: none;
@@ -8208,11 +8271,6 @@ body[data-ui-mode="simple"] #saveHubSheet .sheet-body::-webkit-scrollbar { width
 body[data-ui-mode="simple"] #saveHubSheet .sheet-body::-webkit-scrollbar-thumb {
   background: var(--line-2);
   border-radius: 999px;
-}
-body[data-ui-mode="simple"] #saveHubSheet .sheet-foot {
-  padding: 10px 0 0;
-  background: transparent;
-  border-top: none;
 }
 
 /* .sheet-body 是「固定高度 + flex 列 + overflow-y:auto」，子项默认 flex-shrink:1，
@@ -8229,9 +8287,43 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs {
   scrollbar-width: thin;
 }
 body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs::-webkit-scrollbar { height: 3px; }
+/* 吸顶修正：全模式通用的 #hubTabs 是 top:-14px（配合完整版 sheet-body 的 14px
+   顶部内边距），简洁版 .sheet-body 顶部无内边距，-14px 会把页签钉到滚动口外，
+   摘要行从页签背后穿过时被硬边拦腰切断（半截字）。改 top:0 并把底边做成
+   渐隐带，内容滑入时先淡出再被盖住；底色用 --sp-bg 与页面同色（原 --bg
+   是完整版的 #F8F9FA，压在简洁版 #F4F6F8 上会显出一块更白的横带）。 */
+body[data-ui-mode="simple"] #saveHubSheet #hubTabs {
+  top: 0;
+  margin: 0 0 8px;
+  padding: 2px 0 10px;
+  background: var(--sp-bg);
+}
+body[data-ui-mode="simple"] #saveHubSheet #hubTabs::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -10px;
+  height: 10px;
+  background: linear-gradient(to bottom, var(--sp-bg), transparent);
+  pointer-events: none;
+}
+/* 页签胶囊化：与卡内「大促可省 / 省多少省用」徽章同为 999 圆角，
+   底/边色走 sp token（深色模式自动跟随，原 #fff 硬编码在暗色下刺眼） */
 body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab {
   flex: 0 0 auto;
   white-space: nowrap;
+  border-radius: 999px;
+  padding: 7px 13px;
+  font-size: 12.5px;
+  background: var(--sp-card);
+  border-color: var(--sp-line);
+}
+/* 右缘渐隐：仅当 7 个胶囊放不下且尚未滚到头时由 JS 挂 .hub-fade
+   （app.js bindEvents），放得下时不渐隐，避免完整可见的「说明」被误淡 */
+body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs.hub-fade {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
 }
 
 /* =========================================================
@@ -8314,6 +8406,10 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab {
   margin: 4px 0 -2px;
 }
 
+/* 可跳转锚点：只负责给 AI 卡片一个落点，不改变卡片自身长相 */
+.sv-anchor { display: block; }
+.sv-anchor.deal-flash { border-radius: 14px; }
+
 .sv-empty {
   background: var(--card);
   border: 1px dashed var(--line);
@@ -8325,20 +8421,28 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab {
   line-height: 1.7;
 }
 
-/* ---- 动作卡片 ---- */
+/* ---- 动作卡片 ----
+   一屏要能看完「今天有哪些可省」，所以卡片只留决策必需的几层：
+   标题+能省多少 / 一句做法 / 一行风险 / 一排动作。
+   门槛、适合谁、时段、完整做法都收进「详情」。 */
 .sv-card {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 12px;
+  padding: 11px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   box-shadow: var(--shadow);
   transition: border-color 0.18s ease, opacity 0.18s ease;
 }
 
 .sv-card.is-checked { border-color: var(--green); opacity: 0.72; }
+
+/* 搜索结果里放开截断：命中词可能在第 2、3 行，只留一行等于把命中的证据藏了 */
+.sv-card.is-search .sv-action {
+  -webkit-line-clamp: 4;
+}
 
 /* 标题行：图标 + 标题 + 右侧省多少。图标是 24px 品牌瓦片或线性分类图标，
    所以父级必须按中心线对齐（baseline 会让瓦片往上飘）。 */
@@ -8398,6 +8502,38 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab {
   color: var(--text-2);
   line-height: 1.6;
   overflow-wrap: anywhere;
+  /* 卡片只是一层预览：完整做法在「详情」里。
+     收成一行——两行的话每条都变成小作文，一屏看不完两条，
+     而多出来的那行往往只是把同一件事再说一遍。 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
+/* 风险：保留内容，但不再用整块实底把卡片染成警告色 —— 只做一行淡附注 */
+.sv-risk-line {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--amber-deep);
+  opacity: 0.9;
+}
+.sv-risk-line .bico {
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+.sv-risk-line span { min-width: 0; }
+
+/* 可信度标签退到动作行右端，靠右对齐，不占标题行的注意力 */
+.sv-acts-cert {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
 }
 
 .sv-meta { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -8459,6 +8595,13 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab {
   color: var(--text-2);
   overflow-wrap: anywhere;
 }
+
+/* 弹层版详情：弹层只有 340px 宽，标签列收窄才能给内容让出宽度 */
+.sv-detail-modal .sv-detail-k {
+  flex: 0 0 62px;
+  font-size: 11.5px;
+}
+.sv-detail-modal .sv-detail-row { font-size: 12px; gap: 8px; }
 
 /* ---- 今天已打卡 / 最近打卡 ---- */
 .sv-done-list { display: flex; flex-direction: column; gap: 6px; }
@@ -8585,33 +8728,223 @@ body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab {
 }
 .sv-bar-val small { display: block; font-size: 10px; color: var(--text-3); }
 
-/* ---- 说明页 ---- */
+/* ---- 说明页 ----
+   这一页原来是一整坨等重的文本流（段落 + 内联加粗 + 无样式 ul），
+   读者拿不到「先看什么」。现在按 概览 / 规则 / 图例 / 警示 四层重排：
+   每层有自己的容器和视觉重量，扫一眼就能定位。 */
 .sv-about {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 14px;
+  padding: 16px;
   font-size: 12.5px;
   color: var(--text-2);
-  line-height: 1.75;
-}
-.sv-about p { margin: 0 0 10px; }
-.sv-about b { color: var(--text); }
-.sv-ul { margin: 0 0 10px; padding-left: 18px; }
-.sv-ul li { margin-bottom: 4px; }
-.sv-about code {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  background: var(--line-2);
-  border-radius: 5px;
-  padding: 1px 5px;
+  line-height: 1.7;
 }
 
+/* ① 概览：用数字开场，替代原来那一整段来源交代。
+   类名用 .sv-ab-* 前缀 —— .sv-hero / .sv-hero-num 是省钱页「顶部三个数字」的既有类，
+   撞名会让这里的 30px 数字被那边的 mono 17px / 窄屏 15px 覆盖。 */
+.sv-ab-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+.sv-ab-num {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.sv-ab-num b {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--green-ink);
+  letter-spacing: -0.5px;
+}
+.sv-ab-num span {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.sv-ab-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.sv-ab-meta b {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.45;
+}
+.sv-ab-meta span {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+/* 场景标签：把 10 个类目从一句话里拆出来，才看得出「覆盖了哪些场景」。
+   固定 5 列 —— 类目恒为 10 个，5×2 是唯一在每个断点都排得满的解法；
+   flex-wrap / auto-fill 会随宽度变成 8+2、3+3+3+1，末行缺一块反而像漏了内容。 */
+.sv-cat-chips {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+  padding-bottom: 4px;
+}
+.sv-cat-chip {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 2px 3px;
+  border-radius: 6px;
+  color: var(--text-2);
+  background: var(--line-2);
+  white-space: nowrap;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 极窄屏把字号压一点，保证 4 字标签在 1/5 宽度里不被省略号截断 */
+@media (max-width: 400px) {
+  .sv-cat-chip { font-size: 10.5px; padding: 2px 2px; }
+}
+
+/* ② 分组：靠间距和细线分组，不靠加粗文字伪造层级。
+   注意：类名不能叫 .sv-sec —— 那是本项目既有的「小标题」语义（「省在哪」「今天有活动的品牌」），
+   复用会把它变成带边框的块，还会让正文继承 600 字重。 */
+.sv-block {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.sv-block-h {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.4px;
+  margin-bottom: 10px;
+}
+
+/* 规则行：图标块让四条口径能逐个扫读，而不是念成一段话 */
+.sv-rule {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+.sv-rule + .sv-rule { margin-top: 10px; }
+.sv-rule-ico {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--green-ink);
+  background: var(--green-soft);
+}
+.sv-rule-ico .bico { width: 15px; height: 15px; }
+.sv-rule-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding-top: 1px;
+}
+.sv-rule-body b {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.45;
+}
+.sv-rule-body span {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.65;
+}
+
+/* ③ 标签图例：标签列固定宽度，三行说明文字才能左对齐成一条线 */
+.sv-legend {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 9px;
+  align-items: start;
+}
+.sv-legend + .sv-legend { margin-top: 9px; }
+.sv-legend .sv-tag { justify-self: start; }
+.sv-legend-txt {
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.65;
+}
+/* 「无标签」是图例的第三态，得有个占位符，否则这一行会错位 */
+.sv-tag-none {
+  color: var(--text-3);
+  background: transparent;
+  border: 1px dashed var(--line);
+}
+
+/* ④ 红线：全页唯一需要拦住用户的信息，给足重量 */
+.sv-redline {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 16px;
+  padding: 10px 11px;
+  border-radius: 9px;
+  color: var(--amber-deep);
+  background: var(--amber-soft);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.sv-redline .bico {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+.sv-redline b { font-weight: 600; }
+
+/* ⑤ 页脚：技术细节退到最弱层，需要时才读 */
+.sv-about-foot {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.sv-foot-line {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+.sv-foot-line .bico {
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+.sv-foot-line b { color: var(--text-2); font-weight: 600; }
+
+/* 「大全」「省钱账」页尾的口径小字，说明页已不再用（改用 .sv-about-foot），但这两页仍在用 */
 .sv-note {
   margin: 10px 0 0;
   font-size: 11.5px;
   color: var(--text-3);
   line-height: 1.7;
+}
+
+.sv-about code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--line-2);
+  border-radius: 5px;
+  padding: 1px 5px;
 }
 
 /* ---- 聊天里的省钱清单 ---- */
