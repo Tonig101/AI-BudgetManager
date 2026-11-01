@@ -13376,6 +13376,402 @@ body[data-view="dazai"] .panel-dazai {
 }
 
 /* ==================================================================
+   界面风格：贴纸账本（data-skin="sticker"）
+   ------------------------------------------------------------------
+   一套「手账贴纸」视觉语言，复用简洁版 DOM，只换皮肤不换结构：
+     1. 实墨线描边（2-3px #2E2113）+ 无模糊硬投影（0 3px 0 奶油色）
+     2. 奶油纸底 + 圆点网点纸纹，Hero 用琥珀黄贴纸
+     3. 字重拉满 800-900，数字等宽，标题负字距
+     4. 圆角偏大偏钝（18-22px），像贴纸圆角切边
+   落实方式：先重写简洁版 token（--sp-*）让 90% 组件自动跟上，
+   再对「写死了颜色/阴影」的少数组件逐个点名覆盖。
+   所有选择器带 html[data-skin="sticker"] 前缀，保证压过
+   body[data-ui-mode="simple"] 那批同权重的简洁版规则。
+   ================================================================== */
+[data-skin="sticker"] {
+  /* 贴纸专用色板（不进全局 token，避免污染另外两套皮肤） */
+  --st-ink: #2E2113;
+  --st-ink-2: #7A5F3F;
+  --st-paper: #FFFDF6;
+  --st-paper-warm: #FFF4DF;
+  --st-cream: #F0DCBC;
+  --st-shadow: #E5C59A;
+  --st-yellow: #FFCE3A;
+  --st-amber: #FFD86B;
+  /* 实心墨块（按钮/选中页签的底色）与压在上面的琥珀字：
+     暗色下 --st-ink 会翻成奶油色（描边要亮），但实心按钮不能跟着翻白，
+     否则「墨底+琥珀字」变成「奶油底+琥珀字」直接糊掉（暗色实测踩过）。 */
+  --st-solid: #2E2113;
+  --st-on-solid: #FFE9A8;
+
+  /* 品牌色：贴纸账本里「绿」整体退场，主色改成墨。
+     前几版把绿收窄到「动作与数字」，可完整版里动作与数字恰恰占面积最大
+     ——顶栏大按钮、发送键、预算环全是绿，一屏扫过去仍是微信绿（用户四次
+     反馈「还有绿」）。所以这次不做减法，直接换色：--green 一族整族转墨，
+     194 处引用一次到位；配套 --green-soft 是琥珀纸洗、--green-ink 是深琥珀，
+     合起来就是「墨 + 奶油 + 琥珀」的手账三色。 */
+  --green: #2E2113;
+  --green-dark: #17100A;
+  --green-deep: #0E0906;
+  --green-ink: #6B4E1E;
+  --green-soft: #FBEFD1;
+  /* 数据强调色（预算环、柱状、日历今日、图例点）：墨是「结构与动作」，
+     数据不能也用墨，否则环和按钮一样重。手账里标数字的是荧光笔，所以走琥珀。 */
+  --chart-acc: #E08A12;
+
+  /* 简洁版 token 换血（--sp-green 同步转墨，否则分段按钮选中态又冒绿） */
+  --sp-green: #2E2113;
+  --sp-green-dark: #17100A;
+  --sp-bg: #FBEEDA;
+  --sp-card: #FFFDF6;
+  --sp-text: #2E2113;
+  --sp-sub: #8A7355;
+  --sp-line: #2E2113;      /* 描边即结构：分隔线也走实墨 */
+  --sp-radius: 18px;
+  --sp-shadow: 0 3px 0 var(--st-shadow);
+  --sp-shadow-float: 0 6px 0 var(--st-shadow);
+  --brand-wash: #FFE9AE;
+  --sp-q-wash: #FFEFCF;
+}
+
+/* ---- 纸底：奶油渐变 + 圆点网点（只作用于简洁版外壳） ---- */
+html[data-skin="sticker"] body[data-ui-mode="simple"],
+html[data-skin="sticker"] body[data-ui-mode="simple"] .simple-shell {
+  background-color: #FBEEDA;
+  background-image: radial-gradient(rgba(176, 138, 88, 0.20) 1.2px, transparent 1.3px);
+  background-size: 14px 14px;
+  background-position: 0 0;
+}
+html[data-skin="sticker"] body[data-ui-mode="simple"] .simple-shell {
+  box-shadow: 0 0 0 1px rgba(46, 33, 19, 0.18);
+}
+/* 顶栏不铺底色，让纸纹透上来（原样式给的是不透明 --sp-bg） */
+html[data-skin="sticker"] .sp-top { background: transparent; }
+html[data-skin="sticker"] .sp-top h2 {
+  font-size: 21px; font-weight: 900; letter-spacing: -0.4px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+html[data-skin="sticker"] .sp-hi p { color: var(--st-ink-2); font-weight: 600; }
+
+/* 「我」按钮：从绿圆改成贴在页角的方贴纸 */
+html[data-skin="sticker"] .sp-me {
+  background: var(--st-paper); color: var(--st-ink);
+  border: 2.5px solid var(--st-ink); border-radius: 14px;
+  box-shadow: 0 3px 0 var(--st-shadow); font-weight: 900;
+  transform: rotate(-3deg);
+}
+
+/* ---- Hero：琥珀黄贴纸，虚线圆环装饰改虚线（更像手账贴纸边） ---- */
+html[data-skin="sticker"] .sp-hero {
+  background: linear-gradient(150deg, #FFE9A8 0%, #FFD86B 100%);
+  border: 3px solid var(--st-ink);
+  border-radius: 22px;
+  color: var(--st-ink);
+  box-shadow: 0 6px 0 #E2B45F, 0 12px 20px rgba(150, 110, 50, 0.14);
+}
+html[data-skin="sticker"] .sp-hero::before {
+  border: 4px dashed rgba(46, 33, 19, 0.20);
+  width: 112px; height: 112px; right: -32px; top: -38px;
+}
+html[data-skin="sticker"] .sp-hero-num {
+  font-weight: 900; letter-spacing: -1px; color: var(--st-ink);
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.45);
+}
+html[data-skin="sticker"] .sp-hero-sub { opacity: 1; color: #6B4A1E; font-weight: 600; }
+html[data-skin="sticker"] .sp-hero-btn {
+  background: var(--st-solid); color: var(--st-on-solid);
+  border: 2.5px solid var(--st-solid); border-radius: 14px;
+  box-shadow: 0 4px 0 #7A5B33; font-weight: 900;
+}
+/* 记账成功的脉冲改成「贴纸弹一下」的琥珀光晕 */
+@keyframes stHeroPulse {
+  0%   { box-shadow: 0 6px 0 #E2B45F, 0 12px 20px rgba(150, 110, 50, 0.14); }
+  35%  { box-shadow: 0 6px 0 #E2B45F, 0 0 0 6px rgba(255, 206, 58, 0.35); }
+  100% { box-shadow: 0 6px 0 #E2B45F, 0 12px 20px rgba(150, 110, 50, 0.14); }
+}
+html[data-skin="sticker"] .sp-hero.pulse { animation: stHeroPulse 0.9s ease; }
+
+/* ---- 统一贴纸卡：实墨描边 + 硬投影 + 纸白底 ---- */
+html[data-skin="sticker"] .sp-act-btn,
+html[data-skin="sticker"] .sp-g,
+html[data-skin="sticker"] .sp-q,
+html[data-skin="sticker"] .sp-bill,
+html[data-skin="sticker"] .sp-month-sum > div,
+html[data-skin="sticker"] .sp-stats3 > div,
+html[data-skin="sticker"] .sp-blockbtn,
+html[data-skin="sticker"] .sp-pcard,
+html[data-skin="sticker"] .sp-pstats > div,
+html[data-skin="sticker"] .sp-uicard,
+html[data-skin="sticker"] .sp-menu,
+html[data-skin="sticker"] .sp-wishcard,
+html[data-skin="sticker"] .sp-forecast,
+html[data-skin="sticker"] .sp-diag {
+  border: 2px solid var(--st-ink);
+  border-radius: var(--sp-radius);
+  background: var(--st-paper);
+  box-shadow: 0 3px 0 var(--st-shadow);
+}
+/* 四宫格/快捷分类的小卡投影收一档，避免 4 张卡叠起来重心过重 */
+html[data-skin="sticker"] .sp-g,
+html[data-skin="sticker"] .sp-q { box-shadow: 0 2.5px 0 var(--st-shadow); }
+html[data-skin="sticker"] .sp-g { font-weight: 800; }
+html[data-skin="sticker"] .sp-q { font-weight: 700; }
+
+/* 图标容器：一律「纸黄底 + 墨线边」的贴纸小方块 */
+html[data-skin="sticker"] .sp-g-ico,
+html[data-skin="sticker"] .sp-q-ico,
+html[data-skin="sticker"] .sp-bill-ico {
+  background: #FFEFCF;
+  border: 2px solid var(--st-ink);
+  border-radius: 12px;
+}
+html[data-skin="sticker"] .sp-g-ico { color: var(--st-ink); }
+html[data-skin="sticker"] .sp-act-btn .sp-act-ico { color: var(--st-ink); stroke-width: 2.2; }
+
+/* 小节标题：字重拉满，副标题退成手账批注色 */
+html[data-skin="sticker"] .sp-sec { font-weight: 900; letter-spacing: -0.2px; }
+html[data-skin="sticker"] .sp-sec-sub { color: var(--st-ink-2); font-weight: 600; }
+
+/* AI 对话记账卡：贴纸白卡 + 墨色方块图标（图标换成琥珀） */
+html[data-skin="sticker"] .sp-ai {
+  background: var(--st-paper);
+  border: 2.5px solid var(--st-ink);
+  border-radius: var(--sp-radius);
+  box-shadow: 0 4px 0 var(--st-shadow);
+}
+html[data-skin="sticker"] .sp-ai-ico {
+  background: var(--st-solid);
+  box-shadow: none;
+  border-radius: 12px;
+}
+html[data-skin="sticker"] .sp-ai-ico svg { color: var(--st-amber); stroke: var(--st-amber); }
+html[data-skin="sticker"] .sp-ai-main b { font-weight: 900; }
+html[data-skin="sticker"] .sp-ai-go { color: var(--st-ink); font-weight: 900; }
+
+/* 二级分段（流水 / 预算）：药丸贴纸，选中就是「墨色印章」 */
+html[data-skin="sticker"] .sp-subseg {
+  background: var(--st-paper);
+  border: 2px solid var(--st-ink);
+  box-shadow: 0 3px 0 var(--st-shadow);
+}
+html[data-skin="sticker"] .sp-subseg-btn { font-weight: 800; color: var(--st-ink-2); }
+html[data-skin="sticker"] .sp-subseg-btn.active {
+  background: var(--st-solid); color: var(--st-on-solid); font-weight: 900;
+}
+
+/* 明细：月份切换与统计卡 */
+html[data-skin="sticker"] .sp-mnav {
+  background: var(--st-paper); color: var(--st-ink);
+  border: 2px solid var(--st-ink); box-shadow: 0 2.5px 0 var(--st-shadow);
+  font-weight: 900;
+}
+html[data-skin="sticker"] .sp-month span { font-weight: 900; letter-spacing: -0.2px; }
+html[data-skin="sticker"] .sp-month-sum b { font-weight: 900; letter-spacing: -0.5px; }
+html[data-skin="sticker"] .sp-bill-main b { font-weight: 800; }
+html[data-skin="sticker"] .sp-bill-amt { font-weight: 900; }
+html[data-skin="sticker"] .sp-scope { color: var(--st-ink-2); }
+
+/* 预算环：轨道走奶油，进度条走苔绿（值来自 --sp-green） */
+html[data-skin="sticker"] .sp-ring-track { stroke: var(--st-cream); }
+html[data-skin="sticker"] .sp-ring-center b { font-weight: 900; letter-spacing: -1px; }
+html[data-skin="sticker"] .sp-cb-bar { background: var(--st-cream); }
+html[data-skin="sticker"] .sp-cb-bar i { border-radius: 3px; }
+html[data-skin="sticker"] .sp-stats3 b { font-weight: 900; }
+
+/* 我的：菜单分隔线改成浅奶油（整段墨线会像表格）；
+   菜单图标统一收成墨色手绘线条，不跟品牌绿打架 */
+html[data-skin="sticker"] .sp-menu li + li { border-top-color: #EFDCBB; }
+html[data-skin="sticker"] .sp-menu .mi { color: var(--st-ink); }
+html[data-skin="sticker"] .sp-pava {
+  background: var(--st-amber); color: var(--st-ink);
+  border: 2.5px solid var(--st-ink); font-weight: 900;
+}
+
+/* 底部 Tab：纸白条 + 墨线上沿，选中项压一条琥珀短横 */
+html[data-skin="sticker"] #tabbarSimple {
+  background: var(--st-paper);
+  border-top: 2.5px solid var(--st-ink);
+  box-shadow: 0 -3px 0 var(--st-shadow);
+}
+html[data-skin="sticker"] #tabbarSimple .tab { color: var(--st-ink-2); font-weight: 700; }
+html[data-skin="sticker"] #tabbarSimple .tab.active { color: var(--st-ink); font-weight: 900; }
+html[data-skin="sticker"] #tabbarSimple .tab.active .t-ico { color: var(--st-ink); }
+html[data-skin="sticker"] #tabbarSimple .tab.active::after {
+  background: var(--st-yellow); height: 4px; border-radius: 2px; width: 16px;
+}
+
+/* 省钱助手内页签（.atab 是全局类，这里只换皮不改结构）。
+   ⚠ 必须带上 #saveHubSheet .analysis-tabs 这条 id 链：简洁版原有
+   body[data-ui-mode="simple"] #saveHubSheet .analysis-tabs .atab 是 (1,3,2)，
+   只写 html[data-skin="sticker"] .atab 会被它压回去（实测选中态仍是绿底）。 */
+html[data-skin="sticker"] #saveHubSheet .analysis-tabs .atab {
+  background: var(--st-paper); color: var(--st-ink);
+  border: 2px solid var(--st-ink); border-radius: 999px;
+  font-weight: 800; box-shadow: 0 2px 0 var(--st-shadow);
+}
+html[data-skin="sticker"] #saveHubSheet .analysis-tabs .atab.active {
+  background: var(--st-solid); border-color: var(--st-solid); color: var(--st-on-solid);
+}
+
+/* 弹层（记一笔 / 省钱助手 / 设置）：整块像一张撕下来的大贴纸 */
+html[data-skin="sticker"] .sheet {
+  background: var(--st-paper);
+  border: 2.5px solid var(--st-ink);
+  border-radius: 22px;
+  box-shadow: 0 8px 0 rgba(46, 33, 19, 0.22);
+  overflow: hidden;
+}
+html[data-skin="sticker"] .sheet-head,
+html[data-skin="sticker"] .sheet-foot {
+  background: var(--st-paper-warm);
+  border-color: var(--st-ink);
+}
+html[data-skin="sticker"] .sheet-head h3,
+html[data-skin="sticker"] .sheet-title { font-weight: 900; }
+
+/* ---- 通用组件（弹层 / 表单 / 按钮）：这批类全站共用，
+   贴纸皮肤下统一换成「墨线 + 硬投影」，完整版弹层也一起跟上 ---- */
+html[data-skin="sticker"] .modal {
+  background: var(--st-paper);
+  border: 2.5px solid var(--st-ink);
+  border-radius: 22px;
+  box-shadow: 0 8px 0 rgba(46, 33, 19, 0.22);
+}
+html[data-skin="sticker"] .modal h3,
+html[data-skin="sticker"] .modal h4 { font-weight: 900; letter-spacing: -0.2px; }
+
+/* 支出 / 收入分段器：墨线药丸轨道，选中 = 墨色印章 + 琥珀字 */
+html[data-skin="sticker"] .modal-seg {
+  background: var(--st-paper-warm);
+  border: 2px solid var(--st-ink);
+  border-radius: 999px;
+  padding: 4px;
+}
+html[data-skin="sticker"] .modal-seg .seg-btn {
+  border-radius: 999px; font-weight: 800; color: var(--st-ink-2);
+}
+html[data-skin="sticker"] .modal-seg .seg-btn.is-on {
+  background: var(--st-solid); color: var(--st-on-solid); font-weight: 900;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* 输入框 / 分类触发器 / 单选卡 */
+html[data-skin="sticker"] .field input,
+html[data-skin="sticker"] .field select,
+html[data-skin="sticker"] .field textarea,
+html[data-skin="sticker"] .catpick,
+html[data-skin="sticker"] .radio-item {
+  background: var(--st-paper);
+  border: 2px solid var(--st-ink);
+  border-radius: 12px;
+}
+html[data-skin="sticker"] .field input:focus,
+html[data-skin="sticker"] .field select:focus,
+html[data-skin="sticker"] .field textarea:focus {
+  border-color: var(--st-ink);
+  box-shadow: 0 0 0 4px rgba(255, 206, 58, 0.55);
+  background: var(--st-paper);
+}
+html[data-skin="sticker"] .radio-item { font-weight: 700; }
+
+/* 主按钮：墨色实心 + 琥珀字；次按钮：纸白 + 墨线，都被压成「贴纸按钮」 */
+html[data-skin="sticker"] .btn-ok,
+html[data-skin="sticker"] .btn-primary {
+  background: var(--st-solid); color: var(--st-on-solid);
+  border: 2px solid var(--st-solid);
+  font-weight: 900; box-shadow: 0 3px 0 rgba(46, 33, 19, 0.28);
+}
+html[data-skin="sticker"] .btn-ok:hover,
+html[data-skin="sticker"] .btn-primary:hover { background: #1F1610; }
+html[data-skin="sticker"] .btn-cancel,
+html[data-skin="sticker"] .btn-mini {
+  background: var(--st-paper); color: var(--st-ink);
+  border: 2px solid var(--st-ink); font-weight: 800;
+  box-shadow: 0 2px 0 var(--st-shadow);
+}
+html[data-skin="sticker"] .btn-cancel:hover,
+html[data-skin="sticker"] .btn-mini:hover { background: var(--st-paper-warm); }
+html[data-skin="sticker"] .btn-mini.primary { background: var(--st-solid); color: var(--st-on-solid); }
+html[data-skin="sticker"] .btn-mini.danger {
+  background: #FFE1D6; color: #B23A22; border-color: var(--st-ink);
+}
+html[data-skin="sticker"] .modal-actions button { border-radius: 12px; }
+
+/* 省钱助手页内的券卡 / 药丸 / 标签：跟着贴纸语言走一层（子结构不动） */
+html[data-skin="sticker"] #saveHubSheet .card,
+html[data-skin="sticker"] .deal-item {
+  background: var(--st-paper);
+  border: 2px solid var(--st-ink);
+  border-radius: 14px;
+  box-shadow: 0 2.5px 0 var(--st-shadow);
+}
+html[data-skin="sticker"] .deals-pill,
+html[data-skin="sticker"] .di-tag {
+  border: 1.5px solid var(--st-ink);
+  background: var(--st-paper-warm);
+  color: var(--st-ink);
+  font-weight: 700;
+}
+html[data-skin="sticker"] .di-head b,
+html[data-skin="sticker"] .deals-card-head,
+html[data-skin="sticker"] .deals-sec { font-weight: 800; }
+
+/* ---- 暗色：夜间贴纸（奶油线 + 深木纸底） ---- */
+[data-theme="dark"][data-skin="sticker"] {
+  --st-ink: #F0DDBE;
+  --st-ink-2: #C0A582;
+  --st-solid: #120C06;
+  --st-on-solid: #FFD86B;
+  --st-paper: #33261A;
+  --st-paper-warm: #3B2C1F;
+  --st-cream: #4A3826;
+  --st-shadow: #1A1208;
+  /* 夜间主色：不是绿的「暗色版」，是换了一张亮黄贴纸。
+     深木底上墨块按钮会消失，所以主色取 --st-yellow 系；
+     配 --st-on-solid 的墨字，浅色版「墨底黄字」→ 暗色版「黄底墨字」，同一套语汇。 */
+  --green: #FFCE3A;
+  --green-dark: #FFC01A;
+  --green-deep: #F0B300;
+  --green-ink: #E8C98A;
+  --green-soft: rgba(255, 216, 107, 0.13);
+  --chart-acc: #FFCE3A;
+  --sp-green: #FFCE3A;
+  --sp-green-dark: #FFC01A;
+  --sp-bg: #241A11;
+  --sp-card: #33261A;
+  --sp-text: #F7EAD6;
+  --sp-sub: #BFA382;
+  --sp-line: #F0DDBE;
+  --brand-wash: #4A3826;
+  --sp-q-wash: #3F2F1F;
+  /* 深色全局还有一批「抬升面」用 --raise（预算预测块、排行 hover、分析瓷砖…），
+     它是冷调 #232C3B，落在深木纸底上会闪出一块蓝。贴纸皮肤统一改成暖木色。 */
+  --raise: #33261A;
+  --line-2: #33261A;
+}
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="simple"],
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="simple"] .simple-shell {
+  background-color: #241A11;
+  background-image: radial-gradient(rgba(240, 221, 190, 0.10) 1.2px, transparent 1.3px);
+}
+/* 黄贴纸上的字必须回到深墨，否则暗色下对比度崩掉 */
+[data-theme="dark"][data-skin="sticker"] .sp-hero,
+[data-theme="dark"][data-skin="sticker"] .sp-hero-num,
+[data-theme="dark"][data-skin="sticker"] .sp-hero-sub { color: #2E2113; }
+[data-theme="dark"][data-skin="sticker"] .sp-hero-sub { color: #6B4A1E; }
+[data-theme="dark"][data-skin="sticker"] .sp-g-ico,
+[data-theme="dark"][data-skin="sticker"] .sp-q-ico,
+[data-theme="dark"][data-skin="sticker"] .sp-bill-ico { background: #3F2F1F; }
+[data-theme="dark"][data-skin="sticker"] .sp-menu li + li { border-top-color: #4A3826; }
+/* 暗色弹层里的字段标签/说明文字：默认 --text-2/--text-3 压在深木纸上偏灰，
+   提亮到手账批注色，保证「金额（¥）」这类字段名读得清 */
+[data-theme="dark"][data-skin="sticker"] .modal p,
+[data-theme="dark"][data-skin="sticker"] .modal .field > span,
+[data-theme="dark"][data-skin="sticker"] .modal .field > label { color: #C8AE8C; }
+[data-theme="dark"][data-skin="sticker"] .sp-ai-main small { color: var(--st-ink-2); }
+[data-theme="dark"][data-skin="sticker"] .sp-top h2 { text-shadow: none; }
+
+/* ==================================================================
    智能体思考卡（Agent 轨迹）
    对话里每一次「大模型规划 → 调用本地工具 → 回复」都会留下这张卡：
    折叠头是身份与步数，展开后是它想过什么（thought）和真做了哪几步
@@ -14056,6 +14452,1052 @@ body[data-view="dazai"] .panel-dazai {
   .chat-head .chat-help { display: none; }
   .chip { height: 30px; padding: 0 11px; font-size: 12px; }
 }
+
+/* ==================================================================
+   设置 · 配色主题：色卡 + 画面演示
+   ------------------------------------------------------------------
+   「选皮肤」从三个文字按钮升级成「先看见再选」：
+   · 上面三张色卡 = 该主题的 底色 / 卡片 / 主色 / 描边风格；
+   · 下面两台迷你机 = 同一主题在「简洁版（整页换肤）」与
+     「完整版（仅换主色）」上各自真实的样子 —— 直接回答「为什么
+     完整版看着没变」，不用再靠文字解释。
+   token 统一用 --t- 前缀，只服务这块预览，不影响真实界面；
+   右边那台机用 --t-f* 一套独立 token，才能如实画出「只换主色」。
+   ================================================================== */
+.skin-row { align-items: flex-start; }
+.skin-row > .set-ico { margin-top: 2px; }
+
+/* ---- 三张色卡 ---- */
+.skin-pick {
+  flex: 1 0 100%;
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.skin-opt {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  /* 宽屏（完整版 sheet 最宽 860）不让色卡横向拉成长条 */
+  max-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.skin-opt input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skin-sw {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 60px;
+  padding: 7px 8px;
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--t-bg);
+  border: var(--t-bdw) solid var(--t-line);
+  transition: box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.skin-sw .sw-top {
+  display: block;
+  height: 21px;
+  border-radius: 5px;
+  background: var(--t-hero);
+  border: var(--t-bdw) solid var(--t-line);
+  box-shadow: var(--t-shadow);
+}
+
+.skin-sw .sw-row {
+  display: block;
+  height: 8px;
+  border-radius: 3px;
+  background: var(--t-card);
+  border: var(--t-bdw) solid var(--t-line);
+}
+
+.skin-sw .sw-row--s { width: 64%; }
+
+.skin-sw .sw-dot {
+  position: absolute;
+  right: 8px;
+  /* 圆点要和「最后一条短横线」垂直居中：sw 高 60 / 内边距 7 / 行高 8 / 间距 4
+     → 行中线距底 12px，12px 的点自然落在 bottom:6px。
+     原来写 8px，圆点整体高 2px，贴纸账本 1.5px 墨线时正好啃到上一行的下边。 */
+  bottom: 6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--t-acc);
+  border: var(--t-bdw) solid var(--t-line);
+}
+
+/* 贴纸色卡的小横线在 8px 高度里用 1.5px 墨线太满，会把「色条」画成「线框」；
+   缩到 1px 并改成半调墨色，小尺寸下仍读得出描边手感。 */
+.skin-sw--sticker .sw-row {
+  border-width: 1px;
+  border-color: #C7A87B;
+}
+
+/* 选中：描边换成该主题主色 + 右上角打勾（不靠背景色，三套主题都能读） */
+.skin-opt input:checked + .skin-sw {
+  border-color: var(--t-acc);
+  box-shadow: 0 0 0 2px var(--t-acc), var(--t-shadow);
+}
+
+.skin-opt input:checked + .skin-sw::after {
+  content: "✓";
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--t-acc);
+  color: #FFFFFF;
+  font-size: 9.5px;
+  line-height: 15px;
+  font-weight: 900;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.skin-nm {
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-3);
+  transition: color 0.16s ease;
+}
+
+.skin-opt input:checked ~ .skin-nm {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* ---- 主题 token ---- */
+.skin-sw--app,
+#setSkinDemo[data-demo="app"] {
+  --t-bg: #F2F5F8;
+  --t-card: #FFFFFF;
+  --t-line: #E3E8EF;
+  --t-bar: #DFE5EC;
+  --t-text: #101828;
+  --t-acc: #07C160;
+  --t-hero: linear-gradient(135deg, #0BAE58, #07C160);
+  --t-hero-tx: #FFFFFF;
+  --t-bdw: 1px;
+  --t-shadow: none;
+  --t-fbg: #F2F5F8;
+  --t-fline: #E3E8EF;
+  --t-fshadow: none;
+}
+
+.skin-sw--academy,
+#setSkinDemo[data-demo="academy"] {
+  --t-bg: #F1F2FB;
+  --t-card: #FFFFFF;
+  --t-line: #E3E3F5;
+  --t-bar: #DEDEEC;
+  --t-text: #1E1B4B;
+  --t-acc: #4F46E5;
+  --t-hero: linear-gradient(135deg, #6366F1, #4F46E5);
+  --t-hero-tx: #FFFFFF;
+  --t-bdw: 1px;
+  --t-shadow: none;
+  --t-fbg: #F1F2FB;
+  --t-fline: #E3E3F5;
+  --t-fshadow: none;
+}
+
+.skin-sw--sticker,
+#setSkinDemo[data-demo="sticker"] {
+  --t-bg: #FBEEDA;
+  --t-card: #FFFDF6;
+  --t-line: #2E2113;
+  --t-bar: #E5D3B4;
+  --t-text: #2E2113;
+  --t-acc: #2E2113;      /* 色卡上的小圆点和强调条：贴纸皮肤里它是墨，不是绿 */
+  --t-hero: #FFD86B;
+  --t-hero-tx: #2E2113;
+  --t-bdw: 1.5px;
+  --t-shadow: 0 2px 0 #E5C59A;
+  /* 完整版那台：纸底跟着完整版的真实取值，别在预览里画成一块冷灰 */
+  --t-fbg: #F6EFE0;
+  --t-fline: #E4D3B6;
+  --t-fshadow: 0 2px 0 rgba(213, 181, 138, 0.45);
+}
+
+/* ---- 画面演示 ---- */
+.skin-demo {
+  flex: 1 0 100%;
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: #F7F8FA;
+  border: 1px solid var(--line);
+}
+
+[data-theme="dark"] .skin-demo {
+  background: var(--raise);
+}
+
+.sd-cap {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 9px;
+}
+
+.sd-cap b {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.sd-cap span {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.sd-stage {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  /* 靠左：宽屏 sheet 里两台机器跟在色卡下面，不要飘到面板中间 */
+  justify-content: flex-start;
+}
+
+.sd-item {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 148px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-item figcaption {
+  font-size: 10.5px;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+
+.sd-phone {
+  width: 100%;
+  max-width: 126px;
+  height: 150px;
+  padding: 8px;
+  border-radius: 13px;
+  overflow: hidden;
+  background: var(--t-bg);
+  border: var(--t-bdw) solid var(--t-line);
+  box-shadow: var(--t-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 简洁版：黄色/渐变 Hero + 两条流水 + 底部页签 */
+.sd-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 8px 8px;
+  border-radius: 9px;
+  background: var(--t-hero);
+  border: var(--t-bdw) solid var(--t-line);
+  box-shadow: var(--t-shadow);
+  color: var(--t-hero-tx);
+}
+
+.sd-hero span {
+  font-size: 7.5px;
+  line-height: 1.2;
+  opacity: 0.82;
+}
+
+.sd-hero b {
+  font-size: 15px;
+  line-height: 1.1;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sd-line .sd-dot {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border-radius: 3.5px;
+  background: var(--t-card);
+  border: var(--t-bdw) solid var(--t-line);
+}
+
+.sd-line span {
+  flex: 1 1 auto;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--t-bar);
+}
+
+.sd-line span.sd-s { flex: 0 0 46%; }
+
+.sd-line b {
+  flex: 0 0 auto;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--t-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-tabbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 0 3px;
+}
+
+.sd-tabbar i {
+  width: 13px;
+  height: 3.5px;
+  border-radius: 2px;
+  background: var(--t-bar);
+}
+
+.sd-tabbar i.on {
+  width: 16px;
+  background: var(--t-acc);
+}
+
+/* 完整版：左对话流 / 右数据卡 —— 用 --t-f* 画，如实呈现「只换主色」 */
+.sd-phone--full {
+  flex-direction: row;
+  gap: 5px;
+  padding: 7px 6px;
+  background: var(--t-fbg);
+  border-color: var(--t-fline);
+  box-shadow: var(--t-fshadow);
+}
+
+.sd-fchat {
+  flex: 1.08;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.sd-bub {
+  position: relative;
+  height: 12px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--t-card);
+  border: 1px solid var(--t-fline);
+}
+
+/* 气泡里放两条骨架线，才读得出「这是一段对话」而不是三个空盒子 */
+.sd-bub::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  width: 54%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--t-bar);
+}
+
+.sd-bub--tall { height: 30px; }
+
+.sd-bub--tall::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 10px;
+  width: 36%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--t-bar);
+}
+
+.sd-bub--ai {
+  width: 82%;
+  height: 20px;
+}
+
+.sd-fside {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-fcard {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 5px;
+  border-radius: 5px;
+  background: var(--t-card);
+  border: 1px solid var(--t-fline);
+}
+
+.sd-fcard span {
+  display: block;
+  height: 3.5px;
+  border-radius: 2px;
+  background: var(--t-bar);
+}
+
+.sd-fcard span.sd-s { width: 58%; }
+
+.sd-fcard b {
+  font-size: 9.5px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--t-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-fbtn {
+  flex: 0 0 auto;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--t-acc);
+  opacity: 0.9;
+}
+
+/* 字号放大档位：色卡名与说明跟着走，预览机器不缩放（保持比例好看） */
+body.font-scale-lg .skin-nm { font-size: 12.5px; }
+body.font-scale-xl .skin-nm { font-size: 13.5px; }
+body.font-scale-lg .sd-cap span { font-size: 11.5px; }
+body.font-scale-xl .sd-cap span { font-size: 12.5px; }
+
+/* ---- 设置面板也要在皮肤里：纸白卡 + 暖描边，别在奶油底上压一排冷灰控件 ---- */
+html[data-skin="sticker"] .set-card {
+  background: #FFFDF6;
+  border: 1.5px solid #E7D7BB;
+}
+
+html[data-skin="sticker"] .set-row {
+  border-bottom-color: #F1E4CF;
+}
+
+html[data-skin="sticker"] .set-seg .seg-item span {
+  background: #F7EDDC;
+  color: #8A7355;
+}
+
+html[data-skin="sticker"] .set-seg .seg-item input:checked + span {
+  background: #FBEFD1;
+  color: #2E2113;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 1.5px #2E2113;
+}
+
+[data-theme="dark"][data-skin="sticker"] .set-card {
+  background: #241A10;
+  border-color: #4A3826;
+}
+
+[data-theme="dark"][data-skin="sticker"] .set-row {
+  border-bottom-color: #3A2C1C;
+}
+
+[data-theme="dark"][data-skin="sticker"] .set-seg .seg-item span {
+  background: #2E2213;
+  color: #C0A582;
+}
+
+[data-theme="dark"][data-skin="sticker"] .set-seg .seg-item input:checked + span {
+  background: #3A2B15;
+  color: #FFE9A8;
+  box-shadow: inset 0 0 0 1.5px #F0DDBE;
+}
+
+/* ---- 画面演示的暗色版：预览必须跟着当前明暗走，否则深色用户看到的
+      仍是奶油草稿，和真实界面对不上 ---- */
+[data-theme="dark"] #setSkinDemo[data-demo="app"] {
+  --t-bg: #161A1F;
+  --t-card: #1E232B;
+  --t-line: #2C333D;
+  --t-bar: #333C47;
+  --t-text: #E7ECF2;
+  --t-hero: linear-gradient(135deg, #0B8A4C, #07A855);
+  --t-fbg: #161A1F;
+  --t-fline: #2C333D;
+}
+
+[data-theme="dark"] #setSkinDemo[data-demo="academy"] {
+  --t-bg: #17162A;
+  --t-card: #201F36;
+  --t-line: #302E4C;
+  --t-bar: #393656;
+  --t-text: #E8E6FB;
+  --t-hero: linear-gradient(135deg, #4C46C8, #4338CA);
+  --t-fbg: #17162A;
+  --t-fline: #302E4C;
+}
+
+[data-theme="dark"] #setSkinDemo[data-demo="sticker"] {
+  --t-bg: #1E150C;
+  --t-card: #2A1E12;
+  --t-line: #F0DDBE;
+  --t-bar: #5C4630;
+  --t-text: #F5E7CE;
+  --t-acc: #FFCE3A;
+  --t-hero: #FFD86B;
+  --t-hero-tx: #2E2113;
+  --t-shadow: 0 2px 0 #120C06;
+  --t-fbg: #241A10;
+  --t-fline: #4A3826;
+}
+
+[data-theme="dark"][data-skin="sticker"] .skin-demo {
+  background: #241A10;
+  border-color: #4A3826;
+}
+
+/* 贴纸皮肤下的演示底板用暖纸色，别在奶油卡里留一块冷灰 */
+html[data-skin="sticker"] .skin-demo {
+  background: #F7EEDC;
+  border-color: #E7D7BB;
+}
+
+/* ==================================================================
+   贴纸皮肤 · 收尾三处「没改到的绿」
+   1) 分类小方块：JS 已不再吐内联底，这里把纸黄底补齐（内联撤退了得有人接手）
+   2) 宠物建议气泡：白底 + 微信绿描边 → 纸白 + 墨线 + 硬投影
+   ================================================================== */
+html[data-skin="sticker"] .catpick-tile,
+html[data-skin="sticker"] .catpick-val {
+  background: #FFEFCF;
+  border: 1.5px solid var(--st-ink);
+}
+
+/* 22px 的分析小方块太小，扛不住描边，只换底 */
+html[data-skin="sticker"] .ana-cat-ico,
+html[data-skin="sticker"] .rank-row .rank-ico,
+html[data-skin="sticker"] .top-item .rank-ico {
+  background: #FFEFCF;
+}
+
+/* 分类图标在贴纸里统一走墨线稿：小方块已经是「纸黄 + 墨线」的贴纸，
+   图标再上分类彩色就满屏糖果色，餐饮那口绿尤其像回潮的微信绿。
+   注意只收图标，不收饼图/图例/排行条——那几处靠颜色分区，必须保留分类色。
+   （.cat-ico.cat-ico 是刻意的：.rank-row .rank-ico .cat-ico 是 (0,3,0)，
+    单写 .cat-ico 会被它压住，重复类名把权重抬到 (0,3,1)。） */
+html[data-skin="sticker"] .cat-ico.cat-ico {
+  color: var(--st-ink);
+}
+
+[data-theme="dark"][data-skin="sticker"] .cat-ico.cat-ico {
+  color: #F0DDBE;
+}
+
+/* 分类下拉的按钮本体还是冷灰 #F7F8FA + 微信绿聚焦环，夹在奶油弹层里像块玻璃 */
+html[data-skin="sticker"] .catpick-btn {
+  background: #FFF9EC;
+  border: 1.5px solid #E4D3B6;
+}
+
+html[data-skin="sticker"] .catpick-btn:hover {
+  background: #FFFDF6;
+  border-color: #C7A87B;
+}
+
+html[data-skin="sticker"] .catpick.open .catpick-btn,
+html[data-skin="sticker"] .catpick-btn:focus-visible {
+  background: #FFFDF6;
+  border-color: var(--st-ink);
+  box-shadow: 0 0 0 3px rgba(224, 138, 18, 0.22);
+}
+
+[data-theme="dark"][data-skin="sticker"] .catpick-btn {
+  background: #2A1E12;
+  border-color: #4A3826;
+}
+
+[data-theme="dark"][data-skin="sticker"] .catpick.open .catpick-btn,
+[data-theme="dark"][data-skin="sticker"] .catpick-btn:focus-visible {
+  background: #33261A;
+  border-color: #F0DDBE;
+  box-shadow: 0 0 0 3px rgba(255, 206, 58, 0.18);
+}
+
+html[data-skin="sticker"] .aj-pet-bubble {
+  background: #FFFDF6;
+  color: #2E2113;
+  border: 2px solid var(--st-ink);
+  border-radius: 14px;
+  box-shadow: 0 3px 0 var(--st-shadow);
+}
+
+[data-theme="dark"][data-skin="sticker"] .catpick-tile,
+[data-theme="dark"][data-skin="sticker"] .catpick-val {
+  background: #3F2F1F;
+  border-color: #F0DDBE;
+}
+
+[data-theme="dark"][data-skin="sticker"] .ana-cat-ico,
+[data-theme="dark"][data-skin="sticker"] .rank-row .rank-ico,
+[data-theme="dark"][data-skin="sticker"] .top-item .rank-ico {
+  background: #3F2F1F;
+}
+
+[data-theme="dark"][data-skin="sticker"] .aj-pet-bubble {
+  background: #241A10;
+  color: #F5E7CE;
+  border-color: #F0DDBE;
+  box-shadow: 0 3px 0 #120C06;
+}
+
+/* ==================================================================
+   贴纸账本 · 完整版「克制的贴纸语言」
+   色卡上承诺的是奶油纸 + 墨线，完整版却只剩主色变苔绿，
+   用户会觉得这套皮肤没换上。这里只做三件事，不上重墨：
+     1) 纸底 + 纸白卡片 + 暖色发丝线（1px，不用简洁版那种 2px 实墨）
+     2) 硬投影只留在纸片外层，像贴纸落在桌面上的短影
+     3) 顶栏 / 预算条 / 气泡 / 输入框换成同一张纸，别让冷灰混进奶油底
+   ================================================================== */
+html[data-skin="sticker"] body[data-ui-mode="full"] {
+  --app-bg: #F6EFE0;
+  --bg: #F6EFE0;
+  --canvas: #F6EFE0;
+  --card: #FFFDF6;
+  --line: #E4D3B6;
+  --line-2: #F1E5D2;
+  --text: #2E2113;
+  --text-2: #7A5F3F;
+  --text-3: #8A7355;
+  --shadow: 0 2px 0 rgba(213, 181, 138, 0.55);
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"],
+html[data-skin="sticker"] body[data-ui-mode="full"] .app {
+  background-color: #F6EFE0;
+  background-image: radial-gradient(rgba(176, 138, 88, 0.12) 1.1px, transparent 1.2px);
+  background-size: 17px 17px;
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] .topbar {
+  background: #FFFDF6;
+  border-bottom: 1.5px solid #E4D3B6;
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] .budget-bar {
+  background: #FFF8EA;
+  border-bottom: 1.5px solid #E4D3B6;
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] .panel-chat,
+html[data-skin="sticker"] body[data-ui-mode="full"] .card {
+  border: 1px solid #E7D7BB;
+  box-shadow: 0 2px 0 rgba(213, 181, 138, 0.45);
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] .bubble.ai {
+  background: #FFFDF6;
+  border-color: #E9DBC4;
+  box-shadow: none;
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] #chatInput {
+  background: #FFF9EC;
+  border-color: #E4D3B6;
+  color: #2E2113;
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] #chatInput::placeholder {
+  color: #A98F6B;
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] #chatInput:focus {
+  background: #FFFDF6;
+  border-color: var(--st-ink);
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] .btn-mic {
+  background: #F6EAD5;
+  color: #7A5F3F;
+}
+
+/* 快捷短语胶囊：默认是冷灰 #F2F4F7，落在奶油底上像贴了块塑料 */
+html[data-skin="sticker"] body[data-ui-mode="full"] .chip {
+  background: #F6EAD5;
+  color: #7A5F3F;
+}
+
+html[data-skin="sticker"] body[data-ui-mode="full"] .chip:hover {
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+/* 暗色：夜间纸（深木底 + 奶油线），完整版同步，避免半边亮半边暗 */
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] {
+  --app-bg: #1A1209;
+  --bg: #1A1209;
+  --canvas: #1A1209;
+  --card: #241A10;
+  --line: #4A3826;
+  --line-2: #33261A;
+  --text: #F5E7CE;
+  --text-2: #C0A582;
+  --text-3: #A98F6B;
+  --shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"],
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] .app {
+  background-color: #1A1209;
+  background-image: radial-gradient(rgba(240, 221, 190, 0.07) 1.1px, transparent 1.2px);
+}
+
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] .topbar,
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] .budget-bar {
+  background: #241A10;
+  border-bottom-color: #4A3826;
+}
+
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] .panel-chat,
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] .card {
+  border-color: #4A3826;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] .bubble.ai {
+  background: #2A1E12;
+  border-color: #4A3826;
+}
+
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] #chatInput {
+  background: #2A1E12;
+  border-color: #4A3826;
+  color: #F5E7CE;
+}
+
+[data-theme="dark"][data-skin="sticker"] body[data-ui-mode="full"] .btn-mic {
+  background: #33261A;
+  color: #C0A582;
+}
+
+/* ==================================================================
+   贴纸账本 · 把品牌绿从「装饰位」撤走
+   绿只该出现在动作（主按钮 / 选中态）和数字上。一旦它落在 logo、
+   头像圈、提示气泡这类「外框」上，整屏读起来还是微信绿——
+   用户连着三次说「还有绿」，根子就在这儿，不在绿本身。
+   附带：--green-soft 已换成琥珀纸洗，浅绿块全站消失。
+   —— 第四轮补记：动作位也是绿的，而且面积最大（顶栏 CTA、发送键、
+   预算环）。所以 token 层已把 --green 整族转墨，下面只处理
+   「实心块上的文字色」这类 token 管不到的地方。
+   ================================================================== */
+
+/* 实心主按钮：墨底 + 琥珀字（暗色反过来，黄贴纸 + 墨字）。
+   白字压在墨底上不算错，但没了手账味；压在暗色的黄底上则直接糊。 */
+html[data-skin="sticker"] .btn-send,
+html[data-skin="sticker"] .btn-primary,
+html[data-skin="sticker"] .btn-ok,
+html[data-skin="sticker"] .btn-mini.primary,
+html[data-skin="sticker"] .btn-quick-add,
+html[data-skin="sticker"] .bubble.me {
+  color: var(--st-on-solid);
+}
+
+/* 夜间主色是亮黄，凡是「--green 底 + 白字」的实心控件都会糊成一片：
+   这里把全站这类选择器一次列全（含 hover / 选中态 / 弹层按钮），
+   字色统一压成墨。浅色版是墨底，白字本来就够清楚，只改这 6 个最常用的。 */
+[data-theme="dark"][data-skin="sticker"] .btn-send,
+[data-theme="dark"][data-skin="sticker"] .btn-primary,
+[data-theme="dark"][data-skin="sticker"] .btn-ok,
+[data-theme="dark"][data-skin="sticker"] .btn-mini.primary,
+[data-theme="dark"][data-skin="sticker"] .btn-quick-add,
+[data-theme="dark"][data-skin="sticker"] .bubble.me,
+[data-theme="dark"][data-skin="sticker"] .btn-filter.active,
+[data-theme="dark"][data-skin="sticker"] .bf-qcap.on,
+[data-theme="dark"][data-skin="sticker"] .bf-cap.on,
+[data-theme="dark"][data-skin="sticker"] .catpick-check,
+[data-theme="dark"][data-skin="sticker"] .chip-reco:hover,
+[data-theme="dark"][data-skin="sticker"] .chip.coach-chip:hover,
+[data-theme="dark"][data-skin="sticker"] .gb-actions .btn-mini,
+[data-theme="dark"][data-skin="sticker"] .rs-go,
+[data-theme="dark"][data-skin="sticker"] .rs-badge,
+[data-theme="dark"][data-skin="sticker"] .rs-nb-retry,
+[data-theme="dark"][data-skin="sticker"] .rs-pgnum.on,
+[data-theme="dark"][data-skin="sticker"] .sv-chip.active,
+[data-theme="dark"][data-skin="sticker"] .piggy-btn.primary,
+[data-theme="dark"][data-skin="sticker"] .mascot-bar-go:hover,
+[data-theme="dark"][data-skin="sticker"] .pet-pick-ok,
+[data-theme="dark"][data-skin="sticker"] .dz-btn.primary,
+[data-theme="dark"][data-skin="sticker"] .ag-ok,
+[data-theme="dark"][data-skin="sticker"] .choice-btn:hover,
+[data-theme="dark"][data-skin="sticker"] .choice-btn.picked,
+[data-theme="dark"][data-skin="sticker"] .persona-opt:hover .persona-opt-letter {
+  color: #241A10;
+}
+
+/* 预算环：环轨是冷灰 #EEF1F4，落在奶油底上像铅笔印 */
+html[data-skin="sticker"] .ring-track {
+  stroke: #E9DBC4;
+}
+
+[data-theme="dark"][data-skin="sticker"] .ring-track {
+  stroke: #3A2B18;
+}
+
+/* 录音中的绿呼吸态 / 目标进度条的绿渐变（两处硬编码，token 管不到） */
+html[data-skin="sticker"] .btn-mic.listening {
+  color: var(--st-ink);
+  background: var(--st-yellow);
+}
+
+html[data-skin="sticker"] .goal-bar i {
+  background: linear-gradient(90deg, #FFD86B, #FFCE3A);
+}
+
+[data-theme="dark"][data-skin="sticker"] .goal-bar i {
+  background: linear-gradient(90deg, #FFD86B, #E8A81A);
+}
+
+/* --green 转墨之后，「收入 / 正数」会和正文墨撞色，收支就没法一眼分开。
+   贴纸里标另一头的是荧光笔：收入走深琥珀，支出仍是墨，超支仍红。 */
+html[data-skin="sticker"] .sp-bill-amt.inc,
+html[data-skin="sticker"] .pos {
+  color: #A8630A;
+}
+
+[data-theme="dark"][data-skin="sticker"] .sp-bill-amt.inc,
+[data-theme="dark"][data-skin="sticker"] .pos {
+  color: #FFCE3A;
+}
+
+/* 宠物脚下的情绪光晕是径向绿光，落在奶油纸上像一盏绿色地灯。
+   .aj-pet.mood-* 那组是 (0,3,0)，这里必须带上 .aj-pet 才压得住。 */
+html[data-skin="sticker"] .aj-pet .aj-pet-halo {
+  background: radial-gradient(ellipse at 50% 50%,
+    rgba(224, 138, 18, 0.30), rgba(224, 138, 18, 0.10) 52%, rgba(224, 138, 18, 0) 74%);
+}
+
+[data-theme="dark"][data-skin="sticker"] .aj-pet .aj-pet-halo {
+  background: radial-gradient(ellipse at 50% 50%,
+    rgba(255, 206, 58, 0.26), rgba(255, 206, 58, 0.09) 52%, rgba(255, 206, 58, 0) 74%);
+}
+
+html[data-skin="sticker"] .logo {
+  background: linear-gradient(135deg, #43301A, #2E2113);
+  color: #FFCE3A;
+  box-shadow: 0 3px 0 #E5C59A;
+}
+
+html[data-skin="sticker"] .avatar.ai {
+  background: #FFF4DF;
+  color: var(--st-ink);
+}
+
+/* 吉祥物旁的白底绿框气泡（两处：完整版 mascot-bubble、省钱页 pm-mascot-bubble） */
+html[data-skin="sticker"] .mascot-bubble,
+html[data-skin="sticker"] .pm-mascot-bubble {
+  background: var(--st-paper);
+  color: var(--st-ink);
+  border-color: var(--st-ink);
+  box-shadow: 0 3px 0 var(--st-shadow);
+}
+
+/* 「存钱罐」弹层的绿色渐变头，在手账里应该是黄贴纸 */
+html[data-skin="sticker"] .piggy-hero {
+  background: linear-gradient(135deg, #FFD86B, #FFC53A);
+  color: var(--st-ink);
+}
+
+html[data-skin="sticker"] .piggy-hero .piggy-hero-amt,
+html[data-skin="sticker"] .piggy-hero b {
+  color: var(--st-ink);
+}
+
+[data-theme="dark"][data-skin="sticker"] .logo {
+  background: linear-gradient(135deg, #33261A, #120C06);
+  color: #FFD86B;
+  box-shadow: 0 3px 0 #120C06;
+}
+
+[data-theme="dark"][data-skin="sticker"] .avatar.ai {
+  background: var(--st-paper-warm);
+  color: var(--st-ink);
+}
+
+[data-theme="dark"][data-skin="sticker"] .mascot-bubble,
+[data-theme="dark"][data-skin="sticker"] .pm-mascot-bubble {
+  background: var(--st-paper);
+  color: #F5E7CE;
+  border-color: var(--st-ink);
+  box-shadow: 0 3px 0 #120C06;
+}
+
+[data-theme="dark"][data-skin="sticker"] .piggy-hero {
+  background: linear-gradient(135deg, #4A3826, #3A2B15);
+  color: #FFD86B;
+}
+
+[data-theme="dark"][data-skin="sticker"] .piggy-hero .piggy-hero-amt,
+[data-theme="dark"][data-skin="sticker"] .piggy-hero b {
+  color: #FFD86B;
+}
+
+/* 色卡：贴纸账本的选中环用墨色，不用它的绿主色。
+   三张卡并排时，绿环会让第三张看起来和第一张「同一档」，
+   读者就以为这套皮肤还是绿的；墨环+黄贴纸才说得清它是手账。 */
+.skin-sw--sticker {
+  --t-ring: #2E2113;
+}
+
+.skin-opt input:checked + .skin-sw--sticker {
+  border-color: var(--t-ring);
+  box-shadow: 0 0 0 2px var(--t-ring), var(--t-shadow);
+}
+
+.skin-opt input:checked + .skin-sw--sticker::after {
+  background: var(--t-ring);
+  color: #FFCE3A;
+}
+
+/* 贴纸色卡的小圆点缩到 9px：只作「强调色是苔绿」的一点提示，
+   不参与整体印象（12px 时它是卡上第二大的色块）。 */
+.skin-sw--sticker .sw-dot {
+  width: 9px;
+  height: 9px;
+  /* 与最后一条横线严格同轴：行占距底 7~15，中线 11；9px 点底 = 11 - 4.5 */
+  bottom: 6.5px;
+  right: 9px;
+}
+
+[data-theme="dark"] .skin-sw--sticker {
+  --t-ring: #F0DDBE;
+}
+
+[data-theme="dark"] .skin-opt input:checked + .skin-sw--sticker::after {
+  color: #2E2113;
+}
+
+/* 线性图标默认吃 var(--green)（.ico/.mi/.set-ico 那组通用规则），
+   完整版顶栏 6 个图标 + 设置页整列图标因此全是苔绿——远看仍是一片绿。
+   手账里图标是「标注」不是「动作」，收成墨棕；只有「记一笔」是绿 CTA。 */
+html[data-skin="sticker"] .topbar-actions button:not(.btn-quick-add) .ico {
+  color: var(--st-ink-2);
+}
+
+html[data-skin="sticker"] .topbar-actions button:not(.btn-quick-add):hover .ico {
+  color: var(--st-ink);
+}
+
+html[data-skin="sticker"] .set-ico {
+  color: var(--st-ink);
+}
+
+html[data-skin="sticker"] .title-ico {
+  color: var(--st-ink);
+}
+
+html[data-skin="sticker"] .di-ico {
+  color: var(--st-ink);
+}
+
+[data-theme="dark"][data-skin="sticker"] .topbar-actions button:not(.btn-quick-add) .ico,
+[data-theme="dark"][data-skin="sticker"] .set-ico,
+[data-theme="dark"][data-skin="sticker"] .title-ico,
+[data-theme="dark"][data-skin="sticker"] .di-ico {
+  color: #C0A582;
+}
+
+[data-theme="dark"][data-skin="sticker"] .topbar-actions button:not(.btn-quick-add):hover .ico {
+  color: #F0DDBE;
+}
+
+/* 「看看我做什么」这条引导胶囊：底色已经跟 --green-soft 变暖了，
+   但它自己的 dashed 边框写死 var(--green)，于是变成「琥珀纸 + 绿虚线框」，
+   是完整版里最后一处显眼的绿线。改成墨虚线。 */
+html[data-skin="sticker"] .msg-guide {
+  border-color: var(--st-ink);
+  background: var(--st-paper-warm);
+  color: var(--st-ink);
+}
+
+[data-theme="dark"][data-skin="sticker"] .msg-guide {
+  border-color: #F0DDBE;
+  background: var(--st-paper-warm);
+  color: #F5E7CE;
+}
+
+/* 「琥珀底 + 深绿字」是最难看的一种组合：底色暖了、字还冷着。
+   起因是 .badge 默认 background: var(--green-soft) / color: var(--green-dark)，
+   wash 跟着贴纸变琥珀，文字却没跟上。这里把默认 badge 的字改成深琥珀墨，
+   再把 warn / danger / state-tight / state-danger 的语义色显式补回来
+   （它们不是绿，不能被这条规则吃掉）。 */
+html[data-skin="sticker"] .badge {
+  color: var(--st-ink-2);
+}
+
+html[data-skin="sticker"] .badge.badge-soft,
+html[data-skin="sticker"] .badge.state-muted {
+  color: var(--st-ink-2);
+}
+
+html[data-skin="sticker"] .badge.state-safe {
+  color: var(--st-ink-2);
+}
+
+html[data-skin="sticker"] .badge.warn {
+  color: #B8641A;
+}
+
+html[data-skin="sticker"] .badge.state-tight {
+  color: #9A6A12;
+}
+
+html[data-skin="sticker"] .badge.danger {
+  color: #B0322F;
+}
+
+html[data-skin="sticker"] .badge.state-danger {
+  color: #B0322F;
+}
+
+html[data-skin="sticker"] .brand-tag {
+  color: var(--st-ink-2);
+}
+
+[data-theme="dark"][data-skin="sticker"] .badge,
+[data-theme="dark"][data-skin="sticker"] .badge.badge-soft,
+[data-theme="dark"][data-skin="sticker"] .badge.state-muted,
+[data-theme="dark"][data-skin="sticker"] .badge.state-safe,
+[data-theme="dark"][data-skin="sticker"] .brand-tag {
+  color: #E8C98A;
+}
+
+[data-theme="dark"][data-skin="sticker"] .badge.warn { color: #F0B365; }
+[data-theme="dark"][data-skin="sticker"] .badge.state-tight { color: #E0B24E; }
+[data-theme="dark"][data-skin="sticker"] .badge.danger,
+[data-theme="dark"][data-skin="sticker"] .badge.state-danger { color: #F08A86; }
 </style>
 <script>
 /* 防闪：在 CSS/JS 加载前先按存档的配色主题预置 data-skin，避免先绿后紫的闪烁 */
@@ -14940,12 +16382,55 @@ body[data-view="dazai"] .panel-dazai {
               <label class="seg-item"><input type="radio" name="setUiMode" value="full" checked /><span>完整版</span></label>
             </div>
           </div>
-          <div class="set-row set-row-col">
+          <div class="set-row set-row-col skin-row">
             <svg class="set-ico"><use href="#i-cap"/></svg>
-            <span class="set-main"><b>配色主题</b><small>记账同款微信绿，或学习台紫</small></span>
-            <div class="set-seg" id="setSkinSeg">
-              <label class="seg-item"><input type="radio" name="setSkin" value="app" checked /><span>记账同款</span></label>
-              <label class="seg-item"><input type="radio" name="setSkin" value="academy" /><span>学习台紫</span></label>
+            <span class="set-main"><b>配色主题</b><small>三套配色随时换，点开下面能直接看效果</small></span>
+            <div class="skin-pick" id="setSkinSeg">
+              <label class="skin-opt">
+                <input type="radio" name="setSkin" value="app" checked />
+                <span class="skin-sw skin-sw--app"><i class="sw-top"></i><i class="sw-row"></i><i class="sw-row sw-row--s"></i><i class="sw-dot"></i></span>
+                <span class="skin-nm">记账同款</span>
+              </label>
+              <label class="skin-opt">
+                <input type="radio" name="setSkin" value="academy" />
+                <span class="skin-sw skin-sw--academy"><i class="sw-top"></i><i class="sw-row"></i><i class="sw-row sw-row--s"></i><i class="sw-dot"></i></span>
+                <span class="skin-nm">学习台紫</span>
+              </label>
+              <label class="skin-opt">
+                <input type="radio" name="setSkin" value="sticker" />
+                <span class="skin-sw skin-sw--sticker"><i class="sw-top"></i><i class="sw-row"></i><i class="sw-row sw-row--s"></i><i class="sw-dot"></i></span>
+                <span class="skin-nm">贴纸账本</span>
+              </label>
+            </div>
+            <!-- 画面演示：左简洁版整页换肤、右完整版只换主色，选哪套就让哪套现形 -->
+            <div class="skin-demo" id="setSkinDemo" data-demo="app">
+              <div class="sd-cap"><b>画面演示</b><span>左：简洁版整套换肤 · 右：完整版同一张纸（描边更轻、只换皮不换结构）</span></div>
+              <div class="sd-stage">
+                <figure class="sd-item">
+                  <div class="sd-phone">
+                    <div class="sd-hero"><span>剩余预算</span><b>¥1,762</b></div>
+                    <div class="sd-line"><i class="sd-dot"></i><span></span><b>18</b></div>
+                    <div class="sd-line"><i class="sd-dot"></i><span class="sd-s"></span><b>25</b></div>
+                    <div class="sd-tabbar"><i></i><i></i><i class="on"></i><i></i></div>
+                  </div>
+                  <figcaption>简洁版</figcaption>
+                </figure>
+                <figure class="sd-item">
+                  <div class="sd-phone sd-phone--full">
+                    <div class="sd-fchat">
+                      <div class="sd-bub"></div>
+                      <div class="sd-bub sd-bub--tall"></div>
+                      <div class="sd-bub sd-bub--ai"></div>
+                    </div>
+                    <div class="sd-fside">
+                      <div class="sd-fcard"><span></span><b>1,762</b></div>
+                      <div class="sd-fcard"><span class="sd-s"></span><b>238</b></div>
+                      <div class="sd-fbtn"></div>
+                    </div>
+                  </div>
+                  <figcaption>完整版</figcaption>
+                </figure>
+              </div>
             </div>
           </div>
           <div class="set-sub">两种类型共用同一套账单数据，切换即时生效、互不丢失。</div>
@@ -14985,7 +16470,7 @@ body[data-view="dazai"] .panel-dazai {
           <div class="set-row set-row-col">
             <svg class="set-ico"><use href="#i-piggy"/></svg>
             <span class="set-main"><b>宠物形象</b><small>阿账播报预算心情；精灵存钱动画分四档；小管家可自定义形象、养小猪拿成就</small></span>
-            <div class="set-seg" id="setSkinSeg">
+            <div class="set-seg" id="setPetSkinSeg">
               <label class="seg-item"><input type="radio" name="setPetSkin" value="azhang" checked /><span>阿账</span></label>
               <label class="seg-item"><input type="radio" name="setPetSkin" value="sprite" /><span>存钱罐精灵</span></label>
               <label class="seg-item"><input type="radio" name="setPetSkin" value="pro" /><span>记账小管家</span></label>
@@ -15150,9 +16635,13 @@ body[data-view="dazai"] .panel-dazai {
           <div class="drawer-actions">
             <button class="btn-mini" id="btnDrawerExport" type="button">导出 CSV</button>
             <button class="btn-mini" id="btnDrawerImport" type="button">导入账单</button>
-            <button class="btn-mini danger" id="btnDrawerReset" type="button">重置演示数据</button>
           </div>
-          <p class="drawer-note">账本数据只保存在本机浏览器；导出 CSV 可用于备份或在「账单分析」中重新导入。重置会清空当前演示数据，不可恢复。</p>
+          <div class="set-sub">初始数据</div>
+          <div class="drawer-actions">
+            <button class="btn-mini" id="btnDrawerReset" type="button">载入演示数据</button>
+            <button class="btn-mini danger" id="btnBlankData" type="button">清空为空白数据</button>
+          </div>
+          <p class="drawer-note">账本数据只保存在本机浏览器；导出 CSV 可用于备份或在「账单分析」中重新导入。「载入演示数据」灌入一套 14 笔样例账单，方便直接体验分析与期末预测；「清空为空白数据」删掉全部账单、收入与目标，从第一笔记起。两者都会清空存钱罐、心愿单与省钱记录，且不可恢复。</p>
         </div>
       </section>
 
@@ -28969,7 +30458,8 @@ body[data-view="dazai"] .panel-dazai {
 })(typeof window !== 'undefined' ? window : this);
 </script>
   <!-- 心愿单（冷静期清单）：独立存储键 ai_jizhang_wishlist_v1，不动主账本 -->
-<script>/**
+<script>
+/**
  * diagnose.js — 消费诊断规则集 + 周期末预测（纯函数，零存储、零文案）
  *
  * 定位：只回答「这个周期哪里花得不对」和「照这个节奏到期末会怎样」，
@@ -29036,6 +30526,9 @@ body[data-view="dazai"] .panel-dazai {
    *           level:string, dailyAvg:number}}
    *   level: over（已确定超支） / tight（结余不到两天的日均） / safe
    */
+  /** 期末预测所需的最少样本天数：周期刚开始就外推会把 1 天支出当成整月节奏 */
+  var MIN_FORECAST_DAYS = 3;
+
   function forecast(o) {
     var src = o || {};
     var spent = Math.max(0, round2(src.spent));
@@ -29045,6 +30538,20 @@ body[data-view="dazai"] .panel-dazai {
     var remainingDays = Math.max(0, Math.round(num(src.remainingDays)));
 
     var dailyAvg = round2(spent / passedDays);
+
+    /* 2026-11-01：样本不足时不出结论。此前周期第 1 天会把当天支出原样外推 30 天，
+       出现「预算 2000、期末超支 39369」这种明显失真的数字。 */
+    if (Math.round(num(src.passedDays)) < MIN_FORECAST_DAYS) {
+      return {
+        projected: 0,
+        remainingAtEnd: total,
+        overBudgetBy: 0,
+        level: 'sample',
+        dailyAvg: dailyAvg,
+        passedDays: passedDays
+      };
+    }
+
     var projected = round2(spent + dailyAvg * remainingDays);
     var remainingAtEnd = round2(total - projected);
     var overBudgetBy = total > 0 ? round2(Math.max(0, projected - total)) : 0;
@@ -44356,19 +45863,47 @@ var SAVE_VIDS=[
     return n;
   }
 
+  /** 贴纸皮肤的「纸胶带色板」：只覆盖原色板里那几个真绿（餐饮/外卖/蔬菜/买菜）。
+      分类占比条、饼图、图例点、流水小圆点都走 categoryColor，所以一处映射就够。
+      不动青蓝系（交通/话费/水费）——它们本来就偏冷蓝，不读成微信绿；
+      也不动橙紫红，那些是分类之间唯一的区分手段，一改就分不清了。 */
+  var STICKER_CAT_COLOR = {
+    '餐饮': '#B8862E',
+    '外卖': '#C77C3C',
+    '蔬菜': '#92A03C',
+    '买菜': '#AFA452'
+  };
+
   function categoryColor(key) {
+    if (getSettings().skin === 'sticker' && STICKER_CAT_COLOR[key]) {
+      return STICKER_CAT_COLOR[key];
+    }
     return DATA.getCategoryColor(key);
   }
 
   /** 分类"深墨色"：淡底方块里的图标描边色，与 categoryColor 同色系但更深 */
+  var STICKER_CAT_INK = {
+    '餐饮': '#7A5312',
+    '外卖': '#8A4A16',
+    '蔬菜': '#59631C',
+    '买菜': '#6B6424'
+  };
+
   function categoryInk(key) {
+    if (getSettings().skin === 'sticker' && STICKER_CAT_INK[key]) {
+      return STICKER_CAT_INK[key];
+    }
     return DATA.getCategoryInk(key);
   }
 
   /** 淡底小方块的内联样式：底色用 12% 淡色，图标色用深墨色（对比度 ≥4.5:1） */
   function spCatTileStyle(key) {
-    return '--sc:' + categoryColor(key) + ';--sc-ink:' + categoryInk(key) +
-      ';background:' + categoryColor(key) + '1f';
+    var base = '--sc:' + categoryColor(key) + ';--sc-ink:' + categoryInk(key);
+    /* 贴纸皮肤：分类小方块的底由皮肤层统一画成「纸黄 + 墨线」小贴纸，
+       这里不能再吐内联 background —— 内联优先级压得过皮肤类，
+       流水行里那颗方块就会一直是薄荷绿（用户截图反馈的「颜色没改」就是它）。 */
+    if (getSettings().skin === 'sticker') { return base; }
+    return base + ';background:' + categoryColor(key) + '1f';
   }
 
   /* ================================================================== */
@@ -44482,8 +46017,9 @@ var SAVE_VIDS=[
         skin: (s.mascot && (s.mascot.skin === 'azhang' || s.mascot.skin === 'sprite' ||
           s.mascot.skin === 'pro')) ? s.mascot.skin : null
       },
-      // 界面风格：记账同款（微信绿）/ 学习台紫
-      skin: (s.skin === 'academy') ? 'academy' : 'app',
+      // 界面风格：记账同款（微信绿）/ 学习台紫 / 贴纸账本（手账贴纸风）
+      // ⚠ 同样是白名单：新增皮肤必须加进来，否则持久化时被兜底成 'app'
+      skin: (s.skin === 'academy' || s.skin === 'sticker') ? s.skin : 'app',
       // 互动反馈（音效 + 震动）：三个形象共用一套声效，实际开关同步给 AJ.sfx
       fx: !(s.fx === false)
     };
@@ -44544,7 +46080,11 @@ var SAVE_VIDS=[
       var d = new Date(today.getTime());
       d.setDate(d.getDate() - seed.offset);
       var ds = ENG.formatDate(d);
-      if (ds < cycle.start) { ds = cycle.start; }
+      /* 2026-11-01：此前把超出本周期的种子一律改写成 cycle.start，周期第一天打开
+         会把 14 笔全部压到「今天」（今日已花 = 整月支出），期末预测再按单日外推，
+         就出现「预算 2000、超支 39369」这种离谱数字。
+         正确做法：**保留原始日期**——早于本周期起点的账单天然属于上一周期，
+         计入历史与明细，但不会被算进本周期的支出，无需挪日期、也无需丢弃。 */
       bills.push({
         id: 'seed_b' + i,
         date: ds,
@@ -44562,21 +46102,23 @@ var SAVE_VIDS=[
     var di = new Date(today.getTime());
     di.setDate(di.getDate() - inc.offset);
     var dis = ENG.formatDate(di);
-    if (dis < cycle.start) { dis = cycle.start; }
-    bills.push({
-      id: 'seed_income',
-      date: dis,
-      amount: ENG.round2(inc.amount),
-      category: DATA.INCOME_CATEGORY,
-      note: inc.note,
-      motivation: inc.motivation,
-      want: false,
-      type: 'income',
-      source: inc.source || '生活费',
-      askedCycle: true,
-      imported: false,
-      createdAt: di.getTime() + 900000
-    });
+    /* 同账单口径：保留原始日期。上一周期的生活费留在上一周期，不会被算成本周期收入 */
+    if (dis) {
+      bills.push({
+        id: 'seed_income',
+        date: dis,
+        amount: ENG.round2(inc.amount),
+        category: DATA.INCOME_CATEGORY,
+        note: inc.note,
+        motivation: inc.motivation,
+        want: false,
+        type: 'income',
+        source: inc.source || '生活费',
+        askedCycle: true,
+        imported: false,
+        createdAt: di.getTime() + 900000
+      });
+    }
 
     var goals = [];
     for (i = 0; i < DATA.DEFAULT_GOALS.length; i++) {
@@ -44600,6 +46142,28 @@ var SAVE_VIDS=[
       uiModePicked: false,
       settings: normalizeSettings(null)
     };
+  }
+
+  /**
+   * 空白账本（2026-11-01）：结构与种子一致，但没有任何账单 / 收入 / 目标，
+   * 用于「我自己从头记」的场景。预算保留默认值，设置项不动。
+   */
+  function blankState() {
+    var s = seedState();
+    s.bills = [];
+    s.goals = [];
+    s.savedMoney = 0;
+    s.blockedCount = 0;
+    /* 空白 = 连预算都还没设，而不是「预算 2000 一分没花」。
+       否则顶部一直显示「剩余预算 ¥2,000·日均 ¥66.67」，用户会以为没清干净。
+       预算属于「设置」，去「设置 · 预算」里填即可。 */
+    s.budget = {
+      total: 0,
+      payday: s.budget.payday,
+      cooldownThreshold: s.budget.cooldownThreshold,
+      cycleStart: ''
+    };
+    return s;
   }
 
   function loadState() {
@@ -46575,7 +48139,10 @@ var SAVE_VIDS=[
     var bs = ov.budgetState;
     var total = state.budget.total;
     var ratio = total > 0 ? Math.max(0, Math.min(1, bs.remaining / total)) : 0;
-    var label = bs.isOver ? '已超支' : (bs.status === 'tight' ? '紧张' : '安全');
+    /* 没设预算时不该显示「安全」——0 预算谈不上安全，明确写「未设置」 */
+    var label = total > 0
+      ? (bs.isOver ? '已超支' : (bs.status === 'tight' ? '紧张' : '安全'))
+      : '未设置';
 
     /* 方案 B3 警示色降噪：期末预测已判「会超支」（红色块在场）时，
        「紧张」降级为灰底描边的次级状态 —— 同屏只保留最重一级语义色。
@@ -46587,7 +48154,7 @@ var SAVE_VIDS=[
         muted = !!(fd && fd.level === 'over');
       } catch (e) { /* 预测模块缺失时保持原样 */ }
     }
-    var stateCls = muted ? 'state-muted' : bs.status;
+    var stateCls = (total <= 0 || muted) ? 'state-muted' : bs.status;
 
     bar.className = 'budget-bar ' + stateCls;
     $('bbAmount').textContent = money(bs.remaining);
@@ -46734,7 +48301,9 @@ var SAVE_VIDS=[
       var key = DATA.CATEGORIES[i].key;
       var value = ENG.round2(byCategory[key] || 0);
       if (value > 0) {
-        slices.push({ key: key, value: value, color: DATA.CATEGORIES[i].color });
+        /* 走 categoryColor 而不是直读 data.js：贴纸皮肤会把餐饮那几个真绿
+           换成纸胶带暖色，直读的话饼图和图例会漏掉这次映射。 */
+        slices.push({ key: key, value: value, color: categoryColor(key) });
       }
     }
     slices.sort(function (a, b) { return b.value - a.value; });
@@ -47335,8 +48904,12 @@ var SAVE_VIDS=[
       var cat = inc ? '收入' : b.category;
       var title = inc ? (b.source || b.note || '收入') : (b.note || b.category);
       var time = spTimeOf(b);
+      /* 收入的分类方块：贴纸皮肤下走琥珀墨，否则流水里会冒出薄荷绿图标 */
+      var incStyle = (getSettings().skin === 'sticker')
+        ? '--sc:#E08A12;--sc-ink:#8A5A0A'
+        : ('--sc:#07C160;--sc-ink:#047A3E;background:#07C1601f');
       html += '<li class="sp-bill">' +
-        '<span class="sp-bill-ico" style="' + (inc ? ('--sc:#07C160;--sc-ink:#047A3E;background:#07C1601f') : spCatTileStyle(b.category)) + '">' + spCatIcon(cat) + '</span>' +
+        '<span class="sp-bill-ico" style="' + (inc ? incStyle : spCatTileStyle(b.category)) + '">' + spCatIcon(cat) + '</span>' +
         '<span class="sp-bill-main"><b>' + esc(title) + '</b><small>' +
         (time ? esc(time) + ' · ' : '') + esc(cat) + '</small></span>' +
         '<span class="sp-bill-amt' + (inc ? ' inc' : '') + '">' + (inc ? '+' : '-') + money(b.amount) + '</span>' +
@@ -48710,6 +50283,14 @@ var SAVE_VIDS=[
     if (total <= 0) { box.hidden = true; return; }   // 没设总预算时预测没有意义
     box.hidden = false;
     var f = forecastData(ov);
+    /* 样本不足（周期头几天）：不给结论，避免「预算 2000 / 超支 3.9 万」式失真 */
+    if (f.level === 'sample') {
+      box.innerHTML =
+        '<div class="fk-label">期末预测</div>' +
+        '<div class="fk-value">先记几天</div>' +
+        '<div class="fk-note">本周期才过 ' + (f.passedDays || 1) + ' 天，样本太少；记满 3 天再看预测才可信。</div>';
+      return;
+    }
     var over = f.level === 'over';
     var line = over
       ? (toneLine('forecast.over', { amount: money(f.overBudgetBy) }) ||
@@ -48732,6 +50313,12 @@ var SAVE_VIDS=[
     if (total <= 0) { box.hidden = true; return; }
     box.hidden = false;
     var f = forecastData(ov);
+    /* 同上：样本不足时不给「超支/结余」结论 */
+    if (f.level === 'sample') {
+      box.innerHTML = '期末预测 <b>先记几天</b> <small>本周期才过 ' + (f.passedDays || 1) +
+        ' 天，记满 3 天再看预测才可信</small>';
+      return;
+    }
     var over = f.level === 'over';
     var line = over
       ? (toneLine('forecast.over', { amount: money(f.overBudgetBy) }) ||
@@ -49964,44 +51551,72 @@ var SAVE_VIDS=[
     if (input) { input.focus(); }
   }
 
+  /**
+   * 把账本切到给定的初始状态，并清掉所有「随账本衍生」的本地键。
+   * 抽出来是因为现在有两种初始数据：演示数据（seedState）与空白数据（blankState），
+   * 两者清理口径必须完全一致，否则会出现「换了数据但省钱记录还在」这类残留。
+   */
+  function applyFreshLedger(nextState) {
+    state = nextState;
+    highlightCategory = null;
+    undoStack = [];
+    saveState();
+    /* 存钱罐跟着一起清空：否则账面余额仍被罐子占着，用户会以为没清干净 */
+    PIGGY.reset();
+    piggyCheer = null;
+    piggyError = '';
+    /* 心愿单：旧清单会指向一套已经不存在的账 */
+    if (WISH && !WISH.missing) { WISH.reset(); }
+    wishTab = 'cooling';
+    /* 消费性格测试：报告里的证据数字来自旧账，已失真 */
+    personaRecord = null;
+    personaLoaded = true;
+    /* 其余散落的存储键按 storageKeys().data 兜底清一遍；主账本刚由 saveState() 写入，跳过 */
+    var resetKeys = storageKeys().data;
+    for (var rk = 0; rk < resetKeys.length; rk++) {
+      if (resetKeys[rk] === STORAGE_KEY) { continue; }
+      try { global.localStorage.removeItem(resetKeys[rk]); } catch (eR) { /* 隐私模式忽略 */ }
+    }
+    /* 省钱记录的内存副本一并归零，否则刷新前仍显示旧统计 */
+    savingsDb = { v: 1, logs: [], updatedAt: 0 };
+    /* 聊天记录里还挂着引用旧账本的气泡（「本周期已花 ¥1,334.50…」），
+       换账本后必须清掉，否则右栏已是空白、左边还在说有钱，看起来像没清干净。 */
+    var chatEl = chatListEl();
+    if (chatEl) { chatEl.innerHTML = ''; }
+    /* 设置面板若正开着，输入框里还是旧预算 / 旧发钱日；不重绘的话，
+       用户接着点「保存并重算」就会把刚清掉的预算又写回去。 */
+    if (typeof renderSettingsPage === 'function') { renderSettingsPage(); }
+  }
+
+  /** 清空为空白账本（不灌演示数据） */
+  function confirmBlankData() {
+    var box = openModal('' +
+      '<h4>清空为空白数据？</h4>' +
+      '<p>会删除当前所有账单、收入与目标，回到「什么都没记」的状态；预算与设置保留。此操作不可撤销，建议先导出 CSV 备份。</p>' +
+      '<div class="modal-actions">' +
+      '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
+      '<button type="button" class="btn-danger" data-act="blank-ok">确认清空</button>' +
+      '</div>');
+    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
+    box.querySelector('[data-act="blank-ok"]').addEventListener('click', function () {
+      applyFreshLedger(blankState());
+      closeModal();
+      renderAll();
+      addAIMessage(aiBubble('已经清空成空白账本了，你可以从第一笔记起。'));
+    });
+  }
+
   function confirmReset() {
     var box = openModal('' +
-      '<h4>重置演示数据？</h4>' +
-      '<p>会清空当前所有账单、目标与成就，并重新灌入一套演示数据。此操作不可撤销。</p>' +
+      '<h4>载入演示数据？</h4>' +
+      '<p>会清空当前所有账单、收入与目标，并重新灌入一套 14 笔的演示账单（含一笔生活费收入）。此操作不可撤销，建议先导出 CSV 备份。</p>' +
       '<div class="modal-actions">' +
       '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
       '<button type="button" class="btn-danger" data-act="reset-ok">确认重置</button>' +
       '</div>');
     box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
     box.querySelector('[data-act="reset-ok"]').addEventListener('click', function () {
-      state = seedState();
-      highlightCategory = null;
-      undoStack = [];
-      saveState();
-      /* 存钱罐跟着一起清空：否则重置后账面余额仍被罐子占着，用户会以为没重置干净。
-         只清罐子自己的键，不动其它任何存储。 */
-      PIGGY.reset();
-      piggyCheer = null;
-      piggyError = '';
-      /* 心愿单同理：重置后旧清单会指向一套已经不存在的账，一并清空；
-         只清自己的键（ai_jizhang_wishlist_v1），不碰主账本。 */
-      if (WISH && !WISH.missing) { WISH.reset(); }
-      wishTab = 'cooling';
-      /* 消费性格测试同理：报告里的证据数字来自旧账，重置后已失真，
-         清掉自己的键（ai_jizhang_persona_v1）回到「未开始」状态。 */
-      personaRecord = null;
-      personaLoaded = true;
-      /* 其余散落的存储键统一按 storageKeys().data 兜底清一遍（2026-10-30）：
-         此前只清了上面四处（主账本 / 存钱罐 / 心愿单 / 性格测试），漏了省钱记录、
-         意见反馈、搭子引导标记 —— 表现是「重置后省下的钱还在」。主账本刚由
-         saveState() 写入种子，跳过。 */
-      var resetKeys = storageKeys().data;
-      for (var rk = 0; rk < resetKeys.length; rk++) {
-        if (resetKeys[rk] === STORAGE_KEY) { continue; }
-        try { global.localStorage.removeItem(resetKeys[rk]); } catch (eR) { /* 隐私模式忽略 */ }
-      }
-      /* 省钱记录的内存副本一并归零，否则界面到刷新前仍显示旧统计 */
-      savingsDb = { v: 1, logs: [], updatedAt: 0 };
+      applyFreshLedger(seedState());
       closeModal();
       renderAll();
       addAIMessage(aiBubble('演示数据已经重置好了，账单、目标、成就都回到了初始状态。'));
@@ -50145,7 +51760,11 @@ var SAVE_VIDS=[
   /** 把主题与字体档位应用到 <html data-theme> / body class 上 */
   function applyAppearance() {
     var root = DOC.documentElement;
-    if (root) { root.setAttribute('data-theme', resolveTheme()); root.setAttribute('data-skin', getSettings().skin === 'academy' ? 'academy' : 'app'); }
+    if (root) {
+      var sk = getSettings().skin;
+      root.setAttribute('data-theme', resolveTheme());
+      root.setAttribute('data-skin', (sk === 'academy' || sk === 'sticker') ? sk : 'app');
+    }
     var body = DOC.body;
     if (!body) { return; }
     body.classList.remove('font-scale-sm', 'font-scale-lg', 'font-scale-xl');
@@ -50153,10 +51772,21 @@ var SAVE_VIDS=[
     if (cls) { body.classList.add(cls); }
   }
 
-  /** 当前皮肤下的「正向 / 品牌」主色：记账同款=微信绿，学习台紫=靛紫。
+  /** 当前皮肤下的「数据强调色」：记账同款=微信绿，学习台紫=靛紫，贴纸账本=琥珀。
+      贴纸皮肤把墨留给按钮和描边，数据换成荧光笔那支琥珀色（读 --chart-acc），
+      这样脚本直绘的预算环、趋势线、日历今日跟样式表永远同一个值，不会各改各的。
       宠物角色绿（PET_TINT / 阿账 SVG）不调用本函数，保持原绿。 */
   function skinGreen() {
-    return getSettings().skin === 'academy' ? '#4f46e5' : '#07C160';
+    var sk = getSettings().skin;
+    if (sk === 'academy') { return '#4f46e5'; }
+    if (sk === 'sticker') {
+      try {
+        var v = window.getComputedStyle(DOC.documentElement).getPropertyValue('--chart-acc').trim();
+        if (v) { return v; }
+      } catch (e) {}
+      return '#E08A12';
+    }
+    return '#07C160';
   }
 
   /** 窄屏（手机）判定阈值：视口宽度 ≤ 640px 视为手机形态。
@@ -50305,6 +51935,14 @@ var SAVE_VIDS=[
     }
   }
 
+  /** 设置页「画面演示」跟随当前配色：只切 data-demo，两台迷你机由 CSS 变量重绘。
+      纯展示层，不参与真实渲染 —— 避免预览和真界面各写一套互相跑偏。 */
+  function applySkinDemo(skin) {
+    var box = $('setSkinDemo');
+    if (!box) { return; }
+    box.setAttribute('data-demo', (skin === 'academy' || skin === 'sticker') ? skin : 'app');
+  }
+
   /** 按当前 state.settings 刷新设置页各控件的显示值 */
   function renderSettingsPage() {
     var st = getSettings();
@@ -50328,6 +51966,7 @@ var SAVE_VIDS=[
     checkRadioGroup('setFontScale', st.fontScale);
     checkRadioGroup('setLang', st.lang);
     checkRadioGroup('setSkin', st.skin);
+    applySkinDemo(st.skin);
     checkRadioGroup('setUiMode', state.uiMode);
     $('setSwitchAlbum').checked = st.privacy.album;
     $('setSwitchClipboard').checked = st.privacy.clipboard;
@@ -50510,6 +52149,7 @@ var SAVE_VIDS=[
       var input = (e.target && e.target.closest) ? e.target.closest('input[name="setSkin"]') : null;
       if (!input) { return; }
       getSettings().skin = input.value;
+      applySkinDemo(input.value);
       /* persistSettings 内部会调 applyAppearance()：更新 <html data-skin>，
          让 CSS 覆盖段（按钮 / Hero / 渐变等）即时生效；
          但预算环、趋势日历、明细收入点、分析图表的颜色是渲染时用
@@ -50518,7 +52158,15 @@ var SAVE_VIDS=[
       persistSettings();
       renderAll();
       renderAnalysis();   // 分析区图表不在 renderAll 内，单独补一次（函数自带空容器保护）
-      showToast(input.value === 'academy' ? '已切换到学习台紫' : '已切换回记账同款');
+      /* 贴纸账本是给简洁版画的整套手账视觉；完整版只换主色。
+         不强行切 UI 类型（用户明确选过的类型不该被皮肤偷偷改掉），
+         但要说清楚，避免「选了没变化」的困惑。 */
+      if (input.value === 'sticker' && getUiMode() !== 'simple') {
+        showToast('贴纸账本是简洁版的整套手账皮肤，切到简洁版才是完整效果');
+      } else {
+        showToast(input.value === 'academy' ? '已切换到学习台紫'
+          : (input.value === 'sticker' ? '已切换到贴纸账本' : '已切换回记账同款'));
+      }
     });
     /* 点「已选中」的 radio 不会触发 change（DOM 标准行为），但用户的点击本身就是一次
        显式确认 —— 补打 uiModePicked。否则窄屏被自动带进来的用户（picked=false）
@@ -58167,6 +59815,8 @@ var SAVE_VIDS=[
     $('btnDrawerExport').addEventListener('click', exportAllCsv);
     $('btnDrawerImport').addEventListener('click', openImportSheet);
     $('btnDrawerReset').addEventListener('click', confirmReset);
+    /* 2026-11-01：初始数据二选一——演示样本 / 完全空白 */
+    if ($('btnBlankData')) { $('btnBlankData').addEventListener('click', confirmBlankData); }
 
     /* ---- 常驻预算条：点击/回车跳到看板预算焦点卡 ---- */
     var budgetBar = $('budgetBar');
@@ -59184,7 +60834,13 @@ var SAVE_VIDS=[
     var b = petEl.querySelector('.aj-pet-bubble');
     if (!b) { return; }
     b.textContent = text;
-    b.style.borderColor = tint || '#07C160';
+    /* 贴纸皮肤：气泡统一墨线。品牌绿属于「默认态」，让它回落到皮肤描边；
+       琥珀/红/蓝这类语气色保留（那是警告语义，不能一起抹掉）。 */
+    var tintUse = tint;
+    if (getSettings().skin === 'sticker' && (!tintUse || String(tintUse).toUpperCase() === '#07C160')) {
+      tintUse = '';
+    }
+    b.style.borderColor = tintUse || (getSettings().skin === 'sticker' ? '' : '#07C160');
     b.classList.add('show');
     /* 先量再定位：文本变了宽度就变，必须重新算贴边位移 */
     petFitBubble(b);

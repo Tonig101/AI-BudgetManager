@@ -65,6 +65,9 @@
    *           level:string, dailyAvg:number}}
    *   level: over（已确定超支） / tight（结余不到两天的日均） / safe
    */
+  /** 期末预测所需的最少样本天数：周期刚开始就外推会把 1 天支出当成整月节奏 */
+  var MIN_FORECAST_DAYS = 3;
+
   function forecast(o) {
     var src = o || {};
     var spent = Math.max(0, round2(src.spent));
@@ -74,6 +77,20 @@
     var remainingDays = Math.max(0, Math.round(num(src.remainingDays)));
 
     var dailyAvg = round2(spent / passedDays);
+
+    /* 2026-11-01：样本不足时不出结论。此前周期第 1 天会把当天支出原样外推 30 天，
+       出现「预算 2000、期末超支 39369」这种明显失真的数字。 */
+    if (Math.round(num(src.passedDays)) < MIN_FORECAST_DAYS) {
+      return {
+        projected: 0,
+        remainingAtEnd: total,
+        overBudgetBy: 0,
+        level: 'sample',
+        dailyAvg: dailyAvg,
+        passedDays: passedDays
+      };
+    }
+
     var projected = round2(spent + dailyAvg * remainingDays);
     var remainingAtEnd = round2(total - projected);
     var overBudgetBy = total > 0 ? round2(Math.max(0, projected - total)) : 0;

@@ -3943,19 +3943,47 @@
     return n;
   }
 
+  /** 贴纸皮肤的「纸胶带色板」：只覆盖原色板里那几个真绿（餐饮/外卖/蔬菜/买菜）。
+      分类占比条、饼图、图例点、流水小圆点都走 categoryColor，所以一处映射就够。
+      不动青蓝系（交通/话费/水费）——它们本来就偏冷蓝，不读成微信绿；
+      也不动橙紫红，那些是分类之间唯一的区分手段，一改就分不清了。 */
+  var STICKER_CAT_COLOR = {
+    '餐饮': '#B8862E',
+    '外卖': '#C77C3C',
+    '蔬菜': '#92A03C',
+    '买菜': '#AFA452'
+  };
+
   function categoryColor(key) {
+    if (getSettings().skin === 'sticker' && STICKER_CAT_COLOR[key]) {
+      return STICKER_CAT_COLOR[key];
+    }
     return DATA.getCategoryColor(key);
   }
 
   /** 分类"深墨色"：淡底方块里的图标描边色，与 categoryColor 同色系但更深 */
+  var STICKER_CAT_INK = {
+    '餐饮': '#7A5312',
+    '外卖': '#8A4A16',
+    '蔬菜': '#59631C',
+    '买菜': '#6B6424'
+  };
+
   function categoryInk(key) {
+    if (getSettings().skin === 'sticker' && STICKER_CAT_INK[key]) {
+      return STICKER_CAT_INK[key];
+    }
     return DATA.getCategoryInk(key);
   }
 
   /** 淡底小方块的内联样式：底色用 12% 淡色，图标色用深墨色（对比度 ≥4.5:1） */
   function spCatTileStyle(key) {
-    return '--sc:' + categoryColor(key) + ';--sc-ink:' + categoryInk(key) +
-      ';background:' + categoryColor(key) + '1f';
+    var base = '--sc:' + categoryColor(key) + ';--sc-ink:' + categoryInk(key);
+    /* 贴纸皮肤：分类小方块的底由皮肤层统一画成「纸黄 + 墨线」小贴纸，
+       这里不能再吐内联 background —— 内联优先级压得过皮肤类，
+       流水行里那颗方块就会一直是薄荷绿（用户截图反馈的「颜色没改」就是它）。 */
+    if (getSettings().skin === 'sticker') { return base; }
+    return base + ';background:' + categoryColor(key) + '1f';
   }
 
   /* ================================================================== */
@@ -4069,8 +4097,9 @@
         skin: (s.mascot && (s.mascot.skin === 'azhang' || s.mascot.skin === 'sprite' ||
           s.mascot.skin === 'pro')) ? s.mascot.skin : null
       },
-      // 界面风格：记账同款（微信绿）/ 学习台紫
-      skin: (s.skin === 'academy') ? 'academy' : 'app',
+      // 界面风格：记账同款（微信绿）/ 学习台紫 / 贴纸账本（手账贴纸风）
+      // ⚠ 同样是白名单：新增皮肤必须加进来，否则持久化时被兜底成 'app'
+      skin: (s.skin === 'academy' || s.skin === 'sticker') ? s.skin : 'app',
       // 互动反馈（音效 + 震动）：三个形象共用一套声效，实际开关同步给 AJ.sfx
       fx: !(s.fx === false)
     };
@@ -4131,7 +4160,11 @@
       var d = new Date(today.getTime());
       d.setDate(d.getDate() - seed.offset);
       var ds = ENG.formatDate(d);
-      if (ds < cycle.start) { ds = cycle.start; }
+      /* 2026-11-01：此前把超出本周期的种子一律改写成 cycle.start，周期第一天打开
+         会把 14 笔全部压到「今天」（今日已花 = 整月支出），期末预测再按单日外推，
+         就出现「预算 2000、超支 39369」这种离谱数字。
+         正确做法：**保留原始日期**——早于本周期起点的账单天然属于上一周期，
+         计入历史与明细，但不会被算进本周期的支出，无需挪日期、也无需丢弃。 */
       bills.push({
         id: 'seed_b' + i,
         date: ds,
@@ -4149,21 +4182,23 @@
     var di = new Date(today.getTime());
     di.setDate(di.getDate() - inc.offset);
     var dis = ENG.formatDate(di);
-    if (dis < cycle.start) { dis = cycle.start; }
-    bills.push({
-      id: 'seed_income',
-      date: dis,
-      amount: ENG.round2(inc.amount),
-      category: DATA.INCOME_CATEGORY,
-      note: inc.note,
-      motivation: inc.motivation,
-      want: false,
-      type: 'income',
-      source: inc.source || '生活费',
-      askedCycle: true,
-      imported: false,
-      createdAt: di.getTime() + 900000
-    });
+    /* 同账单口径：保留原始日期。上一周期的生活费留在上一周期，不会被算成本周期收入 */
+    if (dis) {
+      bills.push({
+        id: 'seed_income',
+        date: dis,
+        amount: ENG.round2(inc.amount),
+        category: DATA.INCOME_CATEGORY,
+        note: inc.note,
+        motivation: inc.motivation,
+        want: false,
+        type: 'income',
+        source: inc.source || '生活费',
+        askedCycle: true,
+        imported: false,
+        createdAt: di.getTime() + 900000
+      });
+    }
 
     var goals = [];
     for (i = 0; i < DATA.DEFAULT_GOALS.length; i++) {
@@ -4187,6 +4222,28 @@
       uiModePicked: false,
       settings: normalizeSettings(null)
     };
+  }
+
+  /**
+   * 空白账本（2026-11-01）：结构与种子一致，但没有任何账单 / 收入 / 目标，
+   * 用于「我自己从头记」的场景。预算保留默认值，设置项不动。
+   */
+  function blankState() {
+    var s = seedState();
+    s.bills = [];
+    s.goals = [];
+    s.savedMoney = 0;
+    s.blockedCount = 0;
+    /* 空白 = 连预算都还没设，而不是「预算 2000 一分没花」。
+       否则顶部一直显示「剩余预算 ¥2,000·日均 ¥66.67」，用户会以为没清干净。
+       预算属于「设置」，去「设置 · 预算」里填即可。 */
+    s.budget = {
+      total: 0,
+      payday: s.budget.payday,
+      cooldownThreshold: s.budget.cooldownThreshold,
+      cycleStart: ''
+    };
+    return s;
   }
 
   function loadState() {
@@ -6162,7 +6219,10 @@
     var bs = ov.budgetState;
     var total = state.budget.total;
     var ratio = total > 0 ? Math.max(0, Math.min(1, bs.remaining / total)) : 0;
-    var label = bs.isOver ? '已超支' : (bs.status === 'tight' ? '紧张' : '安全');
+    /* 没设预算时不该显示「安全」——0 预算谈不上安全，明确写「未设置」 */
+    var label = total > 0
+      ? (bs.isOver ? '已超支' : (bs.status === 'tight' ? '紧张' : '安全'))
+      : '未设置';
 
     /* 方案 B3 警示色降噪：期末预测已判「会超支」（红色块在场）时，
        「紧张」降级为灰底描边的次级状态 —— 同屏只保留最重一级语义色。
@@ -6174,7 +6234,7 @@
         muted = !!(fd && fd.level === 'over');
       } catch (e) { /* 预测模块缺失时保持原样 */ }
     }
-    var stateCls = muted ? 'state-muted' : bs.status;
+    var stateCls = (total <= 0 || muted) ? 'state-muted' : bs.status;
 
     bar.className = 'budget-bar ' + stateCls;
     $('bbAmount').textContent = money(bs.remaining);
@@ -6321,7 +6381,9 @@
       var key = DATA.CATEGORIES[i].key;
       var value = ENG.round2(byCategory[key] || 0);
       if (value > 0) {
-        slices.push({ key: key, value: value, color: DATA.CATEGORIES[i].color });
+        /* 走 categoryColor 而不是直读 data.js：贴纸皮肤会把餐饮那几个真绿
+           换成纸胶带暖色，直读的话饼图和图例会漏掉这次映射。 */
+        slices.push({ key: key, value: value, color: categoryColor(key) });
       }
     }
     slices.sort(function (a, b) { return b.value - a.value; });
@@ -6922,8 +6984,12 @@
       var cat = inc ? '收入' : b.category;
       var title = inc ? (b.source || b.note || '收入') : (b.note || b.category);
       var time = spTimeOf(b);
+      /* 收入的分类方块：贴纸皮肤下走琥珀墨，否则流水里会冒出薄荷绿图标 */
+      var incStyle = (getSettings().skin === 'sticker')
+        ? '--sc:#E08A12;--sc-ink:#8A5A0A'
+        : ('--sc:#07C160;--sc-ink:#047A3E;background:#07C1601f');
       html += '<li class="sp-bill">' +
-        '<span class="sp-bill-ico" style="' + (inc ? ('--sc:#07C160;--sc-ink:#047A3E;background:#07C1601f') : spCatTileStyle(b.category)) + '">' + spCatIcon(cat) + '</span>' +
+        '<span class="sp-bill-ico" style="' + (inc ? incStyle : spCatTileStyle(b.category)) + '">' + spCatIcon(cat) + '</span>' +
         '<span class="sp-bill-main"><b>' + esc(title) + '</b><small>' +
         (time ? esc(time) + ' · ' : '') + esc(cat) + '</small></span>' +
         '<span class="sp-bill-amt' + (inc ? ' inc' : '') + '">' + (inc ? '+' : '-') + money(b.amount) + '</span>' +
@@ -8297,6 +8363,14 @@
     if (total <= 0) { box.hidden = true; return; }   // 没设总预算时预测没有意义
     box.hidden = false;
     var f = forecastData(ov);
+    /* 样本不足（周期头几天）：不给结论，避免「预算 2000 / 超支 3.9 万」式失真 */
+    if (f.level === 'sample') {
+      box.innerHTML =
+        '<div class="fk-label">期末预测</div>' +
+        '<div class="fk-value">先记几天</div>' +
+        '<div class="fk-note">本周期才过 ' + (f.passedDays || 1) + ' 天，样本太少；记满 3 天再看预测才可信。</div>';
+      return;
+    }
     var over = f.level === 'over';
     var line = over
       ? (toneLine('forecast.over', { amount: money(f.overBudgetBy) }) ||
@@ -8319,6 +8393,12 @@
     if (total <= 0) { box.hidden = true; return; }
     box.hidden = false;
     var f = forecastData(ov);
+    /* 同上：样本不足时不给「超支/结余」结论 */
+    if (f.level === 'sample') {
+      box.innerHTML = '期末预测 <b>先记几天</b> <small>本周期才过 ' + (f.passedDays || 1) +
+        ' 天，记满 3 天再看预测才可信</small>';
+      return;
+    }
     var over = f.level === 'over';
     var line = over
       ? (toneLine('forecast.over', { amount: money(f.overBudgetBy) }) ||
@@ -9551,44 +9631,72 @@
     if (input) { input.focus(); }
   }
 
+  /**
+   * 把账本切到给定的初始状态，并清掉所有「随账本衍生」的本地键。
+   * 抽出来是因为现在有两种初始数据：演示数据（seedState）与空白数据（blankState），
+   * 两者清理口径必须完全一致，否则会出现「换了数据但省钱记录还在」这类残留。
+   */
+  function applyFreshLedger(nextState) {
+    state = nextState;
+    highlightCategory = null;
+    undoStack = [];
+    saveState();
+    /* 存钱罐跟着一起清空：否则账面余额仍被罐子占着，用户会以为没清干净 */
+    PIGGY.reset();
+    piggyCheer = null;
+    piggyError = '';
+    /* 心愿单：旧清单会指向一套已经不存在的账 */
+    if (WISH && !WISH.missing) { WISH.reset(); }
+    wishTab = 'cooling';
+    /* 消费性格测试：报告里的证据数字来自旧账，已失真 */
+    personaRecord = null;
+    personaLoaded = true;
+    /* 其余散落的存储键按 storageKeys().data 兜底清一遍；主账本刚由 saveState() 写入，跳过 */
+    var resetKeys = storageKeys().data;
+    for (var rk = 0; rk < resetKeys.length; rk++) {
+      if (resetKeys[rk] === STORAGE_KEY) { continue; }
+      try { global.localStorage.removeItem(resetKeys[rk]); } catch (eR) { /* 隐私模式忽略 */ }
+    }
+    /* 省钱记录的内存副本一并归零，否则刷新前仍显示旧统计 */
+    savingsDb = { v: 1, logs: [], updatedAt: 0 };
+    /* 聊天记录里还挂着引用旧账本的气泡（「本周期已花 ¥1,334.50…」），
+       换账本后必须清掉，否则右栏已是空白、左边还在说有钱，看起来像没清干净。 */
+    var chatEl = chatListEl();
+    if (chatEl) { chatEl.innerHTML = ''; }
+    /* 设置面板若正开着，输入框里还是旧预算 / 旧发钱日；不重绘的话，
+       用户接着点「保存并重算」就会把刚清掉的预算又写回去。 */
+    if (typeof renderSettingsPage === 'function') { renderSettingsPage(); }
+  }
+
+  /** 清空为空白账本（不灌演示数据） */
+  function confirmBlankData() {
+    var box = openModal('' +
+      '<h4>清空为空白数据？</h4>' +
+      '<p>会删除当前所有账单、收入与目标，回到「什么都没记」的状态；预算与设置保留。此操作不可撤销，建议先导出 CSV 备份。</p>' +
+      '<div class="modal-actions">' +
+      '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
+      '<button type="button" class="btn-danger" data-act="blank-ok">确认清空</button>' +
+      '</div>');
+    box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
+    box.querySelector('[data-act="blank-ok"]').addEventListener('click', function () {
+      applyFreshLedger(blankState());
+      closeModal();
+      renderAll();
+      addAIMessage(aiBubble('已经清空成空白账本了，你可以从第一笔记起。'));
+    });
+  }
+
   function confirmReset() {
     var box = openModal('' +
-      '<h4>重置演示数据？</h4>' +
-      '<p>会清空当前所有账单、目标与成就，并重新灌入一套演示数据。此操作不可撤销。</p>' +
+      '<h4>载入演示数据？</h4>' +
+      '<p>会清空当前所有账单、收入与目标，并重新灌入一套 14 笔的演示账单（含一笔生活费收入）。此操作不可撤销，建议先导出 CSV 备份。</p>' +
       '<div class="modal-actions">' +
       '<button type="button" class="btn-cancel" data-act="modal-cancel">取消</button>' +
       '<button type="button" class="btn-danger" data-act="reset-ok">确认重置</button>' +
       '</div>');
     box.querySelector('[data-act="modal-cancel"]').addEventListener('click', closeModal);
     box.querySelector('[data-act="reset-ok"]').addEventListener('click', function () {
-      state = seedState();
-      highlightCategory = null;
-      undoStack = [];
-      saveState();
-      /* 存钱罐跟着一起清空：否则重置后账面余额仍被罐子占着，用户会以为没重置干净。
-         只清罐子自己的键，不动其它任何存储。 */
-      PIGGY.reset();
-      piggyCheer = null;
-      piggyError = '';
-      /* 心愿单同理：重置后旧清单会指向一套已经不存在的账，一并清空；
-         只清自己的键（ai_jizhang_wishlist_v1），不碰主账本。 */
-      if (WISH && !WISH.missing) { WISH.reset(); }
-      wishTab = 'cooling';
-      /* 消费性格测试同理：报告里的证据数字来自旧账，重置后已失真，
-         清掉自己的键（ai_jizhang_persona_v1）回到「未开始」状态。 */
-      personaRecord = null;
-      personaLoaded = true;
-      /* 其余散落的存储键统一按 storageKeys().data 兜底清一遍（2026-10-30）：
-         此前只清了上面四处（主账本 / 存钱罐 / 心愿单 / 性格测试），漏了省钱记录、
-         意见反馈、搭子引导标记 —— 表现是「重置后省下的钱还在」。主账本刚由
-         saveState() 写入种子，跳过。 */
-      var resetKeys = storageKeys().data;
-      for (var rk = 0; rk < resetKeys.length; rk++) {
-        if (resetKeys[rk] === STORAGE_KEY) { continue; }
-        try { global.localStorage.removeItem(resetKeys[rk]); } catch (eR) { /* 隐私模式忽略 */ }
-      }
-      /* 省钱记录的内存副本一并归零，否则界面到刷新前仍显示旧统计 */
-      savingsDb = { v: 1, logs: [], updatedAt: 0 };
+      applyFreshLedger(seedState());
       closeModal();
       renderAll();
       addAIMessage(aiBubble('演示数据已经重置好了，账单、目标、成就都回到了初始状态。'));
@@ -9732,7 +9840,11 @@
   /** 把主题与字体档位应用到 <html data-theme> / body class 上 */
   function applyAppearance() {
     var root = DOC.documentElement;
-    if (root) { root.setAttribute('data-theme', resolveTheme()); root.setAttribute('data-skin', getSettings().skin === 'academy' ? 'academy' : 'app'); }
+    if (root) {
+      var sk = getSettings().skin;
+      root.setAttribute('data-theme', resolveTheme());
+      root.setAttribute('data-skin', (sk === 'academy' || sk === 'sticker') ? sk : 'app');
+    }
     var body = DOC.body;
     if (!body) { return; }
     body.classList.remove('font-scale-sm', 'font-scale-lg', 'font-scale-xl');
@@ -9740,10 +9852,21 @@
     if (cls) { body.classList.add(cls); }
   }
 
-  /** 当前皮肤下的「正向 / 品牌」主色：记账同款=微信绿，学习台紫=靛紫。
+  /** 当前皮肤下的「数据强调色」：记账同款=微信绿，学习台紫=靛紫，贴纸账本=琥珀。
+      贴纸皮肤把墨留给按钮和描边，数据换成荧光笔那支琥珀色（读 --chart-acc），
+      这样脚本直绘的预算环、趋势线、日历今日跟样式表永远同一个值，不会各改各的。
       宠物角色绿（PET_TINT / 阿账 SVG）不调用本函数，保持原绿。 */
   function skinGreen() {
-    return getSettings().skin === 'academy' ? '#4f46e5' : '#07C160';
+    var sk = getSettings().skin;
+    if (sk === 'academy') { return '#4f46e5'; }
+    if (sk === 'sticker') {
+      try {
+        var v = window.getComputedStyle(DOC.documentElement).getPropertyValue('--chart-acc').trim();
+        if (v) { return v; }
+      } catch (e) {}
+      return '#E08A12';
+    }
+    return '#07C160';
   }
 
   /** 窄屏（手机）判定阈值：视口宽度 ≤ 640px 视为手机形态。
@@ -9892,6 +10015,14 @@
     }
   }
 
+  /** 设置页「画面演示」跟随当前配色：只切 data-demo，两台迷你机由 CSS 变量重绘。
+      纯展示层，不参与真实渲染 —— 避免预览和真界面各写一套互相跑偏。 */
+  function applySkinDemo(skin) {
+    var box = $('setSkinDemo');
+    if (!box) { return; }
+    box.setAttribute('data-demo', (skin === 'academy' || skin === 'sticker') ? skin : 'app');
+  }
+
   /** 按当前 state.settings 刷新设置页各控件的显示值 */
   function renderSettingsPage() {
     var st = getSettings();
@@ -9915,6 +10046,7 @@
     checkRadioGroup('setFontScale', st.fontScale);
     checkRadioGroup('setLang', st.lang);
     checkRadioGroup('setSkin', st.skin);
+    applySkinDemo(st.skin);
     checkRadioGroup('setUiMode', state.uiMode);
     $('setSwitchAlbum').checked = st.privacy.album;
     $('setSwitchClipboard').checked = st.privacy.clipboard;
@@ -10097,6 +10229,7 @@
       var input = (e.target && e.target.closest) ? e.target.closest('input[name="setSkin"]') : null;
       if (!input) { return; }
       getSettings().skin = input.value;
+      applySkinDemo(input.value);
       /* persistSettings 内部会调 applyAppearance()：更新 <html data-skin>，
          让 CSS 覆盖段（按钮 / Hero / 渐变等）即时生效；
          但预算环、趋势日历、明细收入点、分析图表的颜色是渲染时用
@@ -10105,7 +10238,15 @@
       persistSettings();
       renderAll();
       renderAnalysis();   // 分析区图表不在 renderAll 内，单独补一次（函数自带空容器保护）
-      showToast(input.value === 'academy' ? '已切换到学习台紫' : '已切换回记账同款');
+      /* 贴纸账本是给简洁版画的整套手账视觉；完整版只换主色。
+         不强行切 UI 类型（用户明确选过的类型不该被皮肤偷偷改掉），
+         但要说清楚，避免「选了没变化」的困惑。 */
+      if (input.value === 'sticker' && getUiMode() !== 'simple') {
+        showToast('贴纸账本是简洁版的整套手账皮肤，切到简洁版才是完整效果');
+      } else {
+        showToast(input.value === 'academy' ? '已切换到学习台紫'
+          : (input.value === 'sticker' ? '已切换到贴纸账本' : '已切换回记账同款'));
+      }
     });
     /* 点「已选中」的 radio 不会触发 change（DOM 标准行为），但用户的点击本身就是一次
        显式确认 —— 补打 uiModePicked。否则窄屏被自动带进来的用户（picked=false）
@@ -17754,6 +17895,8 @@
     $('btnDrawerExport').addEventListener('click', exportAllCsv);
     $('btnDrawerImport').addEventListener('click', openImportSheet);
     $('btnDrawerReset').addEventListener('click', confirmReset);
+    /* 2026-11-01：初始数据二选一——演示样本 / 完全空白 */
+    if ($('btnBlankData')) { $('btnBlankData').addEventListener('click', confirmBlankData); }
 
     /* ---- 常驻预算条：点击/回车跳到看板预算焦点卡 ---- */
     var budgetBar = $('budgetBar');
@@ -18771,7 +18914,13 @@
     var b = petEl.querySelector('.aj-pet-bubble');
     if (!b) { return; }
     b.textContent = text;
-    b.style.borderColor = tint || '#07C160';
+    /* 贴纸皮肤：气泡统一墨线。品牌绿属于「默认态」，让它回落到皮肤描边；
+       琥珀/红/蓝这类语气色保留（那是警告语义，不能一起抹掉）。 */
+    var tintUse = tint;
+    if (getSettings().skin === 'sticker' && (!tintUse || String(tintUse).toUpperCase() === '#07C160')) {
+      tintUse = '';
+    }
+    b.style.borderColor = tintUse || (getSettings().skin === 'sticker' ? '' : '#07C160');
     b.classList.add('show');
     /* 先量再定位：文本变了宽度就变，必须重新算贴边位移 */
     petFitBubble(b);
