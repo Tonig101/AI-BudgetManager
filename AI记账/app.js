@@ -3876,7 +3876,7 @@
   var FULL_VIEWS = { chat: 1, dash: 1, goals: 1, coach: 1, dazai: 1 };
   /* 凑单搭子面板是否已挂载（首次进入才 mount，避免重复绑事件） */
   var dazaiMounted = false;
-  var SIMPLE_VIEWS = { shome: 1, slist: 1, sbudget: 1, sprofile: 1, sai: 1, scoach: 1, sgoals: 1, ssave: 1, spiggy: 1, sdazai: 1 };
+  var SIMPLE_VIEWS = { shome: 1, slist: 1, sbudget: 1, schart: 1, sprofile: 1, sai: 1, scoach: 1, sgoals: 1, ssave: 1, spiggy: 1, sdazai: 1 };
 
   /** 账单分析：最近一次导入的原始结果（默认不写入账本） */
   var analysisData = null;
@@ -6146,12 +6146,12 @@
    * 收入为 0 时储蓄率显示「—」，避免 NaN / Infinity。
    * @param {Object} ov getOverview() 结果
    */
-  function renderIncomeCard(ov) {
+  function renderIncomeCard(ov, pfx) {
     var stats = ov.incomeStats || { income: 0, expense: 0, balance: 0, savingsRate: null };
-    var incomeEl = $('incIncome');
-    var expenseEl = $('incExpense');
-    var balanceEl = $('incBalance');
-    var rateEl = $('incRate');
+    var incomeEl = $(pfx ? 'spIncIncome' : 'incIncome');
+    var expenseEl = $(pfx ? 'spIncExpense' : 'incExpense');
+    var balanceEl = $(pfx ? 'spIncBalance' : 'incBalance');
+    var rateEl = $(pfx ? 'spIncRate' : 'incRate');
     if (!incomeEl || !expenseEl || !balanceEl || !rateEl) { return; }
 
     incomeEl.textContent = money(stats.income);
@@ -6161,7 +6161,7 @@
     rateEl.textContent = stats.savingsRate === null ? '—' : stats.savingsRate.toFixed(1) + '%';
     rateEl.className = (stats.savingsRate !== null && stats.savingsRate < 0) ? 'neg' : '';
 
-    var hint = $('incomeHint');
+    var hint = $(pfx ? 'spIncomeHint' : 'incomeHint');
     if (hint) {
       hint.textContent = stats.hasIncome
         ? '收入 ' + stats.incomeCount + ' 笔'
@@ -6293,6 +6293,7 @@
 
     /* ---- 收支概览 ---- */
     renderIncomeCard(ov);
+    renderIncomeCard(ov, 'sp');   // 简洁版「图表」页镜像
 
     /* ---- 存钱罐（独立模块，看板只显示一个入口卡） ---- */
     renderPiggyCard(ov);
@@ -6320,6 +6321,15 @@
         : '本周期还没有支出记录，先记一笔试试？';
     }
 
+    /* ---- 恩格尔 · 简洁版「图表」页镜像：徽标与文案直接复用上面算好的结果 ---- */
+    if ($('spEngelCard')) {
+      $('spEngelCard').className = 'sp-chart-card card-engel' + (ov.engel.alert ? ' alert' : '');
+      $('spEngelBadge').textContent = '餐饮占比 ' + engelPercent + '%';
+      $('spEngelBadge').className = 'badge badge-soft' + (ov.engel.alert ? ' warn' : '');
+      $('spEngelFill').style.width = Math.min(100, engelPercent) + '%';
+      $('spEngelText').textContent = $('engelText').textContent;
+    }
+
     /* ---- 消费诊断（基于 CATEGORIES.essential + 设置里的单日上限） ---- */
     renderDiagCard(ov);
 
@@ -6328,6 +6338,11 @@
 
     /* ---- 近 7 日趋势 ---- */
     renderTrend(ov);
+
+    /* ---- 简洁版「图表」页镜像：同一份数据画进 sp 前缀容器（面板隐藏时也画，
+       保证切过去永远是最新值，不用进页面再补一次渲染） ---- */
+    renderDonut(ov, 'sp');
+    renderTrend(ov, 'sp');
 
     /* ---- 支出统计（类目排行 / 月趋势 / 明细排行） ---- */
     renderStatSection();
@@ -6392,21 +6407,24 @@
     return slices;
   }
 
-  function renderDonut(ov) {
-    var svg = $('donutChart');
-    var legend = $('legendList');
+  /** pfx：简洁版「图表」页镜像容器的前缀（'sp' → spDonutChart 等）。
+      两套容器都常驻 DOM，renderDashboard 每次双写，数据与完整版永远同源。 */
+  function renderDonut(ov, pfx) {
+    var svg = $(pfx ? 'spDonutChart' : 'donutChart');
+    var legend = $(pfx ? 'spLegendList' : 'legendList');
+    if (!svg || !legend) { return; }
     var slices = getCategorySlices(ov.cycleAgg.byCategory);
     var totalValue = ov.cycleAgg.expense;
 
     if (slices.length === 0) {
       svg.innerHTML = '<circle cx="80" cy="80" r="70" stroke="#EEF1F4" stroke-width="20"></circle>';
-      $('donutTotal').textContent = money(0);
+      $(pfx ? 'spDonutTotal' : 'donutTotal').textContent = money(0);
       legend.innerHTML = '<li class="empty">本周期还没有支出记录</li>';
       return;
     }
 
     svg.innerHTML = donutSvgHtml(slices, 160, 20, 160);
-    $('donutTotal').textContent = money(totalValue);
+    $(pfx ? 'spDonutTotal' : 'donutTotal').textContent = money(totalValue);
 
     var html = '';
     var i;
@@ -6423,8 +6441,9 @@
     legend.innerHTML = html;
   }
 
-  function renderTrend(ov) {
-    var svg = $('trendChart');
+  function renderTrend(ov, pfx) {
+    var svg = $(pfx ? 'spTrendChart' : 'trendChart');
+    if (!svg) { return; }
     var days = [];
     var i;
     var sum = 0;
@@ -6437,7 +6456,7 @@
       sum += value;
       if (value > max) { max = value; }
     }
-    $('trendSum').textContent = '合计 ' + money(sum);
+    $(pfx ? 'spTrendSum' : 'trendSum').textContent = '合计 ' + money(sum);
 
     var W = 320;
     var H = 150;
@@ -6452,24 +6471,29 @@
     var scaleMax = max * 1.15;
 
     var parts = [];
-    parts.push('<line x1="' + padL + '" y1="' + (padT + chartH) + '" x2="' + (W - padR) + '" y2="' + (padT + chartH) +
-      '" stroke="#EEF1F4" stroke-width="1"></line>');
+    /* 基线、普通柱、刻度文字走 CSS 类而不是硬编码色：简洁版「图表」页会把这些
+       元素铺在奶油纸卡片上，冷灰蓝在贴纸皮肤里发蓝，需要在样式表里按皮肤调暖 */
+    parts.push('<line class="tr-base" x1="' + padL + '" y1="' + (padT + chartH) + '" x2="' + (W - padR) + '" y2="' + (padT + chartH) +
+      '"></line>');
 
     for (i = 0; i < days.length; i++) {
       var day = days[i];
       var cx = padL + step * i + step / 2;
       var h = day.value > 0 ? Math.max(3, day.value / scaleMax * chartH) : 2;
       var y = padT + chartH - h;
-      var color = day.isToday ? skinGreen() : '#D7DDE5';
-      if (day.isToday && day.value > max * 0.6) { color = '#FF8A3D'; }
+      var rectAttr = ' class="tr-bar"';
+      if (day.isToday) {
+        /* 今天的柱子仍然跟随主色（贴纸皮肤=墨，亮黄底上可见）；数值大时转警示橙 */
+        rectAttr = ' fill="' + (day.value > max * 0.6 ? '#FF8A3D' : skinGreen()) + '"';
+      }
       parts.push('<rect x="' + (cx - barW / 2) + '" y="' + y + '" width="' + barW + '" height="' + h +
-        '" rx="4" fill="' + color + '"></rect>');
+        '" rx="4"' + rectAttr + '></rect>');
       if (day.value > 0) {
-        parts.push('<text x="' + cx + '" y="' + (y - 5) + '" text-anchor="middle" font-size="8.5" fill="#8A93A0">' +
+        parts.push('<text x="' + cx + '" y="' + (y - 5) + '" text-anchor="middle" font-size="8.5" class="tr-val">' +
           (day.value >= 1000 ? Math.round(day.value / 100) / 10 + 'k' : Math.round(day.value)) + '</text>');
       }
-      parts.push('<text x="' + cx + '" y="' + (H - 7) + '" text-anchor="middle" font-size="9" fill="' +
-        (day.isToday ? skinGreen() : '#A9B1BC') + '"' + (day.isToday ? ' font-weight="600"' : '') + '>' +
+      parts.push('<text x="' + cx + '" y="' + (H - 7) + '" text-anchor="middle" font-size="9"' +
+        (day.isToday ? ' fill="' + skinGreen() + '" font-weight="600"' : ' class="tr-lab"') + '>' +
         (day.isToday ? '今天' : day.label) + '</text>');
     }
     svg.innerHTML = parts.join('');
@@ -6641,8 +6665,9 @@
   }
 
   /** 支出类目排行：横向占比条 + 本月共支出 + 笔数，默认 5 条，点「展开」看全部 */
-  function renderCatRank(agg, total, bills) {
-    var list = $('catRankList');
+  function renderCatRank(agg, total, bills, pfx) {
+    var list = $(pfx ? 'spCatRankList' : 'catRankList');
+    if (!list) { return; }
     var rows = [];
     var counts = {};
     var i;
@@ -6662,8 +6687,8 @@
 
     if (rows.length === 0) {
       list.innerHTML = '<li class="sp-empty">这个月还没有支出记录</li>';
-      $('catRankMore').hidden = true;
-      $('catRankHint').textContent = '本月';
+      $(pfx ? 'spCatRankMore' : 'catRankMore').hidden = true;
+      $(pfx ? 'spCatRankHint' : 'catRankHint').textContent = '本月';
       return;
     }
     var shown = catRankOpen ? rows.length : Math.min(STAT_COLLAPSE, rows.length);
@@ -6685,19 +6710,23 @@
         '</span></li>';
     }
     list.innerHTML = html;
-    $('catRankMore').hidden = rows.length <= STAT_COLLAPSE;
-    var more = $('catRankMore');
+    $(pfx ? 'spCatRankMore' : 'catRankMore').hidden = rows.length <= STAT_COLLAPSE;
+    var more = $(pfx ? 'spCatRankMore' : 'catRankMore');
     if (!more.hidden) {
       more.innerHTML = (catRankOpen ? '收起 ' : '展开 ') +
         '<svg class="rank-caret' + (catRankOpen ? ' is-open' : '') + '" aria-hidden="true"><use href="#i-caret"/></svg>';
     }
-    $('catRankHint').textContent = rows.length + ' 个类目';
+    $(pfx ? 'spCatRankHint' : 'catRankHint').textContent = rows.length + ' 个类目';
   }
 
-  /** 支出趋势：月度折线（支出 / 收入 / 结余）+ 单日峰值气泡 + 日均与笔数 */
-  function renderMonthTrend(agg, bills, r) {
-    var svg = $('monthTrendChart');
-    var peakEl = $('trendPeak');
+  /** 支出趋势：月度折线（支出 / 收入 / 结余）+ 单日峰值气泡 + 日均与笔数。
+      月份文案从 r.start 取而不是 ensureStatMonth()：函数只该依赖传入的区间，
+      否则完整版统计区翻到历史月后，标签与折线各说各话。 */
+  function renderMonthTrend(agg, bills, r, pfx) {
+    var svg = $(pfx ? 'spMonthTrendChart' : 'monthTrendChart');
+    var peakEl = $(pfx ? 'spTrendPeak' : 'trendPeak');
+    if (!svg || !peakEl) { return; }
+    var monthNum = parseInt(r.start.slice(5, 7), 10);
     var expMap = {};
     var incMap = {};
     var i;
@@ -6724,9 +6753,9 @@
       if (e > peak.value) { peak = { day: i, value: e }; }
     }
     var avg = ENG.round2(agg.expense / r.days);
-    $('trendAvg').textContent = money(avg);
-    $('trendCount').textContent = agg.count + ' 笔';
-    $('trendMonthHint').textContent = (r.isThisMonth ? '本月' : (ensureStatMonth().m + 1) + '月');
+    $(pfx ? 'spTrendAvg' : 'trendAvg').textContent = money(avg);
+    $(pfx ? 'spTrendCount' : 'trendCount').textContent = agg.count + ' 笔';
+    $(pfx ? 'spTrendMonthHint' : 'trendMonthHint').textContent = (r.isThisMonth ? '本月' : monthNum + '月');
 
     if (agg.expense <= 0 && agg.income <= 0) {
       peakEl.innerHTML = ic('info', 'bico-mute', '提示') +
@@ -6735,8 +6764,8 @@
       return;
     }
 
-    peakEl.innerHTML = ic('spark', 'bico-warn', '峰值') + '本月单日最高支出 —— 在 <b>' +
-      esc((ensureStatMonth().m + 1) + '.' + pad2(peak.day)) + '</b> 这一天，你支出了 <b class="trend-peak-amt">' +
+    peakEl.innerHTML = ic('spark', 'bico-warn', '峰值') + (r.isThisMonth ? '本月' : monthNum + '月') + '单日最高支出 —— 在 <b>' +
+      esc(monthNum + '.' + pad2(peak.day)) + '</b> 这一天，你支出了 <b class="trend-peak-amt">' +
       money(peak.value) + '</b>';
 
     var W = 320, H = 170, padL = 36, padR = 18, padT = 32, padB = 24;
@@ -6799,7 +6828,7 @@
         '" height="26" rx="7"></rect>' +
         '<text class="stat-tip-t" x="' + (boxX + boxW / 2).toFixed(1) + '" y="' + (boxY + 11).toFixed(1) +
         '" text-anchor="middle" font-size="9">' +
-        esc((ensureStatMonth().m + 1) + '月' + peak.day + '日') + '</text>' +
+        esc(monthNum + '月' + peak.day + '日') + '</text>' +
         '<text class="stat-tip-t" x="' + (boxX + boxW / 2).toFixed(1) + '" y="' + (boxY + 21).toFixed(1) +
         '" text-anchor="middle" font-size="9.5" font-weight="600">支出 ' +
         esc(String(ENG.round2(peak.value))) + '</text></g>');
@@ -6818,15 +6847,16 @@
   }
 
   /** 支出明细排行：本月单笔 Top N（图标 + 日期·分类 + 金额） */
-  function renderTopSpend(bills) {
-    var list = $('topSpendList');
+  function renderTopSpend(bills, pfx) {
+    var list = $(pfx ? 'spTopSpendList' : 'topSpendList');
+    if (!list) { return; }
     var tops = bills.filter(function (b) { return b.type !== 'income'; })
       .slice()
       .sort(function (a, b) { return b.amount - a.amount; });
     if (tops.length === 0) {
       list.innerHTML = '<li class="sp-empty">这个月还没有支出记录</li>';
-      $('topSpendMore').hidden = true;
-      $('topSpendHint').textContent = 'Top 5';
+      $(pfx ? 'spTopSpendMore' : 'topSpendMore').hidden = true;
+      $(pfx ? 'spTopSpendHint' : 'topSpendHint').textContent = 'Top 5';
       return;
     }
     var shown = topSpendOpen ? tops.length : Math.min(STAT_COLLAPSE, tops.length);
@@ -6843,13 +6873,13 @@
         '</li>';
     }
     list.innerHTML = html;
-    $('topSpendMore').hidden = tops.length <= STAT_COLLAPSE;
-    var more = $('topSpendMore');
+    $(pfx ? 'spTopSpendMore' : 'topSpendMore').hidden = tops.length <= STAT_COLLAPSE;
+    var more = $(pfx ? 'spTopSpendMore' : 'topSpendMore');
     if (!more.hidden) {
       more.innerHTML = (topSpendOpen ? '收起 ' : '展开 ') +
         '<svg class="rank-caret' + (topSpendOpen ? ' is-open' : '') + '" aria-hidden="true"><use href="#i-caret"/></svg>';
     }
-    $('topSpendHint').textContent = 'Top ' + shown + ' / ' + tops.length;
+    $(pfx ? 'spTopSpendHint' : 'topSpendHint').textContent = 'Top ' + shown + ' / ' + tops.length;
   }
 
   /** 三张统计图的统一入口（含月度汇总卡） */
@@ -6867,9 +6897,20 @@
     var nowYM = currentYM();
     $('statNext').disabled = (ym.y > nowYM.y) || (ym.y === nowYM.y && ym.m >= nowYM.m);
 
+    /* 简洁版「图表」页月份卡镜像（spStatPrev/spStatNext 与完整版共用同一个翻月状态） */
+    if ($('spStatMonthLabel')) {
+      $('spStatMonthLabel').textContent = $('statMonthLabel').textContent;
+      $('spStatMonthExpense').textContent = $('statMonthExpense').textContent;
+      $('spStatMonthIncome').textContent = $('statMonthIncome').textContent;
+      $('spStatNext').disabled = $('statNext').disabled;
+    }
+
     renderCatRank(agg, agg.expense, bills);
+    renderCatRank(agg, agg.expense, bills, 'sp');
     renderMonthTrend(agg, bills, r);
+    renderMonthTrend(agg, bills, r, 'sp');   // 简洁版「图表」页镜像
     renderTopSpend(bills);
+    renderTopSpend(bills, 'sp');
   }
 
   function shiftStatMonth(delta) {
@@ -6905,6 +6946,7 @@
       var cat = row.getAttribute('data-cat');
       highlightCategory = (highlightCategory === cat) ? null : cat;
       renderDonut(getOverview());
+      renderDonut(getOverview(), 'sp');   // 简洁版镜像同步高亮
     });
     $('catRankList').addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -6912,6 +6954,34 @@
         if (row) { e.preventDefault(); row.click(); }
       }
     });
+
+    /* 简洁版「图表」页的月份切换 / 展开收起 / 类目行高亮：
+       全部复用完整版的状态变量与 renderStatSection（它会同时重绘两边），不另起炉灶 */
+    if ($('spStatPrev')) {
+      $('spStatPrev').addEventListener('click', function () { shiftStatMonth(-1); });
+      $('spStatNext').addEventListener('click', function () {
+        var ym = ensureStatMonth();
+        var nowYM = currentYM();
+        if (ym.y > nowYM.y || (ym.y === nowYM.y && ym.m >= nowYM.m)) { return; }
+        shiftStatMonth(1);
+      });
+      $('spCatRankMore').addEventListener('click', function () {
+        catRankOpen = !catRankOpen;
+        renderStatSection();
+      });
+      $('spTopSpendMore').addEventListener('click', function () {
+        topSpendOpen = !topSpendOpen;
+        renderStatSection();
+      });
+      $('spCatRankList').addEventListener('click', function (e) {
+        var row = e.target.closest ? e.target.closest('.rank-row') : null;
+        if (!row) { return; }
+        var cat = row.getAttribute('data-cat');
+        highlightCategory = (highlightCategory === cat) ? null : cat;
+        renderDonut(getOverview());
+        renderDonut(getOverview(), 'sp');
+      });
+    }
   }
 
   function renderAchievement() {
@@ -10248,10 +10318,10 @@
          不强行切 UI 类型（用户明确选过的类型不该被皮肤偷偷改掉），
          但要说清楚，避免「选了没变化」的困惑。 */
       if (input.value === 'sticker' && getUiMode() !== 'simple') {
-        showToast('贴纸账本是简洁版的整套手账皮肤，切到简洁版才是完整效果');
+        showToast('芝士色是简洁版的整套手账皮肤，切到简洁版才是完整效果');
       } else {
-        showToast(input.value === 'academy' ? '已切换到学习台紫'
-          : (input.value === 'sticker' ? '已切换到贴纸账本' : '已切换回记账同款'));
+        showToast(input.value === 'academy' ? '已切换到香芋色'
+          : (input.value === 'sticker' ? '已切换到芝士色' : '已切换回青草色'));
       }
     });
     /* 点「已选中」的 radio 不会触发 change（DOM 标准行为），但用户的点击本身就是一次
@@ -17477,7 +17547,7 @@
     var i;
     /* 简洁版 4 类（2026-10-31）：预算归「明细」、搭子归「省钱」、理财专家归「我的」，
        这些子视图没有独立一级 tab，按其归属高亮上级入口，避免底部全灰。 */
-    var TAB_HOST = { sbudget: 'slist', sdazai: 'ssave', scoach: 'sprofile' };
+    var TAB_HOST = { sbudget: 'slist', schart: 'slist', sdazai: 'ssave', scoach: 'sprofile' };
     var tabView = TAB_HOST[view] || view;
     for (i = 0; i < tabs.length; i++) {
       // 用 classList.toggle 保留 tab 上的其他类（如 ui-full-only），避免整类名覆盖导致门控失效
@@ -17619,6 +17689,7 @@
   var obSheetOpen = false;
   var obSheetObs = null;
   var obPaintTimer = null;
+  var obWatchTimer = null;   /* 引导期间的常驻校准：内容晚到回流（异步分析、图片、字体）不触发 scroll/resize，只能定时兜底 */
   var obAdvTimer = null;
   var obStartedAt = 0;
   var obBoundGlobal = false;
@@ -17834,8 +17905,14 @@
     var box = { left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
     obSetMask(box);
 
+    /* ring 收敛进视口：锚点贴屏幕右缘时（如 812px 窄桌面），框会伸出屏幕外
+       一截，看起来「高亮框不准」。mask 的镂空本来就 clamp，ring 对齐它。 */
+    var rl = Math.max(0, box.left);
+    var rt = Math.max(0, box.top);
+    var rr = Math.min(obVw(), box.left + box.width);
+    var rb = Math.min(obVh(), box.top + box.height);
     obEls.ring.hidden = false;
-    obCss(obEls.ring, box);
+    obCss(obEls.ring, { left: rl, top: rt, width: Math.max(0, rr - rl), height: Math.max(0, rb - rt) });
 
     /* 讲解步：把镂空区也堵上，避免用户点到目标把页面带跑 */
     if (step.mode === 'demo') {
@@ -17918,6 +17995,7 @@
     h += '</div>';
     h += '<div class="ob-btns">';
     h += '<button type="button" class="ob-btn primary" data-ob="next">' + esc(step.cta) + '</button>';
+    h += '<button type="button" class="ob-btn ghost" data-ob="skipall">跳过引导</button>';
     h += '</div>';
     h += '<p class="ob-hint">这张地图随时能在「设置 → 新手引导」重看</p>';
     return h;
@@ -18111,17 +18189,19 @@
   }
 
   /**
-   * 落定重绘：切到某一步后连画 4 次（40/160/420/800ms）。
+   * 落定重绘：切到某一步后连画多次。
    * 只画一次不够 —— 锚点会在首帧之后自己变宽变窄：简洁版 #spRemain 要从
    * 「¥0.00」换成真实金额、图表/列表异步渲染完也会回流，框会停在旧位置。
-   * obPaint 是幂等的（每次都按当前 rect 重算），多画几次没有副作用。
+   * v4 实测（830px 完整版几何扫描）：coach/goals 页的理财分析、目标卡是异步
+   * 出来的，800ms 时还在回流 → 拖长到 2.2s；另外 17646 的常驻校准每 250ms
+   * 兜底，两条腿一起覆盖「晚到回流」。obPaint 幂等，多画没有副作用。
    */
   var obPaintBurstTimers = [];
   function obPaintBurst(baseDelay) {
     var i;
     for (i = 0; i < obPaintBurstTimers.length; i++) { global.clearTimeout(obPaintBurstTimers[i]); }
     obPaintBurstTimers = [];
-    var delays = [baseDelay || 0, 160, 420, 800];
+    var delays = [baseDelay || 0, 160, 420, 800, 1400, 2200];
     for (i = 0; i < delays.length; i++) {
       (function (d) {
         obPaintBurstTimers.push(global.setTimeout(obPaint, d));
@@ -18146,6 +18226,16 @@
     }
     ob.goTo(mode, i);
     obRender();
+    /* 切步瞬间先撤掉上一步的高亮框和镂空：
+       v4 几何扫描证实，等过渡结束再画（380ms）的这段时间里，旧框停在上一步
+       的位置、新内容已经在动，用户看到的就是「框区和卡片对不上」。
+       气泡本来就 visibility:hidden，这里把 ring / block / 镂空一并收掉，
+       整屏先盖住，等 obPaint 量准了再一起露出来。 */
+    if (obEls) {
+      obEls.ring.hidden = true;
+      obEls.block.hidden = true;
+      obSetMask(null);
+    }
     global.clearTimeout(obPaintTimer);
     /* 切视图有 ~300ms 过渡，立刻测 rect 拿到的是旧位置（高亮框会飘到空地） */
     obPaintBurst(changed ? 380 : 40);
@@ -18207,6 +18297,7 @@
     obActiveMode = '';
     obAutoRun = false;
     global.clearTimeout(obAdvTimer);
+    if (obWatchTimer) { global.clearInterval(obWatchTimer); obWatchTimer = null; }
     for (var bi = 0; bi < obPaintBurstTimers.length; bi++) { global.clearTimeout(obPaintBurstTimers[bi]); }
     obPaintBurstTimers = [];
     global.clearTimeout(obPaintTimer);
@@ -18315,6 +18406,10 @@
     global.addEventListener('scroll', obSchedulePaint, true);
     DOC.addEventListener('keydown', obOnKey, true);
     if (global.visualViewport) { global.visualViewport.addEventListener('resize', obSchedulePaint); }
+    /* 常驻校准：滚动/视口变化有上面的事件盯着，但内容晚到回流（异步分析、
+       图片、字体）谁的事件都不发。250ms 一次的兜底重画，obPaint 幂等，
+       引导没激活时第一行就 return，空转成本可忽略。 */
+    if (!obWatchTimer) { obWatchTimer = global.setInterval(obPaint, 250); }
   }
 
   /** 常驻入口：设置页「新手引导」+ 简洁版「我的」菜单（老用户也能回来） */
@@ -18638,7 +18733,21 @@
       var cat = li.getAttribute('data-cat');
       highlightCategory = (highlightCategory === cat) ? null : cat;
       renderDonut(getOverview());
+      renderDonut(getOverview(), 'sp');   // 简洁版镜像同步高亮
     });
+
+    /* 简洁版「图表」页的图例：同一个高亮状态，两边一起亮一起灭 */
+    var spLegendEl = $('spLegendList');
+    if (spLegendEl) {
+      spLegendEl.addEventListener('click', function (e) {
+        var li = e.target.closest ? e.target.closest('li[data-cat]') : null;
+        if (!li) { return; }
+        var cat = li.getAttribute('data-cat');
+        highlightCategory = (highlightCategory === cat) ? null : cat;
+        renderDonut(getOverview());
+        renderDonut(getOverview(), 'sp');
+      });
+    }
 
     $('goalList').addEventListener('click', function (e) {
       var addBtn = e.target.closest ? e.target.closest('[data-goal-add]') : null;

@@ -7893,9 +7893,43 @@ body[data-ui-mode="simple"] { background: var(--sp-bg); }
 body[data-view="shome"] #panelSimpleHome,
 body[data-view="slist"] #panelSimpleList,
 body[data-view="sbudget"] #panelSimpleBudget,
+body[data-view="schart"] #panelSimpleChart,
 body[data-view="ssave"] #panelSimpleSave,
 body[data-view="sdazai"] #panelSimpleDazai,
 body[data-view="sprofile"] #panelSimpleProfile { display: flex; }
+
+/* 简洁版「图表」页（2026-11-02 新增）：完整版 .card 的 sp 版。
+   内部 donut-wrap / legend / trend-wrap / chart-legend 直接复用全局类，
+   跟随当前皮肤 token，三种配色下不用单独适配。 */
+.sp-chart-card {
+  background: var(--sp-card);
+  border-radius: var(--sp-radius);
+  padding: 16px 14px 14px;
+  box-shadow: var(--sp-shadow);
+}
+.sp-chart-card .trend-wrap { margin: 4px 0 0; }
+.sp-chart-card .legend { margin: 14px 0 0; }
+.sp-chart-card .chart-legend { margin: 12px 0 0; }
+.sp-chart-card .trend-peak { margin: 0; }
+.sp-chart-card .rank-list,
+.sp-chart-card .top-list,
+.sp-chart-card .engel-bar { margin-top: 2px; }
+.sp-chart-card .stat-month-nav { margin-bottom: 10px; }
+
+/* 近 7 日趋势的基线 / 普通柱 / 刻度文字（原先是 SVG 硬编码冷灰蓝）。
+   默认值与旧值一致，各皮肤不变味；贴纸皮肤换成暖灰，别在奶油纸上发蓝。 */
+.tr-base { stroke: #EEF1F4; stroke-width: 1; }
+.tr-bar { fill: #D7DDE5; }
+.tr-val { fill: #8A93A0; }
+.tr-lab { fill: #A9B1BC; }
+[data-skin="sticker"] .tr-base { stroke: #E8DCC4; }
+[data-skin="sticker"] .tr-bar { fill: #E3D4B6; }
+[data-skin="sticker"] .tr-val { fill: #A08A66; }
+[data-skin="sticker"] .tr-lab { fill: #B49F7C; }
+[data-theme="dark"][data-skin="sticker"] .tr-base { stroke: #3A2E1E; }
+[data-theme="dark"][data-skin="sticker"] .tr-bar { fill: #3D3020; }
+[data-theme="dark"][data-skin="sticker"] .tr-val { fill: #9A8563; }
+[data-theme="dark"][data-skin="sticker"] .tr-lab { fill: #8A775A; }
 
 /* 凑单搭子在简洁版：#panelDazai 被搬进 #spDazaiBody，当普通区块展示（不再是独立面板列） */
 .sp-dazai { padding: 0 14px 10px; }
@@ -15626,6 +15660,7 @@ html[data-skin="sticker"] .brand-tag {
   flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid var(--line);
   background: var(--card); color: var(--text); font-size: 14px; font-weight: 500;
   font-family: var(--font); cursor: pointer; padding: 0 12px;
+  text-align: center;   /* 全局 button reset 把文字顶到了左边，全宽主按钮最明显 */
 }
 .ob-btn.primary { background: var(--green); border-color: var(--green); color: #fff; }
 .ob-btn.primary:hover { background: var(--green-dark); }
@@ -15699,13 +15734,15 @@ html[data-skin="sticker"] .brand-tag {
 .ob-map { list-style: none; margin: 0; padding: 0; }
 .ob-map li { border-top: 1px solid var(--line-2); }
 .ob-map li:first-child { border-top: none; }
-.ob-map button {
+/* 注意限定 li：卡片容器自己也有 .ob-map 类，裸写 .ob-map button 会命中
+   卡片内所有按钮（v4 用户截图「继续」贴左、跳过按钮撑满整行都是它干的） */
+.ob-map li button {
   width: 100%; display: flex; align-items: center; gap: 8px;
   border: none; background: none; padding: 9px 2px; cursor: pointer;
   font-family: var(--font); font-size: 13.5px; color: var(--text); text-align: left;
 }
-.ob-map button:hover { color: var(--green-deep); }
-.ob-map button span { flex: 1; }
+.ob-map li button:hover { color: var(--green-deep); }
+.ob-map li button span { flex: 1; }
 .ob-map-ar { width: 12px; height: 12px; flex: 0 0 auto; color: var(--text-2); transform: rotate(-90deg); }
 .ob-map-plain {
   display: flex; align-items: baseline; gap: 8px; padding: 9px 2px;
@@ -16340,6 +16377,7 @@ body.ob-on .mascot-bar { visibility: hidden; }
       <div class="sp-subseg" id="spListSeg">
         <button class="sp-subseg-btn" type="button" data-sub="slist">流水</button>
         <button class="sp-subseg-btn" type="button" data-sub="sbudget">预算</button>
+        <button class="sp-subseg-btn" type="button" data-sub="schart">图表</button>
       </div>
       <div class="sp-month">
         <button class="sp-mnav" id="spMonthPrev" type="button" aria-label="上个月">‹</button>
@@ -16361,6 +16399,7 @@ body.ob-on .mascot-bar { visibility: hidden; }
       <div class="sp-subseg">
         <button class="sp-subseg-btn" type="button" data-sub="slist">流水</button>
         <button class="sp-subseg-btn" type="button" data-sub="sbudget">预算</button>
+        <button class="sp-subseg-btn" type="button" data-sub="schart">图表</button>
       </div>
       <div class="sp-body">
         <div class="sp-ringbox">
@@ -16383,6 +16422,96 @@ body.ob-on .mascot-bar { visibility: hidden; }
         <div class="sp-sec">分类占比</div>
         <ul class="sp-catbars" id="spCatBars"></ul>
         <button class="sp-blockbtn" id="spBtnBudget" type="button">调整预算 / 设置发钱日</button>
+      </div>
+    </section>
+
+    <!-- 图表（2026-11-02 新增）：完整版看板三张统计图的简洁版镜像。
+         渲染走同一批函数（id 加 sp 前缀双写），数据与完整版永远同源；
+         分类占比的环心与图例支持点图例高亮，行为与完整版一致。 -->
+    <section class="sp-screen sp-chart" id="panelSimpleChart">
+      <header class="sp-top sp-top-plain"><h2>图表</h2></header>
+      <div class="sp-subseg">
+        <button class="sp-subseg-btn" type="button" data-sub="slist">流水</button>
+        <button class="sp-subseg-btn" type="button" data-sub="sbudget">预算</button>
+        <button class="sp-subseg-btn" type="button" data-sub="schart">图表</button>
+      </div>
+      <div class="sp-body">
+        <div class="sp-sec">收支概览<span class="sp-sec-sub" id="spIncomeHint">本周期</span></div>
+        <div class="sp-chart-card">
+          <div class="income-grid">
+            <div><b id="spIncIncome">¥0.00</b><small>收入</small></div>
+            <div><b id="spIncExpense">¥0.00</b><small>支出</small></div>
+            <div><b id="spIncBalance">¥0.00</b><small>结余</small></div>
+            <div><b id="spIncRate">—</b><small>储蓄率</small></div>
+          </div>
+        </div>
+
+        <div class="sp-sec">恩格尔系数<span id="spEngelBadge" class="badge badge-soft">—</span></div>
+        <div class="sp-chart-card card-engel" id="spEngelCard">
+          <div class="engel-bar"><i id="spEngelFill"></i></div>
+          <p class="engel-text" id="spEngelText">—</p>
+        </div>
+
+        <div class="sp-sec">分类占比<span class="sp-sec-sub">本周期</span></div>
+        <div class="sp-chart-card">
+          <div class="donut-wrap">
+            <svg class="donut" id="spDonutChart" viewBox="0 0 160 160" aria-hidden="true"></svg>
+            <div class="donut-center">
+              <b id="spDonutTotal">¥0.00</b>
+              <small>本周期支出</small>
+            </div>
+          </div>
+          <ul class="legend" id="spLegendList"></ul>
+        </div>
+
+        <div class="sp-sec">近 7 日趋势<span class="sp-sec-sub" id="spTrendSum">—</span></div>
+        <div class="sp-chart-card">
+          <div class="trend-wrap">
+            <svg id="spTrendChart" viewBox="0 0 320 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+          </div>
+        </div>
+
+        <div class="sp-sec">月度统计</div>
+        <div class="sp-chart-card">
+          <div class="stat-month-nav">
+            <button class="stat-nav" id="spStatPrev" type="button" aria-label="上一月">‹</button>
+            <span class="stat-month-label" id="spStatMonthLabel">—</span>
+            <button class="stat-nav" id="spStatNext" type="button" aria-label="下一月">›</button>
+          </div>
+          <div class="stat-sum-grid">
+            <div class="stat-sum is-expense"><b id="spStatMonthExpense">¥0.00</b><small>本月支出</small></div>
+            <div class="stat-sum is-income"><b id="spStatMonthIncome">¥0.00</b><small>本月收入</small></div>
+          </div>
+        </div>
+
+        <div class="sp-sec">支出类目排行<span class="sp-sec-sub" id="spCatRankHint">本月</span></div>
+        <div class="sp-chart-card">
+          <ul class="rank-list" id="spCatRankList"></ul>
+          <button class="rank-more" id="spCatRankMore" type="button" hidden></button>
+        </div>
+
+        <div class="sp-sec">支出趋势<span class="sp-sec-sub" id="spTrendMonthHint">本月</span></div>
+        <div class="sp-chart-card">
+          <p class="trend-peak" id="spTrendPeak">本月还没有支出记录，趋势图空着。</p>
+          <div class="trend-kv">
+            <div><b id="spTrendAvg">¥0.00</b><small>本月平均每日支出</small></div>
+            <div><b id="spTrendCount">0 笔</b><small>本月累计支出笔数</small></div>
+          </div>
+          <div class="trend-wrap trend-wrap-line">
+            <svg id="spMonthTrendChart" viewBox="0 0 320 170" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+          </div>
+          <ul class="chart-legend">
+            <li><i class="lg-ring exp"></i>支出</li>
+            <li><i class="lg-ring inc"></i>收入</li>
+            <li><i class="lg-ring bal"></i>结余</li>
+          </ul>
+        </div>
+
+        <div class="sp-sec">支出明细排行<span class="sp-sec-sub" id="spTopSpendHint">Top 5</span></div>
+        <div class="sp-chart-card">
+          <ul class="top-list" id="spTopSpendList"></ul>
+          <button class="rank-more" id="spTopSpendMore" type="button" hidden></button>
+        </div>
       </div>
     </section>
 
@@ -16641,17 +16770,17 @@ body.ob-on .mascot-bar { visibility: hidden; }
               <label class="skin-opt">
                 <input type="radio" name="setSkin" value="app" checked />
                 <span class="skin-sw skin-sw--app"><i class="sw-top"></i><i class="sw-row"></i><i class="sw-row sw-row--s"></i><i class="sw-dot"></i></span>
-                <span class="skin-nm">记账同款</span>
+                <span class="skin-nm">青草色</span>
               </label>
               <label class="skin-opt">
                 <input type="radio" name="setSkin" value="academy" />
                 <span class="skin-sw skin-sw--academy"><i class="sw-top"></i><i class="sw-row"></i><i class="sw-row sw-row--s"></i><i class="sw-dot"></i></span>
-                <span class="skin-nm">学习台紫</span>
+                <span class="skin-nm">香芋色</span>
               </label>
               <label class="skin-opt">
                 <input type="radio" name="setSkin" value="sticker" />
                 <span class="skin-sw skin-sw--sticker"><i class="sw-top"></i><i class="sw-row"></i><i class="sw-row sw-row--s"></i><i class="sw-dot"></i></span>
-                <span class="skin-nm">贴纸账本</span>
+                <span class="skin-nm">芝士色</span>
               </label>
             </div>
             <!-- 画面演示：左简洁版整页换肤、右完整版只换主色，选哪套就让哪套现形 -->
@@ -46936,7 +47065,7 @@ var SAVE_VIDS=[
   var FULL_VIEWS = { chat: 1, dash: 1, goals: 1, coach: 1, dazai: 1 };
   /* 凑单搭子面板是否已挂载（首次进入才 mount，避免重复绑事件） */
   var dazaiMounted = false;
-  var SIMPLE_VIEWS = { shome: 1, slist: 1, sbudget: 1, sprofile: 1, sai: 1, scoach: 1, sgoals: 1, ssave: 1, spiggy: 1, sdazai: 1 };
+  var SIMPLE_VIEWS = { shome: 1, slist: 1, sbudget: 1, schart: 1, sprofile: 1, sai: 1, scoach: 1, sgoals: 1, ssave: 1, spiggy: 1, sdazai: 1 };
 
   /** 账单分析：最近一次导入的原始结果（默认不写入账本） */
   var analysisData = null;
@@ -49206,12 +49335,12 @@ var SAVE_VIDS=[
    * 收入为 0 时储蓄率显示「—」，避免 NaN / Infinity。
    * @param {Object} ov getOverview() 结果
    */
-  function renderIncomeCard(ov) {
+  function renderIncomeCard(ov, pfx) {
     var stats = ov.incomeStats || { income: 0, expense: 0, balance: 0, savingsRate: null };
-    var incomeEl = $('incIncome');
-    var expenseEl = $('incExpense');
-    var balanceEl = $('incBalance');
-    var rateEl = $('incRate');
+    var incomeEl = $(pfx ? 'spIncIncome' : 'incIncome');
+    var expenseEl = $(pfx ? 'spIncExpense' : 'incExpense');
+    var balanceEl = $(pfx ? 'spIncBalance' : 'incBalance');
+    var rateEl = $(pfx ? 'spIncRate' : 'incRate');
     if (!incomeEl || !expenseEl || !balanceEl || !rateEl) { return; }
 
     incomeEl.textContent = money(stats.income);
@@ -49221,7 +49350,7 @@ var SAVE_VIDS=[
     rateEl.textContent = stats.savingsRate === null ? '—' : stats.savingsRate.toFixed(1) + '%';
     rateEl.className = (stats.savingsRate !== null && stats.savingsRate < 0) ? 'neg' : '';
 
-    var hint = $('incomeHint');
+    var hint = $(pfx ? 'spIncomeHint' : 'incomeHint');
     if (hint) {
       hint.textContent = stats.hasIncome
         ? '收入 ' + stats.incomeCount + ' 笔'
@@ -49353,6 +49482,7 @@ var SAVE_VIDS=[
 
     /* ---- 收支概览 ---- */
     renderIncomeCard(ov);
+    renderIncomeCard(ov, 'sp');   // 简洁版「图表」页镜像
 
     /* ---- 存钱罐（独立模块，看板只显示一个入口卡） ---- */
     renderPiggyCard(ov);
@@ -49380,6 +49510,15 @@ var SAVE_VIDS=[
         : '本周期还没有支出记录，先记一笔试试？';
     }
 
+    /* ---- 恩格尔 · 简洁版「图表」页镜像：徽标与文案直接复用上面算好的结果 ---- */
+    if ($('spEngelCard')) {
+      $('spEngelCard').className = 'sp-chart-card card-engel' + (ov.engel.alert ? ' alert' : '');
+      $('spEngelBadge').textContent = '餐饮占比 ' + engelPercent + '%';
+      $('spEngelBadge').className = 'badge badge-soft' + (ov.engel.alert ? ' warn' : '');
+      $('spEngelFill').style.width = Math.min(100, engelPercent) + '%';
+      $('spEngelText').textContent = $('engelText').textContent;
+    }
+
     /* ---- 消费诊断（基于 CATEGORIES.essential + 设置里的单日上限） ---- */
     renderDiagCard(ov);
 
@@ -49388,6 +49527,11 @@ var SAVE_VIDS=[
 
     /* ---- 近 7 日趋势 ---- */
     renderTrend(ov);
+
+    /* ---- 简洁版「图表」页镜像：同一份数据画进 sp 前缀容器（面板隐藏时也画，
+       保证切过去永远是最新值，不用进页面再补一次渲染） ---- */
+    renderDonut(ov, 'sp');
+    renderTrend(ov, 'sp');
 
     /* ---- 支出统计（类目排行 / 月趋势 / 明细排行） ---- */
     renderStatSection();
@@ -49452,21 +49596,24 @@ var SAVE_VIDS=[
     return slices;
   }
 
-  function renderDonut(ov) {
-    var svg = $('donutChart');
-    var legend = $('legendList');
+  /** pfx：简洁版「图表」页镜像容器的前缀（'sp' → spDonutChart 等）。
+      两套容器都常驻 DOM，renderDashboard 每次双写，数据与完整版永远同源。 */
+  function renderDonut(ov, pfx) {
+    var svg = $(pfx ? 'spDonutChart' : 'donutChart');
+    var legend = $(pfx ? 'spLegendList' : 'legendList');
+    if (!svg || !legend) { return; }
     var slices = getCategorySlices(ov.cycleAgg.byCategory);
     var totalValue = ov.cycleAgg.expense;
 
     if (slices.length === 0) {
       svg.innerHTML = '<circle cx="80" cy="80" r="70" stroke="#EEF1F4" stroke-width="20"></circle>';
-      $('donutTotal').textContent = money(0);
+      $(pfx ? 'spDonutTotal' : 'donutTotal').textContent = money(0);
       legend.innerHTML = '<li class="empty">本周期还没有支出记录</li>';
       return;
     }
 
     svg.innerHTML = donutSvgHtml(slices, 160, 20, 160);
-    $('donutTotal').textContent = money(totalValue);
+    $(pfx ? 'spDonutTotal' : 'donutTotal').textContent = money(totalValue);
 
     var html = '';
     var i;
@@ -49483,8 +49630,9 @@ var SAVE_VIDS=[
     legend.innerHTML = html;
   }
 
-  function renderTrend(ov) {
-    var svg = $('trendChart');
+  function renderTrend(ov, pfx) {
+    var svg = $(pfx ? 'spTrendChart' : 'trendChart');
+    if (!svg) { return; }
     var days = [];
     var i;
     var sum = 0;
@@ -49497,7 +49645,7 @@ var SAVE_VIDS=[
       sum += value;
       if (value > max) { max = value; }
     }
-    $('trendSum').textContent = '合计 ' + money(sum);
+    $(pfx ? 'spTrendSum' : 'trendSum').textContent = '合计 ' + money(sum);
 
     var W = 320;
     var H = 150;
@@ -49512,24 +49660,29 @@ var SAVE_VIDS=[
     var scaleMax = max * 1.15;
 
     var parts = [];
-    parts.push('<line x1="' + padL + '" y1="' + (padT + chartH) + '" x2="' + (W - padR) + '" y2="' + (padT + chartH) +
-      '" stroke="#EEF1F4" stroke-width="1"></line>');
+    /* 基线、普通柱、刻度文字走 CSS 类而不是硬编码色：简洁版「图表」页会把这些
+       元素铺在奶油纸卡片上，冷灰蓝在贴纸皮肤里发蓝，需要在样式表里按皮肤调暖 */
+    parts.push('<line class="tr-base" x1="' + padL + '" y1="' + (padT + chartH) + '" x2="' + (W - padR) + '" y2="' + (padT + chartH) +
+      '"></line>');
 
     for (i = 0; i < days.length; i++) {
       var day = days[i];
       var cx = padL + step * i + step / 2;
       var h = day.value > 0 ? Math.max(3, day.value / scaleMax * chartH) : 2;
       var y = padT + chartH - h;
-      var color = day.isToday ? skinGreen() : '#D7DDE5';
-      if (day.isToday && day.value > max * 0.6) { color = '#FF8A3D'; }
+      var rectAttr = ' class="tr-bar"';
+      if (day.isToday) {
+        /* 今天的柱子仍然跟随主色（贴纸皮肤=墨，亮黄底上可见）；数值大时转警示橙 */
+        rectAttr = ' fill="' + (day.value > max * 0.6 ? '#FF8A3D' : skinGreen()) + '"';
+      }
       parts.push('<rect x="' + (cx - barW / 2) + '" y="' + y + '" width="' + barW + '" height="' + h +
-        '" rx="4" fill="' + color + '"></rect>');
+        '" rx="4"' + rectAttr + '></rect>');
       if (day.value > 0) {
-        parts.push('<text x="' + cx + '" y="' + (y - 5) + '" text-anchor="middle" font-size="8.5" fill="#8A93A0">' +
+        parts.push('<text x="' + cx + '" y="' + (y - 5) + '" text-anchor="middle" font-size="8.5" class="tr-val">' +
           (day.value >= 1000 ? Math.round(day.value / 100) / 10 + 'k' : Math.round(day.value)) + '</text>');
       }
-      parts.push('<text x="' + cx + '" y="' + (H - 7) + '" text-anchor="middle" font-size="9" fill="' +
-        (day.isToday ? skinGreen() : '#A9B1BC') + '"' + (day.isToday ? ' font-weight="600"' : '') + '>' +
+      parts.push('<text x="' + cx + '" y="' + (H - 7) + '" text-anchor="middle" font-size="9"' +
+        (day.isToday ? ' fill="' + skinGreen() + '" font-weight="600"' : ' class="tr-lab"') + '>' +
         (day.isToday ? '今天' : day.label) + '</text>');
     }
     svg.innerHTML = parts.join('');
@@ -49701,8 +49854,9 @@ var SAVE_VIDS=[
   }
 
   /** 支出类目排行：横向占比条 + 本月共支出 + 笔数，默认 5 条，点「展开」看全部 */
-  function renderCatRank(agg, total, bills) {
-    var list = $('catRankList');
+  function renderCatRank(agg, total, bills, pfx) {
+    var list = $(pfx ? 'spCatRankList' : 'catRankList');
+    if (!list) { return; }
     var rows = [];
     var counts = {};
     var i;
@@ -49722,8 +49876,8 @@ var SAVE_VIDS=[
 
     if (rows.length === 0) {
       list.innerHTML = '<li class="sp-empty">这个月还没有支出记录</li>';
-      $('catRankMore').hidden = true;
-      $('catRankHint').textContent = '本月';
+      $(pfx ? 'spCatRankMore' : 'catRankMore').hidden = true;
+      $(pfx ? 'spCatRankHint' : 'catRankHint').textContent = '本月';
       return;
     }
     var shown = catRankOpen ? rows.length : Math.min(STAT_COLLAPSE, rows.length);
@@ -49745,19 +49899,23 @@ var SAVE_VIDS=[
         '</span></li>';
     }
     list.innerHTML = html;
-    $('catRankMore').hidden = rows.length <= STAT_COLLAPSE;
-    var more = $('catRankMore');
+    $(pfx ? 'spCatRankMore' : 'catRankMore').hidden = rows.length <= STAT_COLLAPSE;
+    var more = $(pfx ? 'spCatRankMore' : 'catRankMore');
     if (!more.hidden) {
       more.innerHTML = (catRankOpen ? '收起 ' : '展开 ') +
         '<svg class="rank-caret' + (catRankOpen ? ' is-open' : '') + '" aria-hidden="true"><use href="#i-caret"/></svg>';
     }
-    $('catRankHint').textContent = rows.length + ' 个类目';
+    $(pfx ? 'spCatRankHint' : 'catRankHint').textContent = rows.length + ' 个类目';
   }
 
-  /** 支出趋势：月度折线（支出 / 收入 / 结余）+ 单日峰值气泡 + 日均与笔数 */
-  function renderMonthTrend(agg, bills, r) {
-    var svg = $('monthTrendChart');
-    var peakEl = $('trendPeak');
+  /** 支出趋势：月度折线（支出 / 收入 / 结余）+ 单日峰值气泡 + 日均与笔数。
+      月份文案从 r.start 取而不是 ensureStatMonth()：函数只该依赖传入的区间，
+      否则完整版统计区翻到历史月后，标签与折线各说各话。 */
+  function renderMonthTrend(agg, bills, r, pfx) {
+    var svg = $(pfx ? 'spMonthTrendChart' : 'monthTrendChart');
+    var peakEl = $(pfx ? 'spTrendPeak' : 'trendPeak');
+    if (!svg || !peakEl) { return; }
+    var monthNum = parseInt(r.start.slice(5, 7), 10);
     var expMap = {};
     var incMap = {};
     var i;
@@ -49784,9 +49942,9 @@ var SAVE_VIDS=[
       if (e > peak.value) { peak = { day: i, value: e }; }
     }
     var avg = ENG.round2(agg.expense / r.days);
-    $('trendAvg').textContent = money(avg);
-    $('trendCount').textContent = agg.count + ' 笔';
-    $('trendMonthHint').textContent = (r.isThisMonth ? '本月' : (ensureStatMonth().m + 1) + '月');
+    $(pfx ? 'spTrendAvg' : 'trendAvg').textContent = money(avg);
+    $(pfx ? 'spTrendCount' : 'trendCount').textContent = agg.count + ' 笔';
+    $(pfx ? 'spTrendMonthHint' : 'trendMonthHint').textContent = (r.isThisMonth ? '本月' : monthNum + '月');
 
     if (agg.expense <= 0 && agg.income <= 0) {
       peakEl.innerHTML = ic('info', 'bico-mute', '提示') +
@@ -49795,8 +49953,8 @@ var SAVE_VIDS=[
       return;
     }
 
-    peakEl.innerHTML = ic('spark', 'bico-warn', '峰值') + '本月单日最高支出 —— 在 <b>' +
-      esc((ensureStatMonth().m + 1) + '.' + pad2(peak.day)) + '</b> 这一天，你支出了 <b class="trend-peak-amt">' +
+    peakEl.innerHTML = ic('spark', 'bico-warn', '峰值') + (r.isThisMonth ? '本月' : monthNum + '月') + '单日最高支出 —— 在 <b>' +
+      esc(monthNum + '.' + pad2(peak.day)) + '</b> 这一天，你支出了 <b class="trend-peak-amt">' +
       money(peak.value) + '</b>';
 
     var W = 320, H = 170, padL = 36, padR = 18, padT = 32, padB = 24;
@@ -49859,7 +50017,7 @@ var SAVE_VIDS=[
         '" height="26" rx="7"></rect>' +
         '<text class="stat-tip-t" x="' + (boxX + boxW / 2).toFixed(1) + '" y="' + (boxY + 11).toFixed(1) +
         '" text-anchor="middle" font-size="9">' +
-        esc((ensureStatMonth().m + 1) + '月' + peak.day + '日') + '</text>' +
+        esc(monthNum + '月' + peak.day + '日') + '</text>' +
         '<text class="stat-tip-t" x="' + (boxX + boxW / 2).toFixed(1) + '" y="' + (boxY + 21).toFixed(1) +
         '" text-anchor="middle" font-size="9.5" font-weight="600">支出 ' +
         esc(String(ENG.round2(peak.value))) + '</text></g>');
@@ -49878,15 +50036,16 @@ var SAVE_VIDS=[
   }
 
   /** 支出明细排行：本月单笔 Top N（图标 + 日期·分类 + 金额） */
-  function renderTopSpend(bills) {
-    var list = $('topSpendList');
+  function renderTopSpend(bills, pfx) {
+    var list = $(pfx ? 'spTopSpendList' : 'topSpendList');
+    if (!list) { return; }
     var tops = bills.filter(function (b) { return b.type !== 'income'; })
       .slice()
       .sort(function (a, b) { return b.amount - a.amount; });
     if (tops.length === 0) {
       list.innerHTML = '<li class="sp-empty">这个月还没有支出记录</li>';
-      $('topSpendMore').hidden = true;
-      $('topSpendHint').textContent = 'Top 5';
+      $(pfx ? 'spTopSpendMore' : 'topSpendMore').hidden = true;
+      $(pfx ? 'spTopSpendHint' : 'topSpendHint').textContent = 'Top 5';
       return;
     }
     var shown = topSpendOpen ? tops.length : Math.min(STAT_COLLAPSE, tops.length);
@@ -49903,13 +50062,13 @@ var SAVE_VIDS=[
         '</li>';
     }
     list.innerHTML = html;
-    $('topSpendMore').hidden = tops.length <= STAT_COLLAPSE;
-    var more = $('topSpendMore');
+    $(pfx ? 'spTopSpendMore' : 'topSpendMore').hidden = tops.length <= STAT_COLLAPSE;
+    var more = $(pfx ? 'spTopSpendMore' : 'topSpendMore');
     if (!more.hidden) {
       more.innerHTML = (topSpendOpen ? '收起 ' : '展开 ') +
         '<svg class="rank-caret' + (topSpendOpen ? ' is-open' : '') + '" aria-hidden="true"><use href="#i-caret"/></svg>';
     }
-    $('topSpendHint').textContent = 'Top ' + shown + ' / ' + tops.length;
+    $(pfx ? 'spTopSpendHint' : 'topSpendHint').textContent = 'Top ' + shown + ' / ' + tops.length;
   }
 
   /** 三张统计图的统一入口（含月度汇总卡） */
@@ -49927,9 +50086,20 @@ var SAVE_VIDS=[
     var nowYM = currentYM();
     $('statNext').disabled = (ym.y > nowYM.y) || (ym.y === nowYM.y && ym.m >= nowYM.m);
 
+    /* 简洁版「图表」页月份卡镜像（spStatPrev/spStatNext 与完整版共用同一个翻月状态） */
+    if ($('spStatMonthLabel')) {
+      $('spStatMonthLabel').textContent = $('statMonthLabel').textContent;
+      $('spStatMonthExpense').textContent = $('statMonthExpense').textContent;
+      $('spStatMonthIncome').textContent = $('statMonthIncome').textContent;
+      $('spStatNext').disabled = $('statNext').disabled;
+    }
+
     renderCatRank(agg, agg.expense, bills);
+    renderCatRank(agg, agg.expense, bills, 'sp');
     renderMonthTrend(agg, bills, r);
+    renderMonthTrend(agg, bills, r, 'sp');   // 简洁版「图表」页镜像
     renderTopSpend(bills);
+    renderTopSpend(bills, 'sp');
   }
 
   function shiftStatMonth(delta) {
@@ -49965,6 +50135,7 @@ var SAVE_VIDS=[
       var cat = row.getAttribute('data-cat');
       highlightCategory = (highlightCategory === cat) ? null : cat;
       renderDonut(getOverview());
+      renderDonut(getOverview(), 'sp');   // 简洁版镜像同步高亮
     });
     $('catRankList').addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -49972,6 +50143,34 @@ var SAVE_VIDS=[
         if (row) { e.preventDefault(); row.click(); }
       }
     });
+
+    /* 简洁版「图表」页的月份切换 / 展开收起 / 类目行高亮：
+       全部复用完整版的状态变量与 renderStatSection（它会同时重绘两边），不另起炉灶 */
+    if ($('spStatPrev')) {
+      $('spStatPrev').addEventListener('click', function () { shiftStatMonth(-1); });
+      $('spStatNext').addEventListener('click', function () {
+        var ym = ensureStatMonth();
+        var nowYM = currentYM();
+        if (ym.y > nowYM.y || (ym.y === nowYM.y && ym.m >= nowYM.m)) { return; }
+        shiftStatMonth(1);
+      });
+      $('spCatRankMore').addEventListener('click', function () {
+        catRankOpen = !catRankOpen;
+        renderStatSection();
+      });
+      $('spTopSpendMore').addEventListener('click', function () {
+        topSpendOpen = !topSpendOpen;
+        renderStatSection();
+      });
+      $('spCatRankList').addEventListener('click', function (e) {
+        var row = e.target.closest ? e.target.closest('.rank-row') : null;
+        if (!row) { return; }
+        var cat = row.getAttribute('data-cat');
+        highlightCategory = (highlightCategory === cat) ? null : cat;
+        renderDonut(getOverview());
+        renderDonut(getOverview(), 'sp');
+      });
+    }
   }
 
   function renderAchievement() {
@@ -53308,10 +53507,10 @@ var SAVE_VIDS=[
          不强行切 UI 类型（用户明确选过的类型不该被皮肤偷偷改掉），
          但要说清楚，避免「选了没变化」的困惑。 */
       if (input.value === 'sticker' && getUiMode() !== 'simple') {
-        showToast('贴纸账本是简洁版的整套手账皮肤，切到简洁版才是完整效果');
+        showToast('芝士色是简洁版的整套手账皮肤，切到简洁版才是完整效果');
       } else {
-        showToast(input.value === 'academy' ? '已切换到学习台紫'
-          : (input.value === 'sticker' ? '已切换到贴纸账本' : '已切换回记账同款'));
+        showToast(input.value === 'academy' ? '已切换到香芋色'
+          : (input.value === 'sticker' ? '已切换到芝士色' : '已切换回青草色'));
       }
     });
     /* 点「已选中」的 radio 不会触发 change（DOM 标准行为），但用户的点击本身就是一次
@@ -60537,7 +60736,7 @@ var SAVE_VIDS=[
     var i;
     /* 简洁版 4 类（2026-10-31）：预算归「明细」、搭子归「省钱」、理财专家归「我的」，
        这些子视图没有独立一级 tab，按其归属高亮上级入口，避免底部全灰。 */
-    var TAB_HOST = { sbudget: 'slist', sdazai: 'ssave', scoach: 'sprofile' };
+    var TAB_HOST = { sbudget: 'slist', schart: 'slist', sdazai: 'ssave', scoach: 'sprofile' };
     var tabView = TAB_HOST[view] || view;
     for (i = 0; i < tabs.length; i++) {
       // 用 classList.toggle 保留 tab 上的其他类（如 ui-full-only），避免整类名覆盖导致门控失效
@@ -60679,6 +60878,7 @@ var SAVE_VIDS=[
   var obSheetOpen = false;
   var obSheetObs = null;
   var obPaintTimer = null;
+  var obWatchTimer = null;   /* 引导期间的常驻校准：内容晚到回流（异步分析、图片、字体）不触发 scroll/resize，只能定时兜底 */
   var obAdvTimer = null;
   var obStartedAt = 0;
   var obBoundGlobal = false;
@@ -60894,8 +61094,14 @@ var SAVE_VIDS=[
     var box = { left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
     obSetMask(box);
 
+    /* ring 收敛进视口：锚点贴屏幕右缘时（如 812px 窄桌面），框会伸出屏幕外
+       一截，看起来「高亮框不准」。mask 的镂空本来就 clamp，ring 对齐它。 */
+    var rl = Math.max(0, box.left);
+    var rt = Math.max(0, box.top);
+    var rr = Math.min(obVw(), box.left + box.width);
+    var rb = Math.min(obVh(), box.top + box.height);
     obEls.ring.hidden = false;
-    obCss(obEls.ring, box);
+    obCss(obEls.ring, { left: rl, top: rt, width: Math.max(0, rr - rl), height: Math.max(0, rb - rt) });
 
     /* 讲解步：把镂空区也堵上，避免用户点到目标把页面带跑 */
     if (step.mode === 'demo') {
@@ -60978,6 +61184,7 @@ var SAVE_VIDS=[
     h += '</div>';
     h += '<div class="ob-btns">';
     h += '<button type="button" class="ob-btn primary" data-ob="next">' + esc(step.cta) + '</button>';
+    h += '<button type="button" class="ob-btn ghost" data-ob="skipall">跳过引导</button>';
     h += '</div>';
     h += '<p class="ob-hint">这张地图随时能在「设置 → 新手引导」重看</p>';
     return h;
@@ -61171,17 +61378,19 @@ var SAVE_VIDS=[
   }
 
   /**
-   * 落定重绘：切到某一步后连画 4 次（40/160/420/800ms）。
+   * 落定重绘：切到某一步后连画多次。
    * 只画一次不够 —— 锚点会在首帧之后自己变宽变窄：简洁版 #spRemain 要从
    * 「¥0.00」换成真实金额、图表/列表异步渲染完也会回流，框会停在旧位置。
-   * obPaint 是幂等的（每次都按当前 rect 重算），多画几次没有副作用。
+   * v4 实测（830px 完整版几何扫描）：coach/goals 页的理财分析、目标卡是异步
+   * 出来的，800ms 时还在回流 → 拖长到 2.2s；另外 17646 的常驻校准每 250ms
+   * 兜底，两条腿一起覆盖「晚到回流」。obPaint 幂等，多画没有副作用。
    */
   var obPaintBurstTimers = [];
   function obPaintBurst(baseDelay) {
     var i;
     for (i = 0; i < obPaintBurstTimers.length; i++) { global.clearTimeout(obPaintBurstTimers[i]); }
     obPaintBurstTimers = [];
-    var delays = [baseDelay || 0, 160, 420, 800];
+    var delays = [baseDelay || 0, 160, 420, 800, 1400, 2200];
     for (i = 0; i < delays.length; i++) {
       (function (d) {
         obPaintBurstTimers.push(global.setTimeout(obPaint, d));
@@ -61206,6 +61415,16 @@ var SAVE_VIDS=[
     }
     ob.goTo(mode, i);
     obRender();
+    /* 切步瞬间先撤掉上一步的高亮框和镂空：
+       v4 几何扫描证实，等过渡结束再画（380ms）的这段时间里，旧框停在上一步
+       的位置、新内容已经在动，用户看到的就是「框区和卡片对不上」。
+       气泡本来就 visibility:hidden，这里把 ring / block / 镂空一并收掉，
+       整屏先盖住，等 obPaint 量准了再一起露出来。 */
+    if (obEls) {
+      obEls.ring.hidden = true;
+      obEls.block.hidden = true;
+      obSetMask(null);
+    }
     global.clearTimeout(obPaintTimer);
     /* 切视图有 ~300ms 过渡，立刻测 rect 拿到的是旧位置（高亮框会飘到空地） */
     obPaintBurst(changed ? 380 : 40);
@@ -61267,6 +61486,7 @@ var SAVE_VIDS=[
     obActiveMode = '';
     obAutoRun = false;
     global.clearTimeout(obAdvTimer);
+    if (obWatchTimer) { global.clearInterval(obWatchTimer); obWatchTimer = null; }
     for (var bi = 0; bi < obPaintBurstTimers.length; bi++) { global.clearTimeout(obPaintBurstTimers[bi]); }
     obPaintBurstTimers = [];
     global.clearTimeout(obPaintTimer);
@@ -61375,6 +61595,10 @@ var SAVE_VIDS=[
     global.addEventListener('scroll', obSchedulePaint, true);
     DOC.addEventListener('keydown', obOnKey, true);
     if (global.visualViewport) { global.visualViewport.addEventListener('resize', obSchedulePaint); }
+    /* 常驻校准：滚动/视口变化有上面的事件盯着，但内容晚到回流（异步分析、
+       图片、字体）谁的事件都不发。250ms 一次的兜底重画，obPaint 幂等，
+       引导没激活时第一行就 return，空转成本可忽略。 */
+    if (!obWatchTimer) { obWatchTimer = global.setInterval(obPaint, 250); }
   }
 
   /** 常驻入口：设置页「新手引导」+ 简洁版「我的」菜单（老用户也能回来） */
@@ -61698,7 +61922,21 @@ var SAVE_VIDS=[
       var cat = li.getAttribute('data-cat');
       highlightCategory = (highlightCategory === cat) ? null : cat;
       renderDonut(getOverview());
+      renderDonut(getOverview(), 'sp');   // 简洁版镜像同步高亮
     });
+
+    /* 简洁版「图表」页的图例：同一个高亮状态，两边一起亮一起灭 */
+    var spLegendEl = $('spLegendList');
+    if (spLegendEl) {
+      spLegendEl.addEventListener('click', function (e) {
+        var li = e.target.closest ? e.target.closest('li[data-cat]') : null;
+        if (!li) { return; }
+        var cat = li.getAttribute('data-cat');
+        highlightCategory = (highlightCategory === cat) ? null : cat;
+        renderDonut(getOverview());
+        renderDonut(getOverview(), 'sp');
+      });
+    }
 
     $('goalList').addEventListener('click', function (e) {
       var addBtn = e.target.closest ? e.target.closest('[data-goal-add]') : null;
@@ -64718,16 +64956,16 @@ html.aca-lock,html.aca-lock body{overflow:hidden}
       <div class="skin-pick" id="skinPick" role="radiogroup" aria-label="选择界面风格">
         <button type="button" class="skin-opt" data-skin-opt="app" role="radio" aria-checked="false">
           <span class="skin-swatch" style="background:linear-gradient(135deg,#059748,#07C160)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5h13.5a1 1 0 0 1 1 1V17"/><path d="M4 6.5V17a1.5 1.5 0 0 0 1.5 1.5H19"/><path d="M4 6.5 6.5 3h11L19 6.5"/><circle cx="9" cy="13" r="1.6"/></svg></span>
-          <span class="skin-txt"><b>记账同款</b><span class="tiny">微信绿 · 和主应用一致</span></span>
+          <span class="skin-txt"><b>青草色</b><span class="tiny">微信绿 · 和主应用一致</span></span>
           <span class="skin-check"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
         </button>
         <button type="button" class="skin-opt" data-skin-opt="academy" role="radio" aria-checked="false">
           <span class="skin-swatch" style="background:linear-gradient(135deg,#4f46e5,#9333ea)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 1.5 8.2 12 13.4l10.5-5.2z"/><path d="M5.8 10.7v4.5c0 1.5 2.8 2.9 6.2 2.9s6.2-1.4 6.2-2.9v-4.5"/><path d="M22.5 8.2v4.8"/></svg></span>
-          <span class="skin-txt"><b>学习台紫</b><span class="tiny">紫色渐变 · 沉浸学习风</span></span>
+          <span class="skin-txt"><b>香芋色</b><span class="tiny">紫色渐变 · 沉浸学习风</span></span>
           <span class="skin-check"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
         </button>
       </div>
-      <div class="tiny" style="margin-top:10px">默认「记账同款」，选择会自动记住。</div>
+      <div class="tiny" style="margin-top:10px">默认「青草色」，选择会自动记住。</div>
     </div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>学习笔记</div>
@@ -65382,7 +65620,7 @@ function setSkin(sk){
   document.documentElement.setAttribute('data-skin',sk);
   try{localStorage.setItem(SKIN_KEY,sk)}catch(e){}
   renderSkin();
-  toast(sk==='app'?'已切换：记账同款（微信绿）':'已切换：学习台紫');
+  toast(sk==='app'?'已切换：青草色（微信绿）':'已切换：香芋色');
 }
 
 /* ---------------- 详情弹窗 ---------------- */

@@ -7878,9 +7878,43 @@ body[data-ui-mode="simple"] { background: var(--sp-bg); }
 body[data-view="shome"] #panelSimpleHome,
 body[data-view="slist"] #panelSimpleList,
 body[data-view="sbudget"] #panelSimpleBudget,
+body[data-view="schart"] #panelSimpleChart,
 body[data-view="ssave"] #panelSimpleSave,
 body[data-view="sdazai"] #panelSimpleDazai,
 body[data-view="sprofile"] #panelSimpleProfile { display: flex; }
+
+/* 简洁版「图表」页（2026-11-02 新增）：完整版 .card 的 sp 版。
+   内部 donut-wrap / legend / trend-wrap / chart-legend 直接复用全局类，
+   跟随当前皮肤 token，三种配色下不用单独适配。 */
+.sp-chart-card {
+  background: var(--sp-card);
+  border-radius: var(--sp-radius);
+  padding: 16px 14px 14px;
+  box-shadow: var(--sp-shadow);
+}
+.sp-chart-card .trend-wrap { margin: 4px 0 0; }
+.sp-chart-card .legend { margin: 14px 0 0; }
+.sp-chart-card .chart-legend { margin: 12px 0 0; }
+.sp-chart-card .trend-peak { margin: 0; }
+.sp-chart-card .rank-list,
+.sp-chart-card .top-list,
+.sp-chart-card .engel-bar { margin-top: 2px; }
+.sp-chart-card .stat-month-nav { margin-bottom: 10px; }
+
+/* 近 7 日趋势的基线 / 普通柱 / 刻度文字（原先是 SVG 硬编码冷灰蓝）。
+   默认值与旧值一致，各皮肤不变味；贴纸皮肤换成暖灰，别在奶油纸上发蓝。 */
+.tr-base { stroke: #EEF1F4; stroke-width: 1; }
+.tr-bar { fill: #D7DDE5; }
+.tr-val { fill: #8A93A0; }
+.tr-lab { fill: #A9B1BC; }
+[data-skin="sticker"] .tr-base { stroke: #E8DCC4; }
+[data-skin="sticker"] .tr-bar { fill: #E3D4B6; }
+[data-skin="sticker"] .tr-val { fill: #A08A66; }
+[data-skin="sticker"] .tr-lab { fill: #B49F7C; }
+[data-theme="dark"][data-skin="sticker"] .tr-base { stroke: #3A2E1E; }
+[data-theme="dark"][data-skin="sticker"] .tr-bar { fill: #3D3020; }
+[data-theme="dark"][data-skin="sticker"] .tr-val { fill: #9A8563; }
+[data-theme="dark"][data-skin="sticker"] .tr-lab { fill: #8A775A; }
 
 /* 凑单搭子在简洁版：#panelDazai 被搬进 #spDazaiBody，当普通区块展示（不再是独立面板列） */
 .sp-dazai { padding: 0 14px 10px; }
@@ -15611,6 +15645,7 @@ html[data-skin="sticker"] .brand-tag {
   flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid var(--line);
   background: var(--card); color: var(--text); font-size: 14px; font-weight: 500;
   font-family: var(--font); cursor: pointer; padding: 0 12px;
+  text-align: center;   /* 全局 button reset 把文字顶到了左边，全宽主按钮最明显 */
 }
 .ob-btn.primary { background: var(--green); border-color: var(--green); color: #fff; }
 .ob-btn.primary:hover { background: var(--green-dark); }
@@ -15684,13 +15719,15 @@ html[data-skin="sticker"] .brand-tag {
 .ob-map { list-style: none; margin: 0; padding: 0; }
 .ob-map li { border-top: 1px solid var(--line-2); }
 .ob-map li:first-child { border-top: none; }
-.ob-map button {
+/* 注意限定 li：卡片容器自己也有 .ob-map 类，裸写 .ob-map button 会命中
+   卡片内所有按钮（v4 用户截图「继续」贴左、跳过按钮撑满整行都是它干的） */
+.ob-map li button {
   width: 100%; display: flex; align-items: center; gap: 8px;
   border: none; background: none; padding: 9px 2px; cursor: pointer;
   font-family: var(--font); font-size: 13.5px; color: var(--text); text-align: left;
 }
-.ob-map button:hover { color: var(--green-deep); }
-.ob-map button span { flex: 1; }
+.ob-map li button:hover { color: var(--green-deep); }
+.ob-map li button span { flex: 1; }
 .ob-map-ar { width: 12px; height: 12px; flex: 0 0 auto; color: var(--text-2); transform: rotate(-90deg); }
 .ob-map-plain {
   display: flex; align-items: baseline; gap: 8px; padding: 9px 2px;

@@ -505,6 +505,26 @@
 
 ---
 
+## 2026-11-02 · 新手引导「框区不准」修复（用户截图：理财专家步高亮框与卡片错位）
+
+用户反馈「有很多框区引导不准确」。做了一轮**逐步几何扫描**（无头 Chrome 830×730 完整版 + 390 窄屏简洁版，逐步推进引导，比对 ring 内联位置与锚点 `getBoundingClientRect` 的期望值），拿到铁证后修了三处：
+
+- **根因 1 · 切步后旧框残留**：`obShowIndex` 切步后要等 380ms（视图过渡）才第一次重画，这段时间高亮框停在上一步的位置、新页面内容已经在动——扫描里 budget/dazai/coach/goals 四步的 first 快照 `diff` 高达数百 px。修法：切步瞬间先撤 ring / block，遮罩临时全屏盖住，等量准了再一起露出（不再有「框飘在旧位置」的过渡态）。
+- **根因 2 · 晚到回流没人管**：重绘只靠固定 4 次 burst（最长 800ms），coach 页理财分析、goals 目标卡是异步渲染的，800ms 后还会变。修法：burst 拖长到 2.2s（6 次），另加 250ms 常驻校准定时器兜底（`obPaint` 幂等，引导未激活时第一行就 return，空转成本可忽略；`obHide` 时清除）。
+- **根因 3 · 框溢出屏幕**：锚点贴屏幕右缘时（812px 窄桌面），ring 按 rect+8px 画会伸出屏幕一截，视觉上「框不准」。修法：ring 收敛进视口（与遮罩镂空的 clamp 对齐）。
+
+- 回归：几何扫描双端 12/12 全对齐（唯一残余「偏差」是 budget 步刻意 clamp 的 8px，属预期效果）；`node --check` 通过；`rebundle --check` 28 模块 + 1 样式漂移 0。
+- 探针留存：`_obgeo_probe.js`（配 `_obgeo_run.html` 副本注入跑，读 `<pre id="OBGEO">` JSON）。踩坑：headless 虚拟时间下 `requestAnimationFrame` 不触发，探针等待要用 `setTimeout`；探针跨 `location.reload()` 的阶段标志必须存 localStorage（window 变量会丢，导致无限重载）。
+
+## 2026-11-02 · 引导按钮文字居中 + 地图卡加「跳过引导」（用户截图：全宽「继续」文字贴左）
+
+- **根因不在 `.ob-btn`**：地图卡容器自己带 `ob-map` 类，列表样式 `.ob-map button { text-align:left; width:100% }` 原想只作用于列表条目，实际命中了**卡片内所有按钮**——主按钮「继续」贴左就是它。选择器收窄为 `.ob-map li button`（含 hover 与 span 子规则），`.ob-btn` 再显式补 `text-align: center` 兜底。
+- 地图卡底部加「跳过引导」ghost 按钮（`data-ob="skipall"`，与主按钮并排）。加按钮后靠 `.ob-map button` 的 `width:100%` 曾把 ghost 撑到整行、主按钮压成 18px 竖排「继/续」——同样随选择器收窄一并解决。
+- 验证方式升级：探针在 map 步停住，dump 主/次按钮 `getBoundingClientRect` + computed `flex/text-align`（primary 320px·center、ghost 74px，PASS）+ `--screenshot` 视觉复核；双端完整几何扫描 BAD=0。
+- 踩坑：无头 `--window-size=390` 的实际视口是 504px（窗口≠视口），卡片右缘会被截图裁掉，「跳过引导」看着不见了其实在——断言要读 DOM 不能只看截图。另外沙箱对 `rm -rf` 的 safe-delete 拦截会让整条命令链中断，profile 目录一律用新名字，不删旧的。
+
+---
+
 ## 验证资产（可复跑，留存于 `AI记账/_shot/`）
 
 - 设置面板一致性 `qa_settings_unify.py` 25/25
