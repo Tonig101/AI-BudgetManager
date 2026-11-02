@@ -4690,6 +4690,8 @@
     saveState();
     /* 阿账事件源①：记账成功（所有入账路径唯一汇聚点）→ cheer，2.5s 后自动回落 */
     MOOD.onEvent('bill_logged');
+    /* 新手引导：第 1 步靠这条信号判定「用户真的记成了一笔」 */
+    if (!skipUndo) { obNotify('bill_logged'); }
     /* 浮层宠物：针对这一笔说话（批量导入不打扰） */
     if (!skipUndo) {
       var tstr = ENG.formatDate(new Date());
@@ -7894,6 +7896,7 @@
     renderWishSheet();
     var mask = $('wishMask');
     if (mask) { mask.hidden = false; }
+    obNotify('wish_sheet_open');
   }
 
   function closeWishSheet() {
@@ -8207,6 +8210,7 @@
    */
   function maybeWishReview() {
     if (!wishReady()) { return; }
+    if (obActiveNow()) { return; }   /* 新手引导进行中：别抢镜头 */
     var todayKey = ENG.formatDate(new Date());
     var items = WISH.dueItems(todayKey);
     if (!items.length) { return; }
@@ -9981,6 +9985,8 @@
   function openSettingsPage() {
     renderSettingsPage();
     $('settingsMask').hidden = false;
+    /* 新手引导的「设置」步：用户真的点进来了 → 气泡退成底部提示条，讲完可继续 */
+    obNotify('settings_open');
   }
 
   /**
@@ -14181,6 +14187,7 @@
     /* 团购省钱卡已从「理财专家」面板移到省钱助手 —— 在这里渲染一次，
        完整版/简洁版两条分支都能拿到内容。 */
     renderCoachGroupBuy();
+    obNotify('save_hub_open');
   }
 
   /**
@@ -14192,6 +14199,9 @@
     renderHubSheet();
     /* 团购省钱卡住在省钱助手面板里，简洁版切到本页时同样要渲染 */
     renderCoachGroupBuy();
+    /* 简洁版没有 openSaveHub 这条路径（走的是底 Tab → switchView('ssave')），
+       引导第 4 步在这里补一次等价信号，否则手机端永远判不到「打开过」。 */
+    obNotify('save_hub_open');
   }
 
   /**
@@ -17406,6 +17416,7 @@
   }
   function maybeProactiveHint() {
     if (proactiveShown) { return; }
+    if (obActiveNow()) { return; }   /* 新手引导进行中：别抢镜头 */
     var ov, bs;
     try { ov = getOverview(); } catch (e) { return; }
     bs = ov && ov.budgetState ? ov.budgetState : null;
@@ -17588,10 +17599,781 @@
 
   /** 首次进入搭子时自动展开一次教程；看过就不再自动弹（仍可点「教程」手动打开） */
   function maybeAutoDazaiGuide() {
+    /* 新手引导优先级更高：它没走完之前，搭子教程不许自动摊开 */
+    if (obActiveNow()) { return; }
     var seen = false;
     try { seen = localStorage.getItem(DZ_GUIDE_KEY) === '1'; } catch (e) { /* 隐私模式忽略 */ }
     if (seen) { return; }
     toggleDazaiGuide(true);
+  }
+
+  /* ==================================================================== */
+  /* 新手引导 · 渲染层（状态机在 onboard.js，挂 window.AJ.onboard）        */
+  /*                                                                      */
+  /* 分工：onboard.js 只算「走到第几步、看过没、跳过了哪步」；这里只负责   */
+  /* 画遮罩 / 高亮 / 气泡，并且只通过 switchView 与点击真实按钮驱动应用。  */
+  /* 调用链单向（铁律 9）：ob* 只往下调 switchView / 读 state；业务侧用    */
+  /* obNotify(kind) 上报事件，业务渲染函数一律不回调 ob*，不构成环。       */
+  /* ==================================================================== */
+  var obEls = null;
+  var obSheetOpen = false;
+  var obSheetObs = null;
+  var obPaintTimer = null;
+  var obAdvTimer = null;
+  var obStartedAt = 0;
+  var obBoundGlobal = false;
+  var obActiveMode = '';   /* 本轮引导跑在哪种界面上，用来发现 640px 断点切换 */
+  var obAutoRun = false;   /* 本轮是「首启自动弹」还是「设置里重看」：只有前者结束后要补弹宠物形象 */
+
+  /* 结束页「已学会」清单：与 onboard.js 的 step id 一一对应。
+     v3 起每步都覆盖一整个页面，清单也按页列全（10 条），只在结束页汇总一次。 */
+  var OB_LEARN = [
+    { id: 'bill', label: '一句话 / 语音 / 截图记账' },
+    { id: 'budget', label: '看懂剩余预算与日均' },
+    { id: 'detail', label: '翻流水、筛条件、分析账单' },
+    { id: 'wish', label: '想买先放冷静期' },
+    { id: 'save', label: '省钱雷达 + 155 条图谱' },
+    { id: 'dazai', label: '凑单计算器、审批宝' },
+    { id: 'coach', label: '性格测试、建议、理财学院' },
+    { id: 'goals', label: '攒钱目标与存钱罐' },
+    { id: 'settings', label: '预算、主题、数据备份' }
+  ];
+
+  function obApi() { return global.AJ.onboard || null; }
+  function obMode() { return getUiMode(); }
+  function obActiveNow() { var ob = obApi(); return !!(ob && ob.isActive(obMode())); }
+  function obVw() { return global.innerWidth || DOC.documentElement.clientWidth; }
+  function obVh() { return global.innerHeight || DOC.documentElement.clientHeight; }
+
+  function obCss(el, o) {
+    el.style.left = o.left + 'px';
+    el.style.top = o.top + 'px';
+    el.style.width = o.width + 'px';
+    el.style.height = o.height + 'px';
+  }
+
+  function obIco(id) { return '<svg aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+
+  /** 首次创建四层 DOM（遮罩 4 块 + 镂空堵块 + 描边 + 气泡），之后只改内容 */
+  function obMount() {
+    if (obEls) { return obEls; }
+    var root = DOC.createElement('div');
+    root.className = 'ob-root';
+    root.id = 'obRoot';
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-modal', 'true');
+    root.setAttribute('aria-label', '新手引导');
+    root.hidden = true;
+
+    var sides = ['top', 'left', 'right', 'bottom'];
+    var masks = [];
+    for (var i = 0; i < sides.length; i++) {
+      var m = DOC.createElement('div');
+      m.className = 'ob-mask';
+      m.setAttribute('data-ob-mask', sides[i]);
+      root.appendChild(m);
+      masks.push(m);
+    }
+    var block = DOC.createElement('div');
+    block.className = 'ob-block';
+    block.hidden = true;
+    root.appendChild(block);
+
+    var ring = DOC.createElement('div');
+    ring.className = 'ob-ring';
+    ring.hidden = true;
+    root.appendChild(ring);
+
+    var pop = DOC.createElement('div');
+    pop.className = 'ob-pop';
+    pop.style.visibility = 'hidden';
+    root.appendChild(pop);
+
+    DOC.body.appendChild(root);
+    obEls = { root: root, masks: masks, block: block, ring: ring, pop: pop };
+    return obEls;
+  }
+
+  /** 四块遮罩拼出镂空；box 为 null 时整屏盖住（欢迎页 / 结束页） */
+  function obSetMask(box) {
+    var vw = obVw(), vh = obVh(), m = obEls.masks;
+    if (!box) {
+      obCss(m[0], { left: 0, top: 0, width: vw, height: vh });
+      obCss(m[1], { left: 0, top: 0, width: 0, height: 0 });
+      obCss(m[2], { left: 0, top: 0, width: 0, height: 0 });
+      obCss(m[3], { left: 0, top: 0, width: 0, height: 0 });
+      return;
+    }
+    var t = Math.max(0, box.top);
+    var l = Math.max(0, box.left);
+    var r = Math.min(vw, box.left + box.width);
+    var b = Math.min(vh, box.top + box.height);
+    var midH = Math.max(0, b - t);
+    obCss(m[0], { left: 0, top: 0, width: vw, height: t });
+    obCss(m[1], { left: 0, top: t, width: l, height: midH });
+    obCss(m[2], { left: r, top: t, width: Math.max(0, vw - r), height: midH });
+    obCss(m[3], { left: 0, top: b, width: vw, height: Math.max(0, vh - b) });
+  }
+
+  /** 气泡定位：下方够就贴下方，否则上方；上下都放不下就挪到左右侧，最后才限高滚动 */
+  function obPlacePop(box, pos) {
+    var pop = obEls.pop;
+    var vw = obVw(), vh = obVh();
+    var pw = pop.offsetWidth;
+    var edge = 12, gap = 12;
+    /* 每次重排先清掉上一次的限高，否则会越量越矮 */
+    pop.style.maxHeight = '';
+    var ph = pop.offsetHeight;
+    var left = box.left + box.width / 2 - pw / 2;
+    left = Math.max(edge, Math.min(left, vw - pw - edge));
+    var top;
+    if (pos === 'top') {
+      top = edge;
+    } else {
+      var below = box.top + box.height + gap;
+      var above = box.top - gap - ph;
+      var roomBelow = vh - edge - below;
+      var roomAbove = box.top - gap - edge;
+      if (ph <= roomBelow) { top = below; }
+      else if (ph <= roomAbove) { top = above; }
+      else {
+        /* 上下都不够（v3 每步带入口清单，气泡变高了）：桌面两栏布局左右通常有空间，
+           挪到旁边比盖住高亮目标好得多 */
+        var rightLeft = box.left + box.width + gap;
+        var leftLeft = box.left - gap - pw;
+        var side = null;
+        if (rightLeft + pw <= vw - edge) { side = rightLeft; }
+        else if (leftLeft >= edge) { side = leftLeft; }
+        if (side !== null) {
+          left = side;
+          /* 侧放也要兜底：矮屏（横屏手机）上气泡可能比整屏还高 */
+          if (ph > vh - edge * 2) {
+            pop.style.maxHeight = Math.max(200, vh - edge * 2) + 'px';
+            pop.classList.add('ob-scroll');
+            ph = pop.offsetHeight;
+          }
+          top = Math.max(edge, Math.min(box.top + box.height / 2 - ph / 2, vh - ph - edge));
+        } else {
+          /* 单列窄屏（手机）：按较大的一侧限高，内部滚动，保证不压住锚点 */
+          var useBelow = roomBelow >= roomAbove;
+          var cap = Math.max(200, useBelow ? roomBelow : roomAbove);
+          pop.style.maxHeight = cap + 'px';
+          pop.classList.add('ob-scroll');
+          ph = pop.offsetHeight;
+          top = useBelow ? below : Math.max(edge, box.top - gap - ph);
+        }
+      }
+    }
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+
+    /* 兜底校正：气泡内容（换行、图标、按钮）在测量之后还可能长高几像素，
+       一旦压到锚点上，高亮框的上沿就被气泡盖住了。这里用布局高度复核一次。 */
+    var realH = pop.offsetHeight;
+    if (top < box.top + box.height && top + realH > box.top - 2) {
+      var liftTo = box.top - gap - realH;
+      if (liftTo >= edge) { pop.style.top = liftTo + 'px'; }
+      else {
+        var dropTo = box.top + box.height + gap;
+        if (dropTo + realH <= vh - edge) { pop.style.top = dropTo + 'px'; }
+      }
+    }
+  }
+
+  /** 唯一的重定位入口：只算位置，不切视图、不碰业务渲染 */
+  function obPaint() {
+    var ob = obApi();
+    if (!ob || !obActiveNow() || !obEls || obEls.root.hidden) { return; }
+    var step = ob.current(obMode());
+    if (!step) { return; }
+
+    /* 引导自己打开了弹层（心愿单 / 省钱助手）：弹层自带遮罩与内容，
+       引导层再叠一层只会把弹层压暗、气泡贴顶还会盖住弹层标题。
+       这里收掉遮罩与高亮框，只在底部留一条提示条，用户能完整看弹层。 */
+    if (obSheetOpen) {
+      for (var mi = 0; mi < obEls.masks.length; mi++) { obEls.masks[mi].hidden = true; }
+      obEls.ring.hidden = true;
+      obEls.block.hidden = true;
+      obEls.pop.classList.remove('ob-center');
+      obEls.pop.classList.add('ob-dock');
+      obEls.pop.classList.remove('ob-scroll');
+      obEls.pop.style.maxHeight = '';
+      obEls.pop.style.left = '';
+      obEls.pop.style.top = '';
+      obEls.pop.style.visibility = 'visible';
+      return;
+    }
+    for (var mj = 0; mj < obEls.masks.length; mj++) { obEls.masks[mj].hidden = false; }
+    obEls.pop.classList.remove('ob-dock');
+
+    var sel = ob.anchorOf(step, obMode());
+    var el = sel ? DOC.querySelector(sel) : null;
+    if (!el) {
+      /* 无锚点 / 锚点缺失：居中展示，不抛错、不卡死 */
+      obSetMask(null);
+      obEls.ring.hidden = true;
+      obEls.block.hidden = true;
+      obEls.pop.classList.add('ob-center');
+      obEls.pop.classList.remove('ob-scroll');
+      obEls.pop.style.maxHeight = '';
+      obEls.pop.style.left = '';
+      obEls.pop.style.top = '';
+      obEls.pop.style.visibility = 'visible';
+      return;
+    }
+
+    obEls.pop.classList.remove('ob-center');
+    var vh = obVh();
+    var r = el.getBoundingClientRect();
+    if (r.bottom < 80 || r.top > vh - 80) {
+      /* 目标被滚出视口：instant 滚进来再重测（smooth 会让下面的 rect 是旧值） */
+      try { el.scrollIntoView({ block: 'center', behavior: 'auto' }); } catch (e) { el.scrollIntoView(); }
+      r = el.getBoundingClientRect();
+    }
+    var pad = 8;
+    var box = { left: r.left - pad, top: r.top - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
+    obSetMask(box);
+
+    obEls.ring.hidden = false;
+    obCss(obEls.ring, box);
+
+    /* 讲解步：把镂空区也堵上，避免用户点到目标把页面带跑 */
+    if (step.mode === 'demo') {
+      obEls.block.hidden = false;
+      obCss(obEls.block, box);
+    } else {
+      obEls.block.hidden = true;
+    }
+
+    var pos = obSheetOpen ? 'top' : (step.pos || 'auto');
+    obPlacePop(box, pos);
+    obEls.pop.style.visibility = 'visible';
+  }
+
+  function obDots(total, cur) {
+    var h = '';
+    for (var i = 1; i <= total; i++) {
+      h += '<i class="' + (i <= cur ? 'on' : '') + '"></i>';
+    }
+    return h;
+  }
+
+  function obStepHtml(step, i, ob) {
+    var mode = obMode();
+    var total = ob.count() - 2;      /* 去掉欢迎页与结束页 */
+    var body = (mode === 'simple' && step.bodySimple) ? step.bodySimple : step.body;
+    var tip = (mode === 'simple' && step.tipSimple) ? step.tipSimple : step.tip;
+    var h = '<div class="ob-head">';
+    h += '<span class="ob-tag">' + esc(step.tag) + '</span>';
+    h += '<span class="ob-stepno">' + i + ' / ' + total + '</span>';
+    h += '<button type="button" class="ob-close" data-ob="close" aria-label="关闭引导">✕</button>';
+    h += '</div>';
+    h += '<h3 class="ob-title">' + esc(step.title) + '</h3>';
+    h += '<p class="ob-body">' + esc(body) + '</p>';
+    /* 这页还能做什么：一页一次讲全，避免用户点十几下还看不全功能 */
+    if (step.points && step.points.length) {
+      h += '<ul class="ob-mini">';
+      for (var k = 0; k < step.points.length; k++) {
+        h += '<li><b>' + esc(step.points[k][0]) + '</b><small>' + esc(step.points[k][1]) + '</small></li>';
+      }
+      h += '</ul>';
+    }
+    if (tip) { h += '<p class="ob-tip">' + esc(tip) + '</p>'; }
+    if (step.fill && mode === 'full' && !obSheetOpen) {
+      h += '<button type="button" class="ob-fill" data-ob="fill">' + obIco('i-spark') + '帮我填个例子</button>';
+    }
+    h += '<div class="ob-btns">';
+    h += '<button type="button" class="ob-btn primary" data-ob="next">' +
+      esc(obSheetOpen && step.open ? step.open : step.cta) + '</button>';
+    h += '<button type="button" class="ob-btn ghost" data-ob="skip">跳过这步</button>';
+    h += '</div>';
+    h += '<div class="ob-dots">' + obDots(total, i) + '</div>';
+    return h;
+  }
+
+  /** 全功能地图：按用途分组列出所有入口，带 step id 的可直接跳过去 */
+  function obMapHtml(step) {
+    var h = '<div class="ob-head">';
+    h += '<span class="ob-tag">速查</span>';
+    h += '<button type="button" class="ob-close" data-ob="close" aria-label="关闭引导">✕</button>';
+    h += '</div>';
+    h += '<h3 class="ob-title">' + esc(step.title) + '</h3>';
+    if (step.sub) { h += '<p class="ob-tip" style="margin:-4px 0 0">' + esc(step.sub) + '</p>'; }
+    /* 列表单独滚动，标题与「继续」常驻：矮屏上不会把按钮挤出屏幕 */
+    h += '<div class="ob-map-wrap">';
+    for (var g = 0; g < step.groups.length; g++) {
+      var grp = step.groups[g];
+      h += '<div class="ob-map-g"><span class="ob-map-name">' + esc(grp.name) + '</span><ul class="ob-map">';
+      for (var j = 0; j < grp.items.length; j++) {
+        var it = grp.items[j];
+        if (it.s) {
+          h += '<li><button type="button" data-ob="map-go" data-step="' + esc(it.s) + '">' +
+            '<span>' + esc(it.t) + '</span><svg class="ob-map-ar" aria-hidden="true"><use href="#i-caret"/></svg></button></li>';
+        } else {
+          h += '<li><div class="ob-map-plain"><span>' + esc(it.t) + '</span><small>' + esc(it.n || '') + '</small></div></li>';
+        }
+      }
+      h += '</ul></div>';
+    }
+    h += '</div>';
+    h += '<div class="ob-btns">';
+    h += '<button type="button" class="ob-btn primary" data-ob="next">' + esc(step.cta) + '</button>';
+    h += '</div>';
+    h += '<p class="ob-hint">这张地图随时能在「设置 → 新手引导」重看</p>';
+    return h;
+  }
+
+  function obWelcomeHtml(step) {
+    var icos = ['i-chat', 'i-wallet', 'i-clock'];
+    var h = '<h3 class="ob-title">' + esc(step.title) + '</h3>';
+    h += '<p class="ob-tip" style="margin:-2px 0 0">' + esc(step.sub) + '</p>';
+    h += '<ul class="ob-points">';
+    for (var k = 0; k < step.points.length; k++) {
+      h += '<li><span class="ico">' + obIco(icos[k] || 'i-bulb') + '</span><span><b>' +
+        esc(step.points[k][0]) + '</b><small>' + esc(step.points[k][1]) + '</small></span></li>';
+    }
+    h += '</ul>';
+    h += '<div class="ob-btns">';
+    h += '<button type="button" class="ob-btn primary" data-ob="next">' + esc(step.cta) + '</button>';
+    h += '<button type="button" class="ob-btn ghost" data-ob="skipall">' + esc(step.alt) + '</button>';
+    h += '</div>';
+    h += '<p class="ob-hint">随时可以在「设置 → 新手引导」重新打开</p>';
+    return h;
+  }
+
+  /** 结束页那句「刚才那笔记了 ¥X」：只认引导开始之后落的账，不翻旧账 */
+  function obBillNote() {
+    if (!obStartedAt) { return ''; }
+    var bills = (state && state.bills) ? state.bills : null;
+    if (!bills || !bills.length) { return ''; }
+    var b = bills[bills.length - 1];
+    if (!b || !(Number(b.createdAt) >= obStartedAt)) { return ''; }
+    var amt = Number(b.amount);
+    if (!isFinite(amt)) { amt = 0; }
+    return '刚才那笔记了 ¥' + amt.toFixed(2) + '，不想留可以在聊天页点「撤回上一步」。';
+  }
+
+  function obFinishHtml(step, ob) {
+    var st = ob.load();
+    var h = '<h3 class="ob-title">' + esc(step.title) + '</h3>';
+    h += '<ul class="ob-done">';
+    for (var k = 0; k < OB_LEARN.length; k++) {
+      var it = OB_LEARN[k];
+      var miss = ob.wasSkipped(st, it.id);
+      h += '<li class="' + (miss ? 'miss' : '') + '"><span class="ck">' + (miss ? '' : obIco('i-check')) + '</span>';
+      h += '<span>' + esc(it.label) + '</span>';
+      if (miss) {
+        h += '<button type="button" data-ob="replay-step" data-step="' + it.id + '">没看，补一下</button>';
+      }
+      h += '</li>';
+    }
+    h += '</ul>';
+    var note = obBillNote();
+    if (note) { h += '<p class="ob-note">' + esc(note) + '</p>'; }
+    h += '<div class="ob-btns">';
+    h += '<button type="button" class="ob-btn primary" data-ob="done">' + esc(step.cta) + '</button>';
+    h += '<button type="button" class="ob-btn ghost" data-ob="cheat">' + esc(step.alt) + '</button>';
+    h += '</div>';
+    h += '<div class="ob-btns" style="margin-top:8px">';
+    h += '<button type="button" class="ob-btn" data-ob="academy">' + esc(step.extra) + '</button>';
+    if (step.again) {
+      h += '<button type="button" class="ob-btn" data-ob="map">' + esc(step.again) + '</button>';
+    }
+    h += '</div>';
+    h += '<p class="ob-fine">数据都存在这台设备上，换手机前记得去「设置 → 数据」导出备份。</p>';
+    h += '<p class="ob-hint">随时可以在「设置 → 新手引导」重新看</p>';
+    return h;
+  }
+
+  /** 弹层打开时的底部提示条：正文在打开弹层前已经看过，这里只留一个「继续」 */
+  function obDockHtml(step) {
+    return '<div class="ob-dock-row">' +
+      '<span class="ob-dock-txt">' + esc(step.tag) + ' · 在弹层里试试，好了点右边</span>' +
+      '<button type="button" class="ob-btn primary" data-ob="next">看完了 · 继续</button>' +
+      '</div>';
+  }
+
+  function obRender() {
+    var ob = obApi();
+    if (!ob || !obEls) { return; }
+    var i = ob.stepIndex(obMode());
+    var step = ob.get(i);
+    if (!step) { return; }
+    obEls.pop.style.visibility = 'hidden';
+    if (step.kind === 'map') { obEls.pop.classList.add('ob-map'); }
+    else { obEls.pop.classList.remove('ob-map'); }
+    if (step.kind === 'welcome') { obEls.pop.innerHTML = obWelcomeHtml(step); }
+    else if (step.kind === 'finish') { obEls.pop.innerHTML = obFinishHtml(step, ob); }
+    else if (step.kind === 'map') { obEls.pop.innerHTML = obMapHtml(step); }
+    /* 弹层开着时一律退成底部提示条：气泡再大就会盖住弹层标题/正文 */
+    else if (obSheetOpen) { obEls.pop.innerHTML = obDockHtml(step); }
+    else { obEls.pop.innerHTML = obStepHtml(step, i, ob); }
+    obBindPop();
+  }
+
+  function obBindPop() {
+    var pop = obEls.pop;
+    pop.onclick = function (e) {
+      var node = e.target;
+      while (node && node !== pop && !(node.getAttribute && node.getAttribute('data-ob'))) {
+        node = node.parentNode;
+      }
+      if (!node || node === pop) { return; }
+      var act = node.getAttribute('data-ob');
+      e.preventDefault();
+      if (act === 'next') { obAdvance(); }
+      else if (act === 'skip') { obSkipStep(); }
+      else if (act === 'close' || act === 'skipall') { obEndGuide('skipped'); }
+      else if (act === 'done') { obEndGuide('done'); }
+      else if (act === 'fill') { obFillDemo(); }
+      else if (act === 'cheat') { obHelp('cheat'); }
+      else if (act === 'academy') { obHelp('academy'); }
+      else if (act === 'map') { obJumpToStepId('map'); }
+      else if (act === 'map-go') { obJumpToStepId(node.getAttribute('data-step')); }
+      else if (act === 'replay-step') { obJumpToStepId(node.getAttribute('data-step')); }
+    };
+  }
+
+  function obShowToast(text) {
+    var t = DOC.createElement('div');
+    t.className = 'ob-toast';
+    t.textContent = text + ' ✓';
+    t.style.top = '64px';
+    DOC.body.appendChild(t);
+    global.setTimeout(function () {
+      if (t.parentNode) { t.parentNode.removeChild(t); }
+    }, 1600);
+  }
+
+  /**
+   * 收掉所有可能盖住界面的弹层。
+   * 除了引导自己打开的心愿单 / 省钱助手，还要处理「从设置里重看引导」这条路径 ——
+   * 设置页 #settingsMask 这时是开着的，不关掉的话欢迎页会直接叠在设置面板上，
+   * 后面的第 1 步又要 switchView 切到聊天页，设置面板会一直压在底下。
+   */
+  function obCloseSheets() {
+    if (typeof closeSettingsPage === 'function' && $('settingsMask') && !$('settingsMask').hidden) {
+      closeSettingsPage();
+    }
+    /* 逐一收掉：v3 起步骤会主动打开设置/流水筛选/存钱罐等，收尾必须干净，
+       否则下一步的高亮框会画在别人的遮罩下面 */
+    var extra = [
+      ['personaSheet', 'btnClosePersona'],
+      ['analysisMask', 'btnCloseAnalysis'],
+      ['importMask', 'btnCloseImport'],
+      ['billFilterMask', 'btnCloseBillFilter'],
+      ['piggyMask', 'btnClosePiggy'],
+      ['ocrMask', 'btnCloseOcr']
+    ];
+    for (var ei = 0; ei < extra.length; ei++) {
+      var em = $(extra[ei][0]);
+      if (!em || em.hidden) { continue; }
+      var eb = $(extra[ei][1]);
+      if (eb) { eb.click(); }
+      if (!em.hidden) { em.hidden = true; }
+    }
+    var qm = $('modalMask');
+    if (qm && !qm.hidden) {
+      if (typeof closeModal === 'function') { closeModal(); }
+      else { qm.hidden = true; }
+    }
+    var wm = $('wishMask');
+    if (wm && !wm.hidden) {
+      var wc = $('btnCloseWish');
+      if (wc) { wc.click(); } else { wm.hidden = true; }
+    }
+    var sm = $('saveHubMask');
+    if (sm && !sm.hidden) {
+      var sc = $('btnCloseSaveHub');
+      if (sc) { sc.click(); } else { sm.hidden = true; }
+    }
+    obSheetOpen = false;
+    obUnwatchSheet();
+  }
+
+  function obUnwatchSheet() {
+    if (obSheetObs) { obSheetObs.disconnect(); obSheetObs = null; }
+  }
+
+  /** 弹层关掉后，气泡从顶部回到锚点旁边（只监听 hidden 属性，零轮询） */
+  function obWatchSheet(maskId) {
+    obUnwatchSheet();
+    var mask = $(maskId);
+    if (!mask || typeof global.MutationObserver !== 'function') { return; }
+    obSheetObs = new global.MutationObserver(function () {
+      if (!mask.hidden) { return; }
+      obSheetOpen = false;
+      obUnwatchSheet();
+      obRender();
+      obPaint();
+    });
+    obSheetObs.observe(mask, { attributes: true, attributeFilter: ['hidden'] });
+  }
+
+  /**
+   * 落定重绘：切到某一步后连画 4 次（40/160/420/800ms）。
+   * 只画一次不够 —— 锚点会在首帧之后自己变宽变窄：简洁版 #spRemain 要从
+   * 「¥0.00」换成真实金额、图表/列表异步渲染完也会回流，框会停在旧位置。
+   * obPaint 是幂等的（每次都按当前 rect 重算），多画几次没有副作用。
+   */
+  var obPaintBurstTimers = [];
+  function obPaintBurst(baseDelay) {
+    var i;
+    for (i = 0; i < obPaintBurstTimers.length; i++) { global.clearTimeout(obPaintBurstTimers[i]); }
+    obPaintBurstTimers = [];
+    var delays = [baseDelay || 0, 160, 420, 800];
+    for (i = 0; i < delays.length; i++) {
+      (function (d) {
+        obPaintBurstTimers.push(global.setTimeout(obPaint, d));
+      })(delays[i]);
+    }
+  }
+
+  /** 统一的步骤落地：切视图 → 写盘 → 渲染 → 等过渡结束再定位 */
+  function obShowIndex(i) {
+    var ob = obApi();
+    if (!ob) { return; }
+    var mode = obMode();
+    var step = ob.get(i);
+    if (!step) { obEndGuide('done'); return; }
+    obSheetOpen = false;
+    obUnwatchSheet();
+    var target = ob.viewOf(step, mode);
+    var changed = false;
+    if (target && DOC.body.getAttribute('data-view') !== target) {
+      switchView(target);
+      changed = true;
+    }
+    ob.goTo(mode, i);
+    obRender();
+    global.clearTimeout(obPaintTimer);
+    /* 切视图有 ~300ms 过渡，立刻测 rect 拿到的是旧位置（高亮框会飘到空地） */
+    obPaintBurst(changed ? 380 : 40);
+  }
+
+  function obAdvance() {
+    var ob = obApi();
+    if (!ob) { return; }
+    obCloseSheets();
+    var i = ob.stepIndex(obMode());
+    if (i >= ob.count() - 1) { obEndGuide('done'); return; }
+    obShowIndex(i + 1);
+  }
+
+  function obSkipStep() {
+    var ob = obApi();
+    if (!ob) { return; }
+    obCloseSheets();
+    var mode = obMode();
+    var step = ob.current(mode);
+    /* 欢迎页没有「上一步」，跳过它等于整段跳过 */
+    if (step && step.kind === 'welcome') { obEndGuide('skipped'); return; }
+    ob.skipStep(mode);
+    if (ob.status(mode) === 'done') { obEndGuide('done'); return; }
+    obShowIndex(ob.stepIndex(mode));
+  }
+
+  function obJumpToStepId(id) {
+    var ob = obApi();
+    if (!ob) { return; }
+    for (var i = 0; i < ob.count(); i++) {
+      if (ob.get(i).id === id) { obShowIndex(i); return; }
+    }
+  }
+
+  function obFillDemo() {
+    var ob = obApi();
+    if (!ob) { return; }
+    var step = ob.current(obMode());
+    var inp = $('chatInput');
+    if (step && step.fill && inp) {
+      inp.value = step.fill;
+      inp.focus();
+      try { inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) { /* 老浏览器忽略 */ }
+    }
+  }
+
+  function obHelp(kind) {
+    obEndGuide('done');
+    if (kind === 'academy') {
+      if (typeof global.openAcademyOverlay === 'function') { global.openAcademyOverlay(); }
+      return;
+    }
+    var b = $('btnAiGuide');
+    if (b && b.offsetParent !== null) { b.click(); }
+  }
+
+  function obHide() {
+    obActiveMode = '';
+    obAutoRun = false;
+    global.clearTimeout(obAdvTimer);
+    for (var bi = 0; bi < obPaintBurstTimers.length; bi++) { global.clearTimeout(obPaintBurstTimers[bi]); }
+    obPaintBurstTimers = [];
+    global.clearTimeout(obPaintTimer);
+    obUnwatchSheet();
+    DOC.body.classList.remove('ob-on');
+    if (obEls) {
+      obEls.root.hidden = true;
+      obEls.pop.innerHTML = '';
+      obEls.pop.style.visibility = 'hidden';
+    }
+  }
+
+  function obEndGuide(status) {
+    var ob = obApi();
+    if (!ob) { return; }
+    obCloseSheets();
+    var mode = obMode();
+    var autoRun = obAutoRun;      /* obHide 会清掉标记，先存下来 */
+    if (status === 'done') { ob.finish(mode); } else { ob.skipAll(mode); }
+    obHide();
+    /* 首启那次被引导挡住的「宠物形象选择」在这里补上，功能不丢；
+       从设置重看的不用补 —— 那会儿用户早选过形象了 */
+    if (autoRun && typeof maybePickPetSkin === 'function') {
+      global.setTimeout(function () {
+        if (!obActiveNow()) { maybePickPetSkin(); }
+      }, 420);
+    }
+    showToast(status === 'done'
+      ? '引导结束 · 随时可以在设置 → 新手引导重新看'
+      : '已跳过 · 随时可以在设置 → 新手引导重新打开', 'ok');
+  }
+
+  /**
+   * 业务事件上报（唯一入口，由记账 / 心愿单 / 省钱助手三处调用）。
+   * 命中当前步的 completeOn 才前进；不命中就当没发生。
+   */
+  function obNotify(kind) {
+    var ob = obApi();
+    if (!ob || !obActiveNow()) { return false; }
+    if (!ob.notify(obMode(), kind)) { return false; }
+    if (kind === 'bill_logged') {
+      obShowToast('记上了');
+      global.clearTimeout(obAdvTimer);
+      obAdvTimer = global.setTimeout(function () { obAdvance(); }, 1400);
+      return true;
+    }
+    /* 简洁版点「省钱」是切屏，不是弹层：没有要关的东西，别把气泡改成「关掉再看」 */
+    if (kind === 'save_hub_open' && obMode() === 'simple') {
+      obShowToast('省到就是赚到');
+      return true;
+    }
+    /* 打开弹层 → 气泡退成底部提示条，别挡住弹层内容，等关掉再回位 */
+    var maskId = ({
+      wish_sheet_open: 'wishMask',
+      save_hub_open: 'saveHubMask',
+      settings_open: 'settingsMask'
+    })[kind];
+    if (!maskId) { return true; }
+    obSheetOpen = true;
+    obRender();
+    obPaint();
+    obWatchSheet(maskId);
+    return true;
+  }
+
+  function obSchedulePaint() {
+    obCheckModeSwitch();
+    if (!obActiveNow() || !obEls || obEls.root.hidden) { return; }
+    if (obSchedulePaint.raf) { return; }
+    obSchedulePaint.raf = true;
+    var run = function () { obSchedulePaint.raf = false; obPaint(); };
+    if (global.requestAnimationFrame) { global.requestAnimationFrame(run); }
+    else { global.setTimeout(run, 16); }
+  }
+
+  /**
+   * 跨 640px 断点（桌面拖窄 / 手机横竖切换）：
+   * 两套界面的锚点与进度是分开存的，硬把 full 的高亮框画到 simple 上只会指错。
+   * 处理：先把当前进度写盘（goTo 已实时写过），收掉遮罩，再按新界面决定是否续逛。
+   */
+  function obCheckModeSwitch() {
+    if (!obEls || obEls.root.hidden || !obActiveMode) { return; }
+    var mode = obMode();
+    if (mode === obActiveMode) { return; }
+    obHide();
+    var ob = obApi();
+    if (!ob || !ob.shouldOffer(mode)) { return; }
+    global.setTimeout(function () {
+      if (obActiveNow() || !obApi()) { return; }
+      if (obApi().shouldOffer(obMode())) { obLaunch(); }
+    }, 460);
+  }
+
+  function obOnKey(e) {
+    if (!obActiveNow()) { return; }
+    if (e.key === 'Escape' || e.keyCode === 27) {
+      e.preventDefault();
+      obEndGuide('skipped');
+    }
+  }
+
+  function obBindGlobal() {
+    if (obBoundGlobal) { return; }
+    obBoundGlobal = true;
+    global.addEventListener('resize', obSchedulePaint);
+    global.addEventListener('scroll', obSchedulePaint, true);
+    DOC.addEventListener('keydown', obOnKey, true);
+    if (global.visualViewport) { global.visualViewport.addEventListener('resize', obSchedulePaint); }
+  }
+
+  /** 常驻入口：设置页「新手引导」+ 简洁版「我的」菜单（老用户也能回来） */
+  function obBindEntry() {
+    var r1 = $('rowOnboard');
+    if (r1 && !r1.getAttribute('data-ob-bound')) {
+      r1.setAttribute('data-ob-bound', '1');
+      r1.addEventListener('click', obReplay);
+    }
+    var r2 = $('spMenuOnboard');
+    if (r2 && !r2.getAttribute('data-ob-bound')) {
+      r2.setAttribute('data-ob-bound', '1');
+      r2.addEventListener('click', obReplay);
+    }
+  }
+
+  function obLaunch() {
+    var ob = obApi();
+    if (!ob) { return; }
+    obCloseSheets();
+    var mode = obMode();
+    ob.start(mode);
+    obActiveMode = mode;
+    obAutoRun = true;
+    obStartedAt = Date.now();
+    DOC.body.classList.add('ob-on');
+    obMount();
+    obEls.root.hidden = false;
+    obBindGlobal();
+    obShowIndex(ob.stepIndex(mode));
+  }
+
+  /** 从设置里重新查看：不清 doneAt，只把 status 拉回 running（replays++） */
+  function obReplay() {
+    var ob = obApi();
+    if (!ob) { return; }
+    /* 入口在设置页里：先把设置收掉，否则欢迎页会叠在设置面板上 */
+    obCloseSheets();
+    ob.replay(obMode());
+    obActiveMode = obMode();
+    obAutoRun = false;
+    obStartedAt = Date.now();
+    DOC.body.classList.add('ob-on');
+    obMount();
+    obEls.root.hidden = false;
+    obBindGlobal();
+    obShowIndex(0);
+  }
+
+  /**
+   * 首启入口（铁律 10：必须排在 renderAll / switchView 之后，
+   * 否则第一帧测锚点会拿到尚未渲染的空元素）。
+   */
+  function obMaybeStart() {
+    obBindEntry();
+    var ob = obApi();
+    if (!ob) { return; }
+    if (!ob.shouldOffer(obMode())) { return; }
+    obLaunch();
   }
 
   function bindEvents() {
@@ -19579,6 +20361,8 @@ function petRecallIcon() {
    * 点遮罩关闭 = 用默认的阿账，同样记下，不反复骚扰。
    */
   function maybePickPetSkin() {
+    /* 新手引导占用首屏时不抢：引导结束后由 obEndGuide 补调一次（不丢这个功能） */
+    if (obActiveNow()) { return; }
     var st = getSettings();
     if (st.mascot && st.mascot.skin) { return; }   // 已经选过
     /* 分享链接访客（大赛评审 / 外部访问走 ?sharecode=）不弹首启选择窗：
@@ -20202,6 +20986,9 @@ function petRecallIcon() {
     }
     initCloud();
     renderSceneChips();
+    /* 新手引导：首启 / 断点续逛。必须排在下面几个主动提示之前，
+       否则首帧阿账会先冒一句，两套浮层同时抢镜头。 */
+    obMaybeStart();
     maybeProactiveHint();
     maybeWishReview();
     maybePickPetSkin();   /* 没选过宠物形象 → 弹一次，选过直接跳过 */

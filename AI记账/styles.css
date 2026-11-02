@@ -15483,3 +15483,253 @@ html[data-skin="sticker"] .brand-tag {
 [data-theme="dark"][data-skin="sticker"] .badge.state-tight { color: #E0B24E; }
 [data-theme="dark"][data-skin="sticker"] .badge.danger,
 [data-theme="dark"][data-skin="sticker"] .badge.state-danger { color: #F08A86; }
+
+/* ==========================================================================
+   新手引导 · 遮罩 / 高亮 / 气泡（onboard.js 状态机 + app.js ob* 渲染）
+   层级：1200 起，压过 .sheet-mask(999) 与 .aj-pet(60)；
+   镂空用 4 块遮罩拼出（不用 box-shadow 打洞：移动端圆角会漏 1px 缝）。
+   ========================================================================== */
+.ob-root[hidden] { display: none; }
+.ob-root { position: fixed; inset: 0; z-index: 1200; pointer-events: none; }
+
+.ob-mask {
+  position: fixed;
+  background: rgba(15, 23, 42, .58);
+  pointer-events: auto;
+  transition: opacity .18s ease;
+}
+/* 讲解步：把镂空区也堵上，避免用户点到目标导致页面跳走 */
+.ob-block { position: fixed; pointer-events: auto; background: transparent; }
+
+.ob-ring {
+  position: fixed;
+  border-radius: 14px;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--green), 0 8px 28px rgba(7, 193, 96, .28);
+  pointer-events: none;
+  transition: top .22s cubic-bezier(.4, 0, .2, 1), left .22s cubic-bezier(.4, 0, .2, 1),
+              width .22s cubic-bezier(.4, 0, .2, 1), height .22s cubic-bezier(.4, 0, .2, 1);
+}
+.ob-ring[hidden] { display: none; }
+
+.ob-pop {
+  position: fixed;
+  width: min(322px, calc(100vw - 24px));
+  box-sizing: border-box;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px 16px 12px;
+  box-shadow: 0 20px 52px rgba(15, 23, 42, .26);
+  pointer-events: auto;
+  font-family: var(--font);
+  animation: obIn .24s cubic-bezier(.2, .8, .3, 1) both;
+}
+@keyframes obIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* 欢迎页 / 结束页：居中卡片，不跟随锚点 */
+.ob-pop.ob-center {
+  left: 50%;
+  top: 50%;
+  width: min(384px, calc(100vw - 32px));
+  /* 结束页清单有 7 条，矮屏（iPhone SE / 横屏）会超出一屏，允许卡片内部滚动 */
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  transform: translate(-50%, -50%);
+  animation: obInCenter .26s cubic-bezier(.2, .8, .3, 1) both;
+  padding: 22px 20px 16px;
+}
+@keyframes obInCenter {
+  from { opacity: 0; transform: translate(-50%, -46%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+/* 弹层打开时：气泡退化成底部一条提示条。
+   弹层是全屏/居中面板，气泡贴顶会盖住它的标题栏，居右又没空间 —— 贴底最不挡事。 */
+.ob-pop.ob-dock {
+  left: 50%;
+  top: auto;
+  bottom: 16px;
+  width: min(440px, calc(100vw - 24px));
+  transform: translateX(-50%);
+  padding: 10px 12px;
+  border-radius: 14px;
+  animation: obInDock .22s cubic-bezier(.2, .8, .3, 1) both;
+}
+@keyframes obInDock {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.ob-pop.ob-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.ob-dock-row { display: flex; align-items: center; gap: 10px; }
+.ob-dock-txt { flex: 1; font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+.ob-dock-row .ob-btn {
+  flex: 0 0 auto; min-height: 38px; padding: 0 14px; font-size: 13px; border-radius: 10px;
+}
+
+.ob-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ob-tag {
+  font-size: 11px; line-height: 1; padding: 5px 8px; border-radius: 999px;
+  background: var(--green-soft); color: var(--green-ink); font-weight: 500;
+  white-space: nowrap;   /* 地图卡片里曾被挤成「速 / 查」两行 */
+  flex: 0 0 auto;
+}
+.ob-stepno { font-size: 11px; color: var(--text-2); letter-spacing: .04em; }
+.ob-close {
+  margin-left: auto; width: 28px; height: 28px; min-width: 28px;
+  border: none; background: transparent; color: var(--text-2);
+  border-radius: 8px; cursor: pointer; font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.ob-close:hover { background: var(--line-2); color: var(--text); }
+
+.ob-title { font-size: 17px; font-weight: 600; line-height: 1.35; margin: 0 0 8px; color: var(--text); }
+.ob-body { font-size: 14px; line-height: 1.62; color: var(--text); margin: 0; }
+.ob-tip { font-size: 12.5px; line-height: 1.55; color: var(--text-2); margin: 8px 0 0; }
+
+.ob-points { list-style: none; margin: 14px 0 4px; padding: 0; }
+.ob-points li { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line-2); }
+.ob-points li:first-child { border-top: none; }
+.ob-points .ico {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px;
+  background: var(--green-soft); color: var(--green-deep);
+  display: flex; align-items: center; justify-content: center;
+}
+.ob-points .ico svg { width: 17px; height: 17px; }
+.ob-points b { display: block; font-size: 13.5px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.ob-points small { display: block; font-size: 12.5px; color: var(--text-2); line-height: 1.5; margin-top: 1px; }
+
+.ob-btns { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.ob-btn {
+  flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font-size: 14px; font-weight: 500;
+  font-family: var(--font); cursor: pointer; padding: 0 12px;
+}
+.ob-btn.primary { background: var(--green); border-color: var(--green); color: #fff; }
+.ob-btn.primary:hover { background: var(--green-dark); }
+.ob-btn:active { transform: translateY(1px); }
+.ob-btn.ghost { flex: 0 0 auto; border-color: transparent; background: transparent; color: var(--text-2); font-weight: 400; padding: 0 8px; }
+.ob-btn.ghost:hover { color: var(--text); background: var(--line-2); }
+
+.ob-fill {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+  border: 1px dashed var(--line); background: transparent; color: var(--text-2);
+  font-size: 12.5px; font-family: var(--font); padding: 7px 10px; border-radius: 999px; cursor: pointer;
+}
+.ob-fill:hover { border-color: var(--green); color: var(--green-deep); background: var(--green-soft); }
+/* 图标 sprite 里的 <svg> 没有 viewBox 默认尺寸会撑成 300x150 —— 必须给死宽高 */
+.ob-fill svg { width: 14px; height: 14px; flex: 0 0 auto; display: block; }
+
+.ob-dots { display: flex; gap: 5px; margin-top: 12px; align-items: center; }
+.ob-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); display: block; }
+.ob-dots i.on { background: var(--green); width: 16px; border-radius: 3px; }
+
+/* 结束页：已学会清单（7 条，行距比 4 条时收一点，矮屏少滚一点） */
+.ob-done { list-style: none; margin: 12px 0 4px; padding: 0; }
+.ob-done li {
+  display: flex; align-items: center; gap: 9px; padding: 6px 0;
+  font-size: 13.5px; line-height: 1.4; color: var(--text);
+}
+.ob-done li .ck {
+  width: 20px; height: 20px; border-radius: 50%; flex: 0 0 auto;
+  background: var(--green); color: #fff; display: flex; align-items: center; justify-content: center;
+}
+.ob-done li .ck svg { width: 12px; height: 12px; }
+.ob-done li.miss { color: var(--text-2); }
+.ob-done li.miss .ck { background: var(--line); }
+.ob-done li button {
+  margin-left: auto; border: none; background: none; color: var(--green-deep);
+  font-size: 12px; font-family: var(--font); cursor: pointer; padding: 4px 2px;
+}
+.ob-note {
+  margin: 10px 0 0; padding: 8px 10px; border-radius: 10px;
+  background: var(--line-2); color: var(--text-2); font-size: 12px; line-height: 1.55;
+}
+/* 结束页脚注（数据备份提醒）：比 hint 更靠左、可读性更好 */
+.ob-fine { margin: 12px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--text-2); }
+.ob-hint { margin: 10px 0 0; font-size: 11.5px; color: var(--text-2); text-align: center; }
+
+/* 分步气泡里的「这页还能做什么」清单（v3：一页一次讲全） */
+.ob-mini { list-style: none; margin: 10px 0 2px; padding: 0; }
+.ob-mini li {
+  position: relative; padding: 7px 0 7px 14px;
+  border-top: 1px solid var(--line-2);
+}
+.ob-mini li:first-child { border-top: none; }
+.ob-mini li::before {
+  content: ''; position: absolute; left: 1px; top: 13px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--green);
+}
+.ob-mini b { display: block; font-size: 13px; font-weight: 600; line-height: 1.42; color: var(--text); }
+.ob-mini small { display: block; margin-top: 1px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+
+/* 全功能地图 */
+.ob-pop.ob-map { display: flex; flex-direction: column; width: min(440px, calc(100vw - 32px)); overflow: hidden; }
+.ob-map-wrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.ob-pop.ob-map .ob-btns { flex: 0 0 auto; margin-top: 12px; }
+.ob-pop.ob-map .ob-hint { flex: 0 0 auto; }
+.ob-map-g { margin-top: 10px; }
+.ob-map-g:first-of-type { margin-top: 10px; }
+.ob-map-name {
+  display: block; font-size: 11px; letter-spacing: .06em;
+  color: var(--text-2); margin-bottom: 1px;
+}
+.ob-map { list-style: none; margin: 0; padding: 0; }
+.ob-map li { border-top: 1px solid var(--line-2); }
+.ob-map li:first-child { border-top: none; }
+.ob-map button {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  border: none; background: none; padding: 9px 2px; cursor: pointer;
+  font-family: var(--font); font-size: 13.5px; color: var(--text); text-align: left;
+}
+.ob-map button:hover { color: var(--green-deep); }
+.ob-map button span { flex: 1; }
+.ob-map-ar { width: 12px; height: 12px; flex: 0 0 auto; color: var(--text-2); transform: rotate(-90deg); }
+.ob-map-plain {
+  display: flex; align-items: baseline; gap: 8px; padding: 9px 2px;
+  font-size: 13.5px; color: var(--text);
+}
+.ob-map-plain small { margin-left: auto; font-size: 12px; color: var(--text-2); text-align: right; }
+
+/* 「记上了 ✓」小回执 */
+.ob-toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  background: var(--green); color: #fff; font-size: 13px; font-weight: 500;
+  padding: 10px 18px; border-radius: 999px; z-index: 1210;
+  box-shadow: 0 10px 28px rgba(7, 193, 96, .34); pointer-events: none;
+  animation: obIn .2s ease both;
+}
+
+/* 引导期间静音一切会抢镜头的角色（宠物 / 主动提示气泡） */
+body.ob-on .aj-pet { opacity: 0 !important; pointer-events: none !important; }
+body.ob-on .mascot-bar { visibility: hidden; }
+
+@media (max-width: 640px) {
+  .ob-pop { padding: 15px 15px 10px; border-radius: 16px; }
+  .ob-pop.ob-center { padding: 20px 18px 14px; }
+  /* 提示条在上面那条 .ob-pop 之后生效，别被通用内边距覆盖 */
+  .ob-pop.ob-dock {
+    padding: 10px 12px; border-radius: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+  .ob-dock-row .ob-btn { min-height: 44px; }
+  .ob-title { font-size: 16px; }
+  .ob-body { font-size: 14px; }
+  .ob-btn { min-height: 48px; }
+  .ob-btns { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-pop, .ob-pop.ob-center, .ob-ring, .ob-toast { animation: none !important; transition: none !important; }
+}
+
+[data-theme="dark"] .ob-mask { background: rgba(2, 6, 23, .68); }
+[data-theme="dark"] .ob-ring { box-shadow: 0 0 0 2px #0F172A, 0 0 0 4px var(--green), 0 8px 28px rgba(7, 193, 96, .3); }
+[data-theme="dark"] .ob-pop { box-shadow: 0 20px 52px rgba(0, 0, 0, .5); }

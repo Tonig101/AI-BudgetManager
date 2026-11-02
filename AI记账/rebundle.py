@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 MODULES = [
     'analysis.js', 'app.js', 'appguide.js', 'billfilter.js', 'cloud-config.js', 'coach.js',
     'data.js', 'deals.js', 'diagnose.js', 'dazai.js', 'engine.js', 'gu.js',
-    'intent.js', 'mascot.js', 'nlp.js', 'ocr.js', 'persona.js', 'pet.js',
+    'intent.js', 'mascot.js', 'nlp.js', 'ocr.js', 'onboard.js', 'persona.js', 'pet.js',
     'petpro.js', 'piggy.js', 'savings.js', 'savings_data.js',
     'sfx.js', 'tone.js', 'wishlist.js', 'xlsx.js',
 ]

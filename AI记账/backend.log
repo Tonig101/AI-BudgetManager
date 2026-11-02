@@ -643,3 +643,10 @@ INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
 [2026-11-01 19:23:06] INFO:     Waiting for application startup.
 [2026-11-01 19:23:06] INFO:     Application startup complete.
 [2026-11-01 19:23:06] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+[2026-11-02 12:33:28] [service] ==========================================================
+[2026-11-02 12:33:28] [service] 启动比价后端：host=127.0.0.1 port=8010，日志=D:\AI 智能体创新应用大赛作品\AI记账\backend.log
+[2026-11-02 12:33:29] [service] uvicorn 启动：127.0.0.1:8010（app=deals_api:app）
+[2026-11-02 12:33:34] INFO:     Started server process [17332]
+[2026-11-02 12:33:34] INFO:     Waiting for application startup.
+[2026-11-02 12:33:34] INFO:     Application startup complete.
+[2026-11-02 12:33:34] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)

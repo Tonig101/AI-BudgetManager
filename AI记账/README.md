@@ -65,6 +65,8 @@ AI记账/
 │                  不挡内容的停靠（v1.9）：宠物默认落脚点改成「不压任何内容」——petFrame() 先取落脚框（有底部导航＝手机版式，取导航右缘，框外还有留白时可站到框外，一像素都不占；桌面版式无底部导航，取聊天列输入区右缘，只站列内，否则会压住右侧预算卡），petDefaultPos() 据此算出右下角坐标并悬在输入区之上。站位在框内时 petApplyReserve() 给 .chat-list 写入 --aj-pet-reserve（宠物高 + 18px，实测 122px），列表底部 padding 吃这个变量：滚到底时最新一条消息落在宠物头顶之上，不再被盖住；补空的瞬间若列表本来在底部会重新贴底（否则消息原地不动照样被盖）。宠物停到框外或开关关掉时变量归零，一点空白都不留。气泡新增 .side 变体：宠物左侧空档够宽时气泡贴到左边（那块空档正是它让出来的），尾巴指回宠物，彻底不压消息；放不下才退回上方 / .below。
 ├── billfilter.js  账单筛选：纯函数（零 DOM、零存储、UMD；挂 window.AJ.billFilter）—按支出分类 / 收入来源 / 金额区间 / 备注关键词 / **时间范围（from·to，闭区间，填反自动对调）**过滤账单，完整版「账单流水」与简洁版「明细」共用同一套筛选语义；含 DEFAULTS / CATS / SOURCES / normalize / isActive / activeCount / match / filter，Node 可 require 单测。UI 层：两版入口按钮是「漏斗图标 + 文字」的 `.btn-filter` 胶囊（未筛浅绿底 / 筛选中实心绿底「筛选·N」），列表上方还有一条 `.bf-bar` 摘要条（筛选条件 + 筛出笔数 + 一键清除），让"正在筛选"一眼可见。
 ├── xlsx.js        Excel（.xlsx / .xlsm）最小解析器：纯函数、零依赖、UMD；读取 ZIP 中央目录与工作表 XML，把首个工作表转成 CSV 文本后复用 analysis.js，DEFLATE 解压函数由 Node / 浏览器调用方注入
+├── onboard.js     新手引导状态机（纯逻辑，零 DOM、零存储，UMD；挂 window.AJ.onboard）：12 屏步骤表（欢迎 → 记账 / 预算 / 流水与账单分析 / 冷静期 / 省钱 / 搭子 / 理财专家 / 目标 / 设置 → 全功能地图 → 结束），覆盖 9 个页面 + 一张 21 条入口的功能地图；每步带 3-5 条「这页还能做什么」清单，避免只讲一件事；全文案、双 UI 锚点映射、`bodySimple` 简洁版文案覆盖。**进度按 UI 类型分两份存**（`full` / `simple`）—— 两套界面的锚点元素完全不同，共用一个 step 会指到不存在的按钮。状态机 `idle → running → done / skipped`，`done/skipped` 后不再自动弹，只有 `GUIDE_VERSION` 升级才允许再弹一次；支持断点续逛、逐步跳过、`replay()` 重看。存储键 `ai_jizhang_onboard_v1`，坏存档只重置引导、不动账本。UI 层在 app.js 的 `ob*` 函数（见下）。
+├── _qa_onboard.py 新手引导真机回归：`python _qa_onboard.py`（逻辑 12 条 + 桌面 52 条 + 手机 33 条），无头 Chrome 跑真实页面，断言高亮框用**内联样式**比对（虚拟时钟下 CSS 过渡不推进，读 rect 会误判）。
 ├── gu.js          买谷指南交互层（纯逻辑 + UMD，挂 window.AJ.gu）：5 个可动手的工具 —— ① 谷圈黑话速查（34 条词条，每条含释义 + 一句避坑；支持搜词/搜释义）② 买谷渠道分级（绿/黄/红三档，每项带「怎么验」）③ 拼团防跑路清单（5 项打勾，全过才出「可以跟团」，勾选状态落盘）④ 盲盒抽赏冷静器（3 问自检，答不全就出「先别抽，去闲鱼收确认款」）⑤ 吃谷罐（月度专项额度隔离，超额直接拦住而非提醒）。
 │                  独立存储键 ai_jizhang_gu_v1（与主账本、存钱罐互不影响），金额一律用「分」的整数；存档坏了只重置吃谷罐。
 │                  入口在「省钱图谱 → 吃谷避坑」分类下：对应条目点「详情」展开，就地长出工具面板，不另开页签（用户是「为这一条动作」才来的，就地给工具）。
@@ -78,8 +80,8 @@ AI记账/
 └── README.md      本文件
 ```
 
-加载顺序（`AI记账.html` 末尾，共 23 个内联块，与 `rebundle.py` 的 `LOCAL_JS` 一一对应）：
-`data.js` → `nlp.js` → `engine.js` → `coach.js` → `tone.js` → `deals.js` → `savings_data.js` → `savings.js` → `piggy.js` → `wishlist.js` → `diagnose.js` → `analysis.js` → `ocr.js` → `intent.js` → `cloud-config.js` → `mascot.js` → `sfx.js` → `pet.js` → `petpro.js` → `persona.js` → `billfilter.js` → `xlsx.js` → `app.js`。
+加载顺序（`AI记账.html` 末尾，共 24 个内联块，与 `rebundle.py` 的 `LOCAL_JS` 一一对应）：
+`data.js` → `nlp.js` → `engine.js` → `coach.js` → `tone.js` → `deals.js` → `savings_data.js` → `savings.js` → `piggy.js` → `wishlist.js` → `diagnose.js` → `analysis.js` → `ocr.js` → `intent.js` → `cloud-config.js` → `mascot.js` → `sfx.js` → `pet.js` → `petpro.js` → `persona.js` → `billfilter.js` → `xlsx.js` → `onboard.js` → `app.js`。
 
 > 顺序有依赖：`savings.js` 启动时读 `window.AJ.savingsData`，必须排在 `savings_data.js` 之后、`app.js` 之前
 > （历史单测 `_test_savings_ui.js` 的 G4 曾校验这一点，脚本已从磁盘清理）。
@@ -87,7 +89,7 @@ AI记账/
 > `mascot.js` / `sfx.js` / `pet.js` / `petpro.js` 保持现有依赖顺序；`persona.js` 与 `billfilter.js` 随后加载。
 > `xlsx.js` 是零 DOM、零存储纯函数，固定放在 `billfilter.js` 之后、`app.js` 之前（`app.js` 顶部取 `global.AJ.xlsx`）；浏览器解压函数仍只放在 `app.js`。
 > 新增 / 移动 JS 块后必须同步 `rebundle.py` 的 `LOCAL_JS` 列表并跑一次 `python rebundle.py` 验证自检。
-> 关键索引：`cloud-config.js` 始终为 0 基索引 14；当前基线保留 sfx / pet / petpro 三个既有块，故 `xlsx.js` 为 21、`app.js` 为 22，总计 23 块。
+> 关键索引：`cloud-config.js` 始终为 0 基索引 14；当前基线保留 sfx / pet / petpro 三个既有块，故 `xlsx.js` 为 21、`onboard.js` 为 22、`app.js` 为 23，总计 24 块。
 
 **HTML 结构与图标真源说明（重要）**：`AI记账.src.html` 在 2026-10-28 已被外部进程删除且无备份
 （同批丢失的还有 `_test_persona.js` / `_test_billfilter.js`）。因此：
