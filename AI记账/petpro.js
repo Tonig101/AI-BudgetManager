@@ -1245,6 +1245,183 @@
     return true;
   }
 
+  /* ===== 抱抱金：纯矢量重绘（替代原包的写实玩偶照片，与现有宠物同一套 SVG 语言） =====
+     画风对齐：viewBox 100×112、描边 3.2、纯色填充、眼白+高光、腮红 opacity .6。
+     表情直接复用现有 class 体系（pm-m-eyes-*、pm-m-mouth-*），5 态情绪无需改表情引擎。
+     发型要点：后发兜住头 + 中分 + 侧发框脸 + 清晰刘海发际线（露出额头），明确“这是头发”而非帽子。 */
+  function bbSVG(p) {
+    p = p || {};
+    var L = p.line || '#3E3229';
+    var SK = 3.2;
+    var hair   = p.hair   || '#7CBB8E';
+    var hairD  = p.hairD  || '#579466';
+    var skin   = p.skin   || '#FFE6D6';
+    var skinS  = p.skinS  || '#F3C3AC';
+    var dress  = p.dress  || '#8FCD9F';
+    var dressS = p.dressS || '#63A575';
+    var coin   = '#FFCB4D';
+    var coinD  = '#D2901A';
+    var CHEEK  = p.cheek  || '#FF9FB5';
+
+    var s = '<svg viewBox="0 0 100 112" aria-hidden="true" class="pm-m-char pm-m-char-bb">';
+
+    /* 后发：长发兜住头、两侧垂到肩（先铺底，脸随后盖住内侧） */
+    s += '<path class="pm-m-hair" d="M50 10 C33 10 22 22 21 40 C20 57 18 73 22 85 '
+       + 'C23 91 29 92 32 87 C34 83 33 72 34 62 C35 53 38 47 42 43 '
+       + 'C45 31 55 31 58 43 C62 47 65 53 66 62 C67 72 66 83 68 87 '
+       + 'C71 92 77 91 78 85 C82 73 80 57 79 40 C78 22 67 10 50 10 Z" '
+       + 'fill="' + hair + '" stroke="' + L + '" stroke-width="' + SK + '" stroke-linejoin="round"/>';
+    /* 发丝 + 中分：明确“这是头发”，破除帽子感 */
+    s += '<path d="M50 12 C49 22 51 31 50 41" fill="none" stroke="' + hairD + '" stroke-width="2.4" stroke-linecap="round" opacity="0.55"/>';
+    s += '<path d="M30 22 q-7 22 -6 46 M70 22 q7 22 6 46" fill="none" stroke="' + hairD + '" stroke-width="2.2" stroke-linecap="round" opacity="0.45"/>';
+    s += '<path d="M38 20 q-4 24 -3 50 M62 20 q4 24 3 50" fill="none" stroke="' + hairD + '" stroke-width="1.6" stroke-linecap="round" opacity="0.35"/>';
+
+    /* 脚 */
+    s += '<g stroke="' + L + '" stroke-width="2.8">';
+    s += '<ellipse cx="41" cy="102" rx="8" ry="5.2" fill="' + skinS + '"/>';
+    s += '<ellipse cx="59" cy="102" rx="8" ry="5.2" fill="' + skinS + '"/>';
+    s += '</g>';
+
+    /* 连衣裙（上身收短，突出大头比例） */
+    s += '<path class="pm-m-body" d="M50 67 C41 67 35 75 33 86 L30 95 Q50 102 69 95 L66 86 C64 75 59 67 50 67 Z" fill="' +
+         dress + '" stroke="' + L + '" stroke-width="' + SK + '" stroke-linejoin="round"/>';
+    s += '<path d="M40 91 q0 5 0 6 M60 91 q0 5 0 6" fill="none" stroke="' + dressS +
+         '" stroke-width="2" stroke-linecap="round"/>';
+    s += '<path d="M45 68 q5 5 10 0" fill="none" stroke="' + L + '" stroke-width="2.2" stroke-linecap="round"/>';
+
+    /* 脸：加大加圆，幼态比例 */
+    s += '<ellipse cx="50" cy="48" rx="23.5" ry="22.5" fill="' + skin + '" stroke="' + L + '" stroke-width="' + SK + '"/>';
+
+    /* 侧发（前锁）：加深 + 垂到肩下，明确“长发框脸”，破除帽子感 */
+    s += '<path class="pm-m-hair-side" d="M28 41 C22 53 20 70 24 88 C25 93 30 93 31 88 C30 72 31 56 32 46 C31 42 29 41 28 41 Z" fill="' + hairD + '" stroke="' + L + '" stroke-width="' + SK + '" stroke-linejoin="round"/>';
+    s += '<path class="pm-m-hair-side" d="M72 41 C78 53 80 70 76 88 C75 93 70 93 69 88 C70 72 69 56 68 46 C69 42 71 41 72 41 Z" fill="' + hairD + '" stroke="' + L + '" stroke-width="' + SK + '" stroke-linejoin="round"/>';
+
+    /* 刘海：清晰发际线，停在眉上，露出额头 */
+    s += '<path class="pm-m-bangs" d="M28 41 C28 30 37 25 50 25 C63 25 72 30 72 41 '
+       + 'C67 35 62 38 57 36 C54 34 53 39 50 39 C47 39 46 34 43 36 C38 38 33 35 28 41 Z" '
+       + 'fill="' + hair + '" stroke="' + L + '" stroke-width="' + SK + '" stroke-linejoin="round"/>';
+
+    /* 腮红 */
+    s += '<ellipse cx="32" cy="61" rx="4.6" ry="3.3" fill="' + CHEEK + '" opacity="0.62"/>';
+    s += '<ellipse cx="68" cy="61" rx="4.6" ry="3.3" fill="' + CHEEK + '" opacity="0.62"/>';
+
+    /* 眼睛：大黑眼珠 + 大高光（五组状态与 charSVG 同 class） */
+    s += '<g class="pm-m-eyes pm-m-eyes-open">'
+       + '<ellipse cx="40.2" cy="50.5" rx="8.0" ry="9.0" fill="#fff" stroke="' + L + '" stroke-width="2.3"/>'
+       + '<ellipse cx="59.8" cy="50.5" rx="8.0" ry="9.0" fill="#fff" stroke="' + L + '" stroke-width="2.3"/>'
+       + '<g class="pm-m-pupils">'
+       + '<ellipse cx="40.4" cy="51.2" rx="5.5" ry="6.2" fill="' + L + '"/>'
+       + '<ellipse cx="60" cy="51.2" rx="5.5" ry="6.2" fill="' + L + '"/>'
+       + '<circle cx="42.2" cy="48.9" r="1.85" fill="#fff"/>'
+       + '<circle cx="61.8" cy="48.9" r="1.85" fill="#fff"/>'
+       + '<circle cx="38.5" cy="54.2" r="0.9" fill="#fff" opacity="0.65"/>'
+       + '<circle cx="58.1" cy="54.2" r="0.9" fill="#fff" opacity="0.65"/>'
+       + '</g></g>';
+    s += '<g class="pm-m-eyes pm-m-eyes-happy" fill="none" stroke="' + L + '" stroke-width="3.2" stroke-linecap="round">'
+       + '<path d="M32.5 51.5 q7.5 -8.8 15 0"/><path d="M52.5 51.5 q7.5 -8.8 15 0"/></g>';
+    s += '<g class="pm-m-eyes pm-m-eyes-star" fill="' + L + '">'
+       + '<path d="M40 41.5 l2.8 6.6 6.6 2.8 -6.6 2.8 -2.8 6.6 -2.8 -6.6 -6.6 -2.8 6.6 -2.8Z"/>'
+       + '<path d="M60 41.5 l2.8 6.6 6.6 2.8 -6.6 2.8 -2.8 6.6 -2.8 -6.6 -6.6 -2.8 6.6 -2.8Z"/></g>';
+    s += '<g class="pm-m-eyes pm-m-eyes-x" fill="none" stroke="' + L + '" stroke-width="3.2" stroke-linecap="round">'
+       + '<path d="M34 44.5 l12 12 M46 44.5 l-12 12"/><path d="M54 44.5 l12 12 M66 44.5 l-12 12"/></g>';
+    s += '<g class="pm-m-eyes pm-m-eyes-sleep" fill="none" stroke="' + L + '" stroke-width="2.9" stroke-linecap="round">'
+       + '<path d="M33.5 51.5 q6.5 4.4 12 0"/><path d="M54.5 51.5 q6.5 4.4 12 0"/></g>';
+
+    /* 嘴（小巧，位置偏下） */
+    s += '<path class="pm-m-mouth pm-m-mouth-smile" d="M45.5 62 q4.5 4.2 9 0" fill="none" stroke="' + L +
+         '" stroke-width="2.5" stroke-linecap="round"/>';
+    s += '<g class="pm-m-mouth pm-m-mouth-open"><ellipse cx="50" cy="63.5" rx="5.8" ry="5.2" fill="' + skinS +
+         '" stroke="' + L + '" stroke-width="2.2"/><path d="M45.6 66 q4.4 4.2 8.8 0" fill="' + CHEEK + '"/></g>';
+    s += '<circle class="pm-m-mouth pm-m-mouth-o" cx="50" cy="62.8" r="3.2" fill="' + skinS +
+         '" stroke="' + L + '" stroke-width="2.2"/>';
+    s += '<path class="pm-m-mouth pm-m-mouth-worry" d="M45.5 65.5 q4.5 -4.4 9 0" fill="none" stroke="' + L +
+         '" stroke-width="2.5" stroke-linecap="round"/>';
+    s += '<path class="pm-m-mouth pm-m-mouth-flat" d="M45.5 62.8 h9" fill="none" stroke="' + L +
+         '" stroke-width="2.5" stroke-linecap="round"/>';
+
+    /* 手臂：环抱金币 */
+    s += '<g stroke="' + L + '" stroke-width="3.4" stroke-linecap="round">';
+    s += '<path d="M32 70 q-3.5 10 8 13.5" fill="none"/>';
+    s += '<path d="M68 70 q3.5 10 -8 13.5" fill="none"/>';
+    s += '</g>';
+
+    /* 金币：抱抱金的标志物 */
+    s += '<g class="pm-m-coin">';
+    s += '<circle cx="50" cy="83" r="13.2" fill="' + coin + '" stroke="' + coinD + '" stroke-width="2.8"/>';
+    s += '<circle cx="50" cy="83" r="9.6" fill="none" stroke="' + coinD + '" stroke-width="1.5" opacity="0.7"/>';
+    s += '<path d="M45.4 76.2 L50 82.2 L54.6 76.2 M50 82.2 V89.2 M45.6 84.1 H54.4 M45.6 86.6 H54.4" '
+       + 'fill="none" stroke="' + coinD + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+    s += '</g>';
+
+    /* 手掌：压在币缘 */
+    s += '<g stroke="' + L + '" stroke-width="2.6">';
+    s += '<circle cx="41.5" cy="80.5" r="5" fill="' + skin + '"/>';
+    s += '<circle cx="58.5" cy="80.5" r="5" fill="' + skin + '"/>';
+    s += '</g>';
+
+    /* 头顶蝴蝶结：居中、轴对称（两片实心椭圆 + 结 + 整齐缎带尾），明确落在头发上 */
+    s += '<g class="pm-m-bow" stroke="' + L + '" stroke-width="2" stroke-linejoin="round">';
+    s += '<ellipse cx="43" cy="15" rx="5.6" ry="4.6" fill="#FF8FA8"/>';
+    s += '<ellipse cx="57" cy="15" rx="5.6" ry="4.6" fill="#FF8FA8"/>';
+    s += '<circle cx="50" cy="15" r="3.4" fill="#FF6F92"/>';
+    s += '<path d="M48 17.6 L45 26 L50 23 Z" fill="#FF8FA8"/>';
+    s += '<path d="M52 17.6 L55 26 L50 23 Z" fill="#FF8FA8"/>';
+    s += '</g>';
+
+    s += '</svg>';
+    return s;
+  }
+
+  /* 播报条 26px 头像：只取头部（发型 + 脸 + 五官 + 蝴蝶结），与 bbSVG 同一套画风 */
+  function bbHead(p) {
+    p = p || {};
+    var L = p.line || '#3E3229';
+    var hair   = p.hair   || '#7CBB8E';
+    var hairD  = p.hairD  || '#579466';
+    var skin   = p.skin   || '#FFE6D6';
+    var CHEEK  = p.cheek  || '#FF9FB5';
+
+    var s = '<svg viewBox="0 0 48 48" width="26" height="26" aria-hidden="true">';
+    /* 后发（同 bbSVG 轮廓缩到头部区域：头心 24,30、脸半径约 14） */
+    s += '<path d="M24 4 C15 4 10 11 10 20 C9.6 27 9 33 11 38 C11.6 41.5 15 42.5 16.6 40 C18.2 37.5 18 32 18.4 28 '
+       + 'C18.8 24 19.2 21 21 19 C22 11.5 26 11.5 27 19 C28.8 21 29.2 24 29.6 28 '
+       + 'C30 32 29.8 37.5 31.4 40 C33 42.5 36.4 41.5 37 38 C39 33 38.4 27 38 20 C38 11 33 4 24 4 Z" '
+       + 'fill="' + hair + '" stroke="' + L + '" stroke-width="1.6" stroke-linejoin="round"/>';
+    s += '<path d="M24 5 C23.4 11 24.6 16 24 21" fill="none" stroke="' + hairD + '" stroke-width="1" stroke-linecap="round" opacity="0.5"/>';
+    s += '<path d="M15 15 q-3 11 -2.5 23 M33 15 q3 11 2.5 23" fill="none" stroke="' + hairD +
+         '" stroke-width="0.9" stroke-linecap="round" opacity="0.45"/>';
+    /* 脸 */
+    s += '<ellipse cx="24" cy="30" rx="14" ry="13.5" fill="' + skin + '" stroke="' + L + '" stroke-width="1.6"/>';
+    /* 侧发（加深 + 垂到肩下，框住脸两侧） */
+    s += '<path d="M13 21 C10.5 28 10 35 13 41 C14.5 35 14 29 14.8 24 C14 21.5 13 21 13 21 Z" fill="' + hairD + '" stroke="' + L + '" stroke-width="1.6" stroke-linejoin="round"/>';
+    s += '<path d="M35 21 C37.5 28 38 35 35 41 C33.5 35 34 29 33.2 24 C34 21.5 35 21 35 21 Z" fill="' + hairD + '" stroke="' + L + '" stroke-width="1.6" stroke-linejoin="round"/>';
+    /* 刘海（清晰发际线，露额头） */
+    s += '<path d="M13.5 31 C13.5 22 18 18 24 18 C30 18 34.5 22 34.5 31 '
+       + 'C31 26 28 28 26 27 C24.5 26.5 24 30 24 30 C24 30 23.5 26.5 22 27 C20 28 17 26 13.5 31 Z" fill="' +
+         hair + '" stroke="' + L + '" stroke-width="1.6" stroke-linejoin="round"/>';
+    /* 腮红 */
+    s += '<ellipse cx="17" cy="32" rx="3.1" ry="1.9" fill="' + CHEEK + '" opacity="0.6"/>';
+    s += '<ellipse cx="31" cy="32" rx="3.1" ry="1.9" fill="' + CHEEK + '" opacity="0.6"/>';
+    /* 眼睛（大黑眼珠） */
+    s += '<ellipse cx="20" cy="30" rx="4" ry="4.6" fill="#fff" stroke="' + L + '" stroke-width="1.1"/>';
+    s += '<ellipse cx="28" cy="30" rx="4" ry="4.6" fill="#fff" stroke="' + L + '" stroke-width="1.1"/>';
+    s += '<circle cx="20.2" cy="30.6" r="2" fill="' + L + '"/>';
+    s += '<circle cx="28.2" cy="30.6" r="2" fill="' + L + '"/>';
+    s += '<circle cx="20.8" cy="29.9" r="0.6" fill="#fff"/>';
+    s += '<circle cx="28.8" cy="29.9" r="0.6" fill="#fff"/>';
+    /* 嘴 */
+    s += '<path d="M22 36 q2 1.6 4 0" fill="none" stroke="' + L + '" stroke-width="1.3" stroke-linecap="round"/>';
+    /* 小蝴蝶结（居中、轴对称，明显落在头发上） */
+    s += '<g stroke="' + L + '" stroke-width="1.1" stroke-linejoin="round">';
+    s += '<ellipse cx="21.5" cy="9" rx="2.8" ry="2.3" fill="#FF8FA8"/>';
+    s += '<ellipse cx="26.5" cy="9" rx="2.8" ry="2.3" fill="#FF8FA8"/>';
+    s += '<circle cx="24" cy="9" r="1.7" fill="#FF6F92"/>';
+    s += '<path d="M22.8 10.6 L20.8 15 L24 13 Z" fill="#FF8FA8"/>';
+    s += '<path d="M25.2 10.6 L27.2 15 L24 13 Z" fill="#FF8FA8"/>';
+    s += '</g>';
+    s += '</svg>';
+    return s;
+  }
   global.AJ.petPro = {
     setActive: setActive,
     isActive: isActive,
@@ -1267,6 +1444,8 @@
     _charSvg: function () {    /* 首次选宠弹窗展示真实形象（默认白萝卜管家） */
       try { return charSVG(profile()); } catch (e) { return ''; }
     },
-    _extractPalette: extractPalette
+    _extractPalette: extractPalette,
+    _bbSvg: function () { try { return bbSVG(profile()); } catch (e) { return ''; } },
+    _bbHead: function () { try { return bbHead(profile()); } catch (e) { return ''; } }
   };
 })(typeof window !== 'undefined' ? window : this);

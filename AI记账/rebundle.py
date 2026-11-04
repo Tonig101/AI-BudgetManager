@@ -20,8 +20,8 @@ MODULES = [
     'analysis.js', 'app.js', 'appguide.js', 'billfilter.js', 'cloud-config.js', 'coach.js',
     'data.js', 'deals.js', 'diagnose.js', 'dazai.js', 'engine.js', 'gu.js',
     'intent.js', 'mascot.js', 'nlp.js', 'ocr.js', 'onboard.js', 'persona.js', 'pet.js',
-    'petpro.js', 'piggy.js', 'savings.js', 'savings_data.js',
-    'sfx.js', 'tone.js', 'wishlist.js', 'xlsx.js',
+    'petpro.js', 'piggy.js', 'priceradar.js', 'region.js', 'savings.js', 'savings_data.js',
+    'sfx.js', 'tone.js', 'voice.js', 'wishlist.js', 'xlsx.js',
 ]
 STYLE_FILE = 'styles.css'
 HTML_FILES = ['AI\u8bb0\u8d26.html', 'index.html']  # AI记账.html, index.html

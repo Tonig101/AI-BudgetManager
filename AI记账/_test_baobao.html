@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>seed</title>
+<script>
+try {
+  var raw = localStorage.getItem('ai_jizhang_v1');
+  var d = raw ? JSON.parse(raw) : {};
+  d.settings = d.settings || {};
+  d.settings.mascot = { skin: 'baobao', pet: true, poke: true };
+  d.settings.onboarded = true;
+  localStorage.setItem('ai_jizhang_v1', JSON.stringify(d));
+  localStorage.setItem('ai_jizhang_onboard_v1', JSON.stringify({ done: true, step: 99 }));
+} catch (e) {}
+location.replace('index.html');
+</script>

@@ -30,6 +30,18 @@
   var DEALS = global.AJ.deals;
   var SAV = global.AJ.savings;
   var BF = global.AJ.billFilter;
+  /** 物价雷达（priceradar.js）：缺文件时降级为 null，物价问题退回智能体 / 普通建议，
+   *  不影响记账主链路 —— 与 TONE 缺失时的处理同一个思路。 */
+  var PRICE = (global.AJ && global.AJ.priceradar) || null;
+
+  /** 物价雷达的补充场景（同一个模块的 PRICE.survival）：租房 / 水电 / 通勤 / 数码 / 衣服 / 买药。
+   *  分工：PRICE 判「这一笔单价贵不贵」，补的那半算「一个月到底要花多少」——
+   *  同口径、同卡片语言，不另立门户。缺件时降级为 null，不挡记账主链路。 */
+  var SV = (PRICE && PRICE.survival) || null;
+
+  /** 发送历史（输入框 ↑ / ↓ 回翻用）：只存内存，会话结束即清 */
+  var chatHistory = [];
+  var chatHistoryIdx = -1;   /* -1 = 不在翻历史；↑ 时指向最后一条 */
 
   /** 账单列表共享筛选状态（完整版 / 简洁版共用同一抽屉）。重置时整体替换为 normalize(DEFAULTS) 的新对象。 */
   var billFilter = BF.normalize(BF.DEFAULTS);
@@ -55,6 +67,46 @@
       get: function () { return 'gentle'; },
       t: function () { return ''; },
       has: function () { return false; }
+    };
+  })();
+
+  /**
+   * 说话模式（voice.js）：聊天式 / 硬核拆解 / 情绪树洞。
+   * 只决定「这句话该用什么口吻、长什么样」，缺文件时降级为「永远聊天式」，
+   * 不影响记账主链路 —— 与 TONE / PRICE 缺失时的处理同一个思路。
+   */
+  var VOICE = (function () {
+    var m = (global.AJ && global.AJ.voice) || null;
+    if (m && typeof m.classify === 'function') { return m; }
+    return {
+      missing: true,
+      MODE: { CHAT: 'chat', BREAKDOWN: 'breakdown', COMFORT: 'comfort' },
+      classify: function () { return { mode: 'chat', confidence: 0.5, signals: {} }; },
+      isComfort: function () { return false; },
+      chatBill: function () { return ''; },
+      comfort: function () { return ''; },
+      headerSet: function () { return null; },
+      sep: function () { return ''; }
+    };
+  })();
+
+  /**
+   * 地域物价锚点（region.js）：默认佛山南海 · 广轻大，换城市整把尺子按等级缩放。
+   * 缺文件时降级成「永远本部」，物价雷达照旧能算，只是不会换城市。
+   */
+  var REGION = (function () {
+    var m = (global.AJ && global.AJ.region) || null;
+    if (m && typeof m.detect === 'function') { return m; }
+    return {
+      missing: true,
+      detect: function () { return { code: 'home', label: '佛山南海 · 广轻大', mult: [1, 1], downtown: false }; },
+      band: function () { return null; },
+      label: function () { return '佛山南海 · 广轻大'; },
+      bandSay: function () { return ''; },
+      anchorLine: function () { return ''; },
+      sceneNote: function () { return ''; },
+      downtownNote: function () { return ''; },
+      say: function () { return ''; }
     };
   })();
 
@@ -237,7 +289,31 @@
     if (fence) { t = fence[1].trim(); }
     var a = t.indexOf('{'); var b = t.lastIndexOf('}');
     if (a !== -1 && b !== -1 && b > a) { t = t.slice(a, b + 1); }
-    try { return JSON.parse(t); } catch (e) { return null; }
+    try { return JSON.parse(t); } catch (e) {
+      /* 模型把 final 写成多行列表时，JSON 字符串里会出现裸换行——整条解析失败，
+         上层直接回退到本地规则，一条好好的回答就变成「没听懂」。转义后再试一次。 */
+      try { return JSON.parse(repairJsonNewlines(t)); } catch (e2) { return null; }
+    }
+  }
+
+  /** 把 JSON 字符串字面量里的裸换行转成 \n（只在解析失败后兜底用） */
+  function repairJsonNewlines(s) {
+    var out = '', inStr = false, esc = false, i, ch;
+    for (i = 0; i < s.length; i++) {
+      ch = s.charAt(i);
+      if (!inStr) {
+        if (ch === '"') { inStr = true; }
+        out += ch;
+        continue;
+      }
+      if (esc) { esc = false; out += ch; continue; }
+      if (ch === '\\') { esc = true; out += ch; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      if (ch === '\n') { out += '\\n'; continue; }
+      if (ch === '\r') { continue; }
+      out += ch;
+    }
+    return out;
   }
 
   /**
@@ -501,8 +577,14 @@
   var AGENT_MEMORY_MAX = 6;          /* 跨轮短期记忆条数（user/assistant 各算一条） */
 
   var agentMemory = [];              /* 最近几轮对话（让「改成 80」「那今天呢」能接上） */
+  /* 上一轮统计的作用域（时间范围 + 品类）。「这三笔都是什么」这类指代必须落到它上面：
+     模型漏传 category 时会去查全账本，出现「上一句餐饮 3 笔 253、下一句 7 笔 445」的自相矛盾。 */
+  var agentLastScope = null;
   var agentTurnLog = [];             /* 最近若干轮的完整轨迹，供现场排障 */
   global.AJ_AGENT_LOG = function () { return agentTurnLog.slice(); };
+  /* 云端是否就绪（评测 / 排障用）：智能体与本地判定两条路径的界面不一样，
+     真机评测必须等它就绪再发消息，否则同一句话随机走两种路径，断言假失败 */
+  global.AJ_AGENT_READY = function () { return agentAvailable(); };
   /** 现场排查用：`AJ_FLOW_DEBUG()` 看冷静期挂起与草稿队列，判断「哪笔没入账」 */
   global.AJ_FLOW_DEBUG = function () {
     function tag(d) { return d ? (String(d.note || '?') + ':' + d.amount) : null; }
@@ -1631,7 +1713,7 @@
       { id: 'macro', kw: ['大环境', '经济形势', '周期', '就业', '焦虑', '时代'] },
       { id: 'loan', kw: ['贷款', '借贷', '分期', '花呗', '白条', '网贷', '借钱', '秒到账', '校园贷', '利息'] },
       { id: 'resale', kw: ['闲置', '卖掉', '卖钱', '二手', '闲鱼', '回血', '转让', '换钱'] },
-      { id: 'work', kw: ['兼职', '勤工', '家教', '打工', '赚钱', '实习', '刷单', '时薪', '助教'] }
+      { id: 'work', kw: ['兼职', '勤工', '家教', '打工', '赚钱', '多赚', '挣', '开源', '副业', '外快', '实习', '刷单', '时薪', '助教'] }
     ];
 
     /* 场景类目绑定：用户提到具体品类/品牌时，先锁定省钱助手对应分类 */
@@ -1666,9 +1748,13 @@
     var GENERIC_LESSONS = ['latte', 'infodiff', 'budget', 'engel'];
 
     /* 用户在这类句子里问的是「这个 App 本身」，产品卡要优先于外部知识卡 */
-    var APPSELF = /这个?\s*(?:app|应用|软件|网站|界面)|你们|你会|你能|能不能帮我|怎么用|怎么设置|有什么功能|能做什么|怎么操作|在哪(?:里)?(?:改|设|调|看|找)|哪里(?:改|设|调)/i;
+    /* 产品自有名词也算自指：用户说「心愿单在哪」「冷静清单怎么用」时问的是本产品，
+       原来只认「怎么用 / 在哪改」这类句式，「心愿单在哪」被吃谷额度卡答了。 */
+    var APPSELF = /这个?\s*(?:app|应用|软件|网站|界面)|你们|你会|你能|能不能帮我|怎么用|怎么设置|有什么功能|能做什么|怎么操作|在哪(?:里)?(?:改|设|调|看|找)|哪里(?:改|设|调)|心愿单|冷静清单|存钱罐|连签|虚拟形象|记账本/i;
     /* 产品语境的显式词：命中任一项，产品卡按满分参与排序（否则降权，避免抢走省钱/心理类问题） */
     var APIQ = /导入|导出|备份|清空|注销|撤回|数据|隐私|上传|预算|发钱日|设置|功能|怎么用|怎么记|怎么改|改错|记错|修改|编辑|删除|app|应用|软件|截图|截屏|语音|麦克风|账单/i;
+    /* 定义类问句：问「是什么意思」时要的是解释，不是行动清单 */
+    var DEFQ = /是什么|什么意思|啥意思|啥东西|指什么|指啥|怎么读|全称|缩写|黑话/;
 
     /**
      * 口语 → 标准词的同义扩展。CATK 只覆盖常见品类词，学生实际说法更散
@@ -1695,7 +1781,18 @@
       [/送礼|礼物|生日|随礼/, '礼物 二手 随礼'],
       [/记账|记一笔|怎么记/, '记账 添加 语音 撤回'],
       [/导账单|账单导入|导进来/, '导入 账单 csv 预览'],
-      [/超支|预算不够|钱不够花/, '预算 发钱日 日均可用']
+      [/超支|预算不够|钱不够花/, '预算 发钱日 日均可用'],
+      /* 衣物：用户说「外套 / 卫衣 / 球鞋」，库里那条叫「衣服反季买 / 只逛红标区」，
+         不扩词就一条都命不中——实测「我想买件外套」只出冷静法，省钱图谱里的衣服卡进不了前六。
+         末尾带「唯品会」是为了让配套的 App 教学卡能被联动带出来（见 search 尾部的品牌联动）。 */
+      [/外套|上衣|卫衣|羽绒服|裤子|牛仔裤|裙子|连衣裙|衬衫|衬衣|T恤|t恤|帽子|袜子|球鞋|运动鞋|靴子|穿搭|换季|过季/, '衣服 反季 红标 断码 唯品会'],
+      /* 谷圈：只说一个词（吧唧 / 痛包 / 立牌）时，除了词条释义还要把「跟团防跑单」「设额度」
+         一起带出来，否则用户只知道这词啥意思，不知道下一步怎么做。 */
+      [/吧唧|痛包|立牌|小卡|谷子|吃谷|抽赏|拼团|盲盒/, '谷圈 跟团 防跑路 清单 额度'],
+      /* 搞钱：用户说「怎么多赚点 / 挣点零花 / 想开源 / 搞副业」，库里那几条叫「兼职搞钱」
+         「勤工俭学」，「多赚」这两个字一条都不出现在卡里——不扩词就零命中，
+         search_kb 返回空，模型只能凭印象说「可以做兼职」，跟没答一样。 */
+      [/多赚|挣点|挣零花|搞点钱|开源|副业|外快|补贴生活费/, '兼职 勤工 搞钱 家教 实习']
     ];
     var CERT = { stable: '长期有效', varies: '活动会变', local: '限部分门店' };
     var MAX_CONTENT = 280;
@@ -2281,6 +2378,17 @@
         }
         if (c.type === 'guide' && extBrand && gBrand) { s += 6; }
         if (catHit[c.cat]) { s += (c.type === 'saving' ? 2.0 : 0.5); }
+        /* 词条卡的「定义优先」：问「吧唧是什么 / 谷子啥意思」时用户要的是解释，
+           但吃谷类知识卡的 keywords 里也写着这个词，还额外拿类目分（+2），
+           实测词条卡被「跟团防跑路清单」压在第三——用户问的是词，收到的却是清单。
+           词条卡标题就是词本身，命中即等于定义，给它一个能压过类目加分的固定值。 */
+        if (c.type === 'term') {
+          var tNoSp = String(c.title || '').replace(/\s+/g, '');
+          if (tNoSp.length >= 2 && qsNoSp.indexOf(tNoSp) !== -1) {
+            if (DEFQ.test(query)) { s += 7; }
+            else if (qsNoSp === tNoSp) { s += 9; }   /* 只敲了词本身，那就是在问这个词 */
+          }
+        }
         if (c.type === 'guide' && !gBrand) { s *= 0.55; }
         if (s > 0) { hits.push({ card: c, score: s }); }
       }
@@ -2290,7 +2398,280 @@
       for (i = 0; i < hits.length && out.length < 6; i++) {
         out.push(view(hits[i].card, hits[i].score));
       }
+      /* 配套 App 教学联动：用户问「买衣服怎么省」，命中的是「唯品会大牌日」这张省钱卡，
+         而「唯品会里在哪领券」那张 guide 卡因为问句里没出现「唯品会」，被品牌门禁压到 55%，
+         排不进前六。省钱方法和「在哪个 App 的哪个入口操作」本来就是同一件事，
+         用户要的是全链路，所以把命中卡里提到过的品牌对应的教学卡补到末尾（最多 2 张，
+         不抢前排）。只认 phrases[0]（品牌本名），phrases[1] 常是「外卖」这类通用词，
+         拿它联动会让「食堂怎么省」也拽出美团卡。 */
+      if (scope !== 'saving' && scope !== 'app' && out.length) {
+        var guides = [];
+        for (i = 0; i < idx.cards.length; i++) {
+          if (idx.cards[i].type === 'guide' && idx.cards[i].phrases) { guides.push(idx.cards[i]); }
+        }
+        var seenIds = {};
+        for (i = 0; i < out.length; i++) { seenIds[out[i].id] = 1; }
+        var linked = 0;
+        for (i = 0; i < out.length && i < 4 && linked < 2; i++) {
+          if (out[i].type === 'guide') { continue; }
+          var blob = String(out[i].title + ' ' + out[i].content).replace(/\s+/g, '');
+          for (var g2 = 0; g2 < guides.length && linked < 2; g2++) {
+            var gc = guides[g2];
+            if (seenIds[gc.id]) { continue; }
+            var ph = String(gc.phrases[0] || '').replace(/\s+/g, '');
+            if (ph.length >= 2 && blob.indexOf(ph) !== -1) {
+              seenIds[gc.id] = 1;
+              var lv = view(gc, Math.max(1, Math.round(out[i].score * 0.3)));
+              lv.linked = out[i].id;   /* 标明它是「配套」，不是最相关的那条 */
+              /* 插在来源卡后面而不是末尾：搜「买衣服怎么省」时命中 6 条已满，
+                 放末尾会被截掉，「唯品会怎么领券」正好消失。紧跟着来源卡，
+                 读起来也是「先讲省法、紧接着讲在哪个 App 操作」的顺序。 */
+              out.splice(i + 1, 0, lv);
+              linked++;
+              break;
+            }
+          }
+        }
+      }
       return out;
+    }
+
+    /* ---------------- 话题层：抽象问题的分类骨架 ----------------
+       「怎么省钱」「钱不够花」「怎么攒钱」这类问法里没有具体名词，纯检索只能返回几张
+       互不相干的卡，模型于是只念一句「少点外卖」——用户说的「回答不够详细、没有分类」
+       就出在这里。话题层给的不是新内容，是**结构**：把 12 个花钱分类折成 6 个能开口
+       说的生活维度，再把用户自己的账本支出贴上去，模型才有东西分门别类地讲。
+       维度与候选条目全部现算（不写死条目 id）：省钱条目加一条，这里自动多一个候选。 */
+
+    /* 省钱助手 12 类 → 6 个说话用的维度。分类是给人「翻找」的，回答时按
+       「吃 / 日用 / 出行 / 玩 / 学习 / 囤货」讲，用户听得懂，也正好对得上账本的支出分类。
+       n 是这个维度给模型几条候选：「吃」占学生支出最大头，给三条（快餐 / 外卖 / 食堂各一）。 */
+    var TOPIC_DIMS = [
+      { key: 'eat', name: '吃', cats: ['fastfood', 'delivery', 'canteen', 'drinks', 'snacks'], bill: ['餐饮'], n: 3 },
+      { key: 'daily', name: '日用', cats: ['daily', 'life'], bill: ['购物', '居住'], n: 2 },
+      { key: 'go', name: '出行', cats: ['transit'], bill: ['交通'], n: 2 },
+      { key: 'fun', name: '玩和会员', cats: ['fun'], bill: ['娱乐', '社交'], n: 2 },
+      { key: 'study', name: '学习', cats: ['study'], bill: ['学习'], n: 2 },
+      { key: 'promo', name: '囤货', cats: ['promo'], bill: [], n: 2 }
+    ];
+
+    /* 门店 / 平台名：出现这些词，用户问的是「这家怎么省」，不该泛化成话题骨架
+       （「星巴克怎么省钱」要答星巴克，不能答成六类生活开支）。 */
+    var BRAND_WORDS = ['麦当劳', '肯德基', '汉堡王', '必胜客', '华莱士', '德克士', '海底捞', '塔斯汀',
+      '萨莉亚', '米村', '南城香', '老乡鸡', '达美乐', '瑞幸', '蜜雪', '喜茶', '库迪', '茶百道', '古茗',
+      '星巴克', '霸王茶姬', '益禾堂', '赵一鸣', '好特卖', '好想来', '正新', '绝味', '沃尔玛', '优衣库',
+      '名创', '拼多多', '淘宝', '天猫', '闲鱼', '1688', '得物', '京东', '美团', '饿了么', '盒马', '山姆',
+      '哔哩哔哩', 'b站', '滴滴', '哈啰', '12306', '顺丰', '菜鸟', '润泰', '尊特'];
+
+    var TOPICS = [
+      {
+        id: 'save', title: '怎么省钱', mode: 'dim',
+        kw: ['怎么省钱', '如何省钱', '省钱方法', '省钱的办法', '怎么才能省', '有什么省钱', '省钱技巧',
+          '怎么省', '省钱'],
+        lead: '省钱不是每样都少花，是先把自己的支出按类拆开，砍占比最高的那一类。'
+      },
+      {
+        id: 'short', title: '钱不够花', mode: 'dim',
+        kw: ['钱不够花', '不够花', '生活费不够', '月底没钱', '没钱了', '月光', '花完了', '撑不到月底', '超支'],
+        lead: '钱不够花先别急着「省」，先看是哪一类把钱吃掉的——砍错地方等于白饿肚子。'
+      },
+      {
+        id: 'saveup', title: '怎么攒钱', mode: 'step',
+        kw: ['怎么攒钱', '想攒钱', '攒不下', '存不下', '怎么存钱', '想存钱', '攒钱', '存钱', '攒点钱', '怎么存下',
+          /攒.{0,3}钱/, /存.{0,3}钱/, /攒不下|存不下|攒不住|存不住/, /攒.{0,2}[一二三四五六七八九十几\d]/],
+        lead: '攒钱不是「剩下的存起来」，是发钱那天先转走，剩下的才花。',
+        steps: [
+          { name: '先按 50/30/20 切三份', lesson: 'budget' },
+          { name: '先存后花', lesson: 'invest' },
+          { name: '小钱也要算', lesson: 'latte' },
+          { name: '挡住冲动', lesson: 'cooldown' }
+        ]
+      },
+      {
+        id: 'invest', title: '理财入门', mode: 'step',
+        kw: ['理财入门', '怎么理财', '开始理财', '学理财', '理财怎么学', '零基础理财', '入门理财', '理财怎么开始'],
+        lead: '学生理财的第一步不是买基金，是先把「不亏」做到。',
+        steps: [
+          { name: '先攒应急金', lesson: 'invest' },
+          { name: '别碰分期贷', lesson: 'loan' },
+          { name: '想系统学', lesson: 'mooc' }
+        ]
+      },
+      {
+        id: 'impulse', title: '管不住手', mode: 'step',
+        kw: ['忍不住', '控制不住', '总想买', '乱花钱', '冲动消费', '总剁手', '老想买', '管不住', '天天买'],
+        lead: '管不住手不是意志力差，是下单那一刻没人拦你——先给自己装个刹车。',
+        steps: [
+          { name: '先放 48 小时', lesson: 'cooldown' },
+          { name: '看清商家的钩子', lesson: 'psych' },
+          { name: '想清楚买它换回什么', lesson: 'art' }
+        ]
+      },
+      {
+        id: 'book', title: '记账怎么才不白记', mode: 'step',
+        kw: ['怎么记账', '记账有用', '记账没用', '为什么要记账', '记账有啥用', '记账有什么', '记账怎么才', '记账白记'],
+        lead: '记账本身不省钱，能省钱的是每周看一次「钱花在哪一类」。',
+        steps: [
+          { name: '先记满三天', card: 'app.start' },
+          { name: '把旧账导进来', card: 'app.import' },
+          { name: '每周看一次结构', card: 'engel' },
+          { name: '给花错的钱打标', card: 'app.undo' }
+        ]
+      },
+      {
+        id: 'earn', title: '怎么多赚点', mode: 'step',
+        kw: ['怎么赚钱', '怎么搞钱', '想赚点钱', '兼职做什么', '怎么开源', '多赚点', '怎么挣'],
+        lead: '开源先看时薪，再看会不会被坑——同样两小时，家教和刷单差十倍。',
+        steps: [
+          { name: '先避坑', lesson: 'work' },
+          { name: '把闲置变现', lesson: 'resale' },
+          { name: '用信息差换钱', lesson: 'infodiff' }
+        ]
+      }
+    ];
+
+    /** 一条要点压成一句：动作原文本来就是一句话，取到第一个句号即可。
+        直接 cut() 会切出「……没有门槛。…」这种句号后面再挂省略号。 */
+    function dimTip1(core) {
+      var s = clean(core);
+      if (!s) { return ''; }
+      var m = s.match(/^[^。！？]*[。！？]/);
+      var one = m ? m[0] : s;
+      if (one.length <= 56) { return one; }
+      /* 一句话就超长（12306 学生票那条有 70 字）时按逗号回退，别在半个词上切断 */
+      var head = one.slice(0, 54);
+      var c = Math.max(head.lastIndexOf('，'), head.lastIndexOf('；'), head.lastIndexOf('、'));
+      if (c > 28) { return head.slice(0, c) + '…'; }
+      return head + '…';
+    }
+
+    /** 课程正文里「·」开头的是做法，抽出来当分类要点 */
+    function dimTips(core, n) {
+      var parts = String(core || '').split(/\s*·\s*/);
+      var out = [];
+      var i;
+      for (i = 0; i < parts.length && out.length < n; i++) {
+        var p = clean(parts[i]).replace(/^[：:，,；;]\s*/, '');
+        if (p.length < 8) { continue; }
+        /* 「学生理财从「不亏」开始，不追高、不碰不懂的：」这种以冒号收尾的是标题句，
+           不是做法；收进分类里，模型讲这一维时就只能念一句正确的废话。 */
+        if (/[：:]$/.test(p)) { continue; }
+        out.push(dimTip1(p));
+      }
+      if (!out.length) { out.push(dimTip1(clean(core))); }
+      return out;
+    }
+
+    /**
+     * 抽象问题 → 分类骨架。
+     * @param {string} query 用户原话
+     * @param {Array}  spend 账本分类支出 [{cat:'餐饮', amount:680}]（可选，用来贴「你本月」）
+     * @return {?Object} {id,title,lead,dims,outline,picks}
+     */
+    function topic(query, spend) {
+      var qs = norm2(query).replace(/\s+/g, '');
+      if (!qs) { return null; }
+      /* 「省钱助手在哪 / 怎么打开」问的是入口，不是方法 */
+      if (/在哪|怎么打开|入口|怎么用|怎么设置|打开/.test(qs)) { return null; }
+      var t = null, i, k;
+      for (i = 0; i < TOPICS.length && !t; i++) {
+        for (k = 0; k < TOPICS[i].kw.length; k++) {
+          var kwd = TOPICS[i].kw[k];
+          /* kw 项可以是字符串（整串出现）或正则（容许中间插字：「攒下钱 / 攒点钱」） */
+          if (kwd instanceof RegExp ? kwd.test(qs) : qs.indexOf(kwd) !== -1) { t = TOPICS[i]; break; }
+        }
+      }
+      if (!t) { return null; }
+      for (i = 0; i < BRAND_WORDS.length; i++) {
+        if (qs.indexOf(BRAND_WORDS[i]) !== -1) { return null; }
+      }
+
+      var idx = ensure();
+      var dims = [];
+      var j;
+      if (t.mode === 'step') {
+        for (i = 0; i < t.steps.length; i++) {
+          var sid = t.steps[i].card || t.steps[i].lesson;
+          var lc = null;
+          for (j = 0; j < idx.cards.length; j++) {
+            if (idx.cards[j].id === sid) { lc = idx.cards[j]; break; }
+          }
+          if (!lc) { continue; }
+          dims.push({ name: t.steps[i].name, tips: dimTips(lc.core, 2), ref: view(lc, 0) });
+        }
+      } else {
+        for (i = 0; i < TOPIC_DIMS.length; i++) {
+          var dm = TOPIC_DIMS[i];
+          /* 先给每个分类各取第一条（快餐 / 外卖 / 食堂 / …各一条，覆盖面比同一个分类
+             抓三条有用），没凑够 n 条再回头取各分类的第二条。原来「每个分类只取一条、
+             满 2 条就停」，出行 / 玩这种只有一个分类的维度永远只剩 1 条候选。 */
+          var perCat = [];
+          for (k = 0; k < dm.cats.length; k++) {
+            var bucket = [];
+            for (j = 0; j < idx.cards.length; j++) {
+              if (idx.cards[j].type === 'saving' && idx.cards[j].cat === dm.cats[k]) { bucket.push(idx.cards[j]); }
+            }
+            perCat.push(bucket);
+          }
+          var refs = [];
+          for (var round = 0; round < 4 && refs.length < dm.n; round++) {
+            for (k = 0; k < perCat.length && refs.length < dm.n; k++) {
+              if (perCat[k][round]) { refs.push(perCat[k][round]); }
+            }
+          }
+          if (!refs.length) { continue; }
+          dims.push({
+            key: dm.key,
+            name: dm.name,
+            tips: refs.map(function (r) { return dimTip1(r.core); }),
+            /* ref 存成 view（带 jump）：挂卡时直接用，别再拿原始 card —— 原始 card
+               没有 jump 字段，kbCardHtml 会渲染成点不动的按钮。 */
+            ref: view(refs[0], 0),
+            refs: refs
+          });
+        }
+        /* 把用户自己的账本支出贴到对应维度：问「钱不够花」时先讲他真正在漏钱的那一类，
+           而不是按分类表的固定顺序念一遍。 */
+        if (spend && spend.length) {
+          var byKey = {};
+          for (i = 0; i < TOPIC_DIMS.length; i++) { byKey[TOPIC_DIMS[i].key] = TOPIC_DIMS[i]; }
+          for (i = 0; i < dims.length; i++) {
+            var db = byKey[dims[i].key];
+            if (!db) { continue; }
+            for (k = 0; k < spend.length; k++) {
+              if (db.bill.indexOf(spend[k].cat) === -1) { continue; }
+              dims[i].you = '已花 ' + Math.round(spend[k].amount) + ' 元';
+              dims[i].spent = Number(spend[k].amount) || 0;
+              break;
+            }
+          }
+          /* 有账本数据时按金额降序（稳定排序：没数据的维度保持原顺序跟在后面） */
+          dims.sort(function (a, b) { return (b.spent || 0) - (a.spent || 0); });
+        }
+      }
+      if (!dims.length) { return null; }
+
+      var lines = ['【' + t.title + '】' + t.lead];
+      for (i = 0; i < dims.length; i++) {
+        lines.push('- ' + dims[i].name + (dims[i].you ? '（你本月 ' + dims[i].you + '）' : '') +
+          '：' + dims[i].tips.join(' ／ '));
+      }
+      var picks = [];
+      for (i = 0; i < dims.length && picks.length < 3; i++) {
+        var pk = dims[i].ref || (dims[i].refs && dims[i].refs[0]) || null;
+        if (pk) { picks.push(pk); }
+      }
+      var clean_picks = [];
+      for (i = 0; i < picks.length; i++) { if (picks[i]) { clean_picks.push(picks[i]); } }
+
+      return {
+        id: t.id, title: t.title, lead: t.lead, mode: t.mode,
+        dims: dims.map(function (d) {
+          return { name: d.name, tips: d.tips, you: d.you || '' };
+        }),
+        outline: lines.join('\n'),
+        picks: clean_picks
+      };
     }
 
     /** 系统提示词用的 MOC 索引：按主题列学院课、按场景列省钱代表条目 */
@@ -2406,8 +2787,21 @@
 
     return {
       search: search,
+      topic: topic,
       indexText: indexText,
       stats: stats,
+      /* 按省钱图谱分类直取（记账后的「省钱雷达」用）：不走向量检索，
+         要的是「这一类里最该先看的几条」，不是「和这句话最像的几条」。 */
+      byCat: function (cat, n) {
+        var idx = ensure();
+        var out = [], ci;
+        for (ci = 0; ci < idx.cards.length && out.length < (n || 2); ci++) {
+          if (idx.cards[ci].type === 'saving' && idx.cards[ci].cat === cat) {
+            out.push(view(idx.cards[ci], 0));
+          }
+        }
+        return out;
+      },
       lessons: function () { return lessonCards(); },
       savings: function () { return savingCards(); },
       deals: function () { return dealCards(); },
@@ -2642,6 +3036,13 @@
             data: { empty: true, range: label, note: '这个范围没有支出记录，如实告诉用户，不要编数字' }
           };
         }
+        /* 记下本轮统计口径：用户下一句说「这三笔 / 它们」时，明细查询要沿用它，
+           否则会查成全账本（实测 3 笔 253 → 7 笔 445 的口径打架）。 */
+        agentLastScope = {
+          start: start, end: end, label: label,
+          category: cat ? agentCategory(cat, 'expense') : '',
+          ts: Date.now()
+        };
         return {
           ok: true,
           /* brief 必须自带 top3 分类：模型倾向只复述 brief，分类只放 data 里
@@ -2664,31 +3065,83 @@
     {
       name: 'list_bills',
       title: '看账单',
-      desc: '列出最近的账单明细，可按品类或关键词过滤。用于「我最近都买了啥」「上周记了啥」。',
-      args: '{"limit":5,"category":"购物","keyword":"奶茶"}',
-      run: function (args) {
+      desc: '列出账单明细，可按时间范围（scope）、品类（category）、关键词（keyword）过滤。' +
+        '用于「我最近都买了啥」「上周记了啥」「这三笔都是什么」。' +
+        '用户用「这几笔 / 那三笔 / 它们 / 刚才那些」指代上一轮统计结果时，scope 与 category 必须沿用上一轮的值，不要省略。',
+      args: '{"scope":"month","category":"餐饮","limit":5}',
+      run: function (args, ctx) {
         var a = agentArgs(args);
         var limit = Math.max(1, Math.min(20, Number(a.limit) || 5));
-        var cat = String(a.category || '').trim();
+        var cat = String(a.category || a.cat || '').trim();
         var kw = String(a.keyword || '').trim();
+        var scope = String(a.scope || '').trim();
+        var wantType = (a.type === 'income') ? 'income' : 'expense';
+        var raw = String((ctx && ctx.raw) || '');
+        var ov = safeOverview();
+        if (!ov) { return agentFail('账本未就绪', '拿不到账本'); }
+        var today = ov.todayStr;
+        /* 指代解析走服务端兜底：光靠提示词让模型带 category 不可靠——实测它漏传后
+           查出全账本「7 笔 445」，和上一句「餐饮 3 笔 253」当面对不上。
+           10 分钟内的作用域才算数，避免隔天用「这些」误继承。 */
+        var anaphora = /这几笔|那几笔|这三笔|那三笔|这些笔|这几条|这几项|它们|刚才那|上面那|这几|那几/.test(raw);
+        var last = agentLastScope && (Date.now() - agentLastScope.ts < 10 * 60000) ? agentLastScope : null;
+        var inherited = [];
+        if (!cat && anaphora && last && last.category) {
+          cat = last.category;
+          inherited.push('品类');
+        }
+        var start; var end; var label;
+        if (!scope && anaphora && last) {
+          start = last.start; end = last.end; label = last.label;
+          inherited.push('时间范围');
+        } else if (scope === 'today') { start = today; end = today; label = '今天'; }
+        else if (scope === 'week') { start = ENG.formatDate(new Date(Date.now() - 6 * 864e5)); end = today; label = '最近 7 天'; }
+        else if (scope === 'month') { start = today.slice(0, 8) + '01'; end = today; label = '本自然月'; }
+        else if (scope === 'all') { start = '0000-01-01'; end = '9999-12-31'; label = '全部'; }
+        else { start = ov.cycle.start; end = ov.cycle.end; label = '本周期'; }
+        var c = cat ? agentCategory(cat, 'expense') : '';
         var list = [];
         var i;
         for (i = state.bills.length - 1; i >= 0 && list.length < limit; i--) {
           var b = state.bills[i];
           if (!b) { continue; }
-          if (cat && b.category !== agentCategory(cat, 'expense')) { continue; }
+          if (b.type === 'income' && wantType !== 'income') { continue; }
+          if (wantType === 'income' && b.type !== 'income') { continue; }
+          if (b.date < start || b.date > end) { continue; }
+          if (c && b.category !== c) { continue; }
           if (kw && String(b.note || '').indexOf(kw) === -1) { continue; }
           list.push({ date: b.date, cat: b.category, amount: b.amount, note: b.note, type: b.type });
         }
+        var scopeText = label + (c ? '「' + c + '」' : '');
         if (!list.length) {
-          return { ok: true, brief: '没有符合条件的账单', data: { empty: true, items: [] } };
+          return {
+            ok: true,
+            brief: scopeText + '没有符合条件的账单',
+            data: { empty: true, items: [], range: label, category: c, inherited: inherited,
+              note: '这个口径确实没有记录，如实说，不要拿别的账单充数' }
+          };
         }
         var sum = 0;
-        for (i = 0; i < list.length; i++) { if (list[i].type !== 'income') { sum += list[i].amount; } }
+        for (i = 0; i < list.length; i++) { sum += Number(list[i].amount) || 0; }
+        sum = ENG.round2(sum);
+        /* brief 必须带明细内容：模型倾向只复述 brief，只给「N 笔 · 合计 X」时
+           它就只能回一句没信息量的「看了下：7 笔，支出合计 ¥445.00」，
+           用户真正想问的「都是什么」一个字都没答。 */
+        var names = [];
+        for (i = 0; i < list.length && i < 6; i++) {
+          names.push((list[i].note || '未命名') + ' ' + money(list[i].amount));
+        }
         return {
           ok: true,
-          brief: list.length + ' 笔 · 支出合计 ' + money(ENG.round2(sum)),
-          data: { items: list, expenseSum: ENG.round2(sum) }
+          brief: scopeText + ' ' + list.length + ' 笔：' + names.join('、') +
+            (list.length > 6 ? ' 等' : '') + '（合计 ' + money(sum) + '）',
+          data: {
+            ok: true, items: list, count: list.length, expenseSum: sum,
+            range: label, start: start, end: end, category: c,
+            inherited: inherited,
+            note: '清单已展示。final 要说清这几笔分别是什么（名字 + 金额，最多 3 个），' +
+              '不要只复述「N 笔 · 合计」——那是卡片上已有的数字。'
+          }
         };
       }
     },
@@ -2793,6 +3246,79 @@
           ok: true,
           brief: today.length ? ('今天 ' + today.length + ' 家有优惠') : '已展开今日优惠卡',
           data: { ok: true, today: today, note: '优惠卡已展示，final 挑 1 条最相关的说，别复述整张卡' }
+        };
+      }
+    },
+    {
+      name: 'price_check',
+      title: '物价测算',
+      desc: '算「这个价贵不贵」：总价 ÷ 数量 = 单价，再对标生活基准区间（买菜 / 水果 / 水电费 / 房租 / 超市 / 外卖 / 奶茶 / 打印 / 理发…）。' +
+        'item 填东西名，qty 与 unit 填数量与单位（斤/公斤/个/度/吨/升/杯/顿/月），total 填总价。' +
+        '缺数量或单位时会返回 need，必须先问用户，不许自己假定。',
+      args: '{"item":"苹果","qty":2,"unit":"个","total":12}',
+      run: function (args, ctx) {
+        if (!PRICE) { return agentFail('物价雷达没加载', 'priceradar.js 未就绪'); }
+        var a = agentArgs(args);
+        /* 地域尺子按**用户原话**判（不按 item）：说「我在北京」的是那句原话，
+           item 里只有「苹果」。判不出城市就是本部，输出与以前逐字一致。 */
+        var rawText = String((ctx && ctx.raw) || a.text || a.raw || '');
+        var det = REGION ? REGION.detect(rawText) : null;
+        var regBand = REGION ? REGION.band(det) : null;
+        var r = PRICE.analyze({
+          item: a.item || a.name || a.goods || '',
+          qty: (a.qty === undefined ? a.quantity : a.qty),
+          unit: a.unit || a.unitName || '',
+          total: (a.total === undefined ? (a.price === undefined ? a.amount : a.price) : a.total),
+          text: a.text || a.raw || '',
+          region: regBand
+        });
+        if (!r.ok) {
+          /* 缺件不猜：把「问什么」和「问的选项」一起交给模型，它照抄就不会问偏 */
+          return {
+            ok: false,
+            brief: r.code === 'NO_QTY'
+              ? (r.item + ' 还差点数量/单位')
+              : (r.code === 'NO_TOTAL' ? '没听出多少钱' : '认不出这是什么东西'),
+            data: {
+              ok: false, code: r.code, item: r.item || '', error: r.message,
+              needUnit: r.unit || '', choices: r.choices || [],
+              note: r.hint + '。把 choices 里的话原样给用户点，别自己编数字'
+            }
+          };
+        }
+        showPriceRadarCard(r);
+        /* 市中心溢价：用户明确去了商圈才提醒（祖庙 / 天河 / 万达…），本部不加戏 */
+        if (det && det.downtown && REGION && det.code === 'home') {
+          var dn = REGION.downtownNote(det);
+          if (dn) { addAIMessage(aiBubble(esc(dn))); scrollChat(); }
+        }
+        return {
+          ok: true,
+          brief: r.item + ' ' + PRICE.fmt(r.basePrice === null ? r.unitPrice : r.basePrice) +
+            ' 元/' + (r.basePrice === null ? r.unit : r.baseUnit) + ' · ' + r.levelLabel +
+            (r.band && r.band.scaled ? '（按 ' + r.region.label + ' 折算）' : ''),
+          data: {
+            ok: true, item: r.item, unitPrice: r.unitPrice, unit: r.unit,
+            basePrice: r.basePrice, baseUnit: r.baseUnit, approx: r.approx,
+            band: r.band, level: r.level, levelLabel: r.levelLabel,
+            formula: r.formula, baseFormula: r.baseFormula,
+            channel: r.channel, tips: r.tips, say: r.say,
+            region: r.region ? {
+              label: r.region.label, scaled: !!(r.band && r.band.scaled),
+              mult: r.region.mult, downtown: !!r.region.downtown
+            } : null,
+            note: '雷达卡已展示（含算式、基准带、档位）。final 不要复述卡片上的单价与算式，' +
+              '只给一句判断 + 避坑（tips 里挑 1~2 条说成自己的话）+ 一个下一步；' +
+              '参考价必须与 data 的 band 一致，并说明这是经验区间、不是实时报价。' +
+              (r.region && r.band && r.band.scaled
+                ? '用户在 ' + r.region.label + '，band 已按城市等级折算（×' + r.region.mult[0] +
+                  '~' + r.region.mult[1] + '），final 要说明「你在' + r.region.label +
+                  '，区间已按当地水平折算」，不要说成佛山价。'
+                : '默认按佛山南海（广轻大）基准作答，不要自行换成别的城市价。') +
+              (r.region && r.region.downtown
+                ? '用户说的是市中心/商圈：必须补一句「市中心商圈存在溢价，同样的东西通常比大学城贵 30% 以上，建议回学校周边消费」。'
+                : '')
+          }
         };
       }
     },
@@ -2918,6 +3444,28 @@
           return agentFail('没给查询词', 'search_kb 需要 query，例如 {"query":"怎么凑单更省","scope":"all"}');
         }
         var hits = AGENT_KB.search(q, scope);
+        /* 抽象问题（怎么省 / 不够花 / 攒钱 / 管不住手）先看有没有话题骨架：
+           有的话把「按类拆好的骨架 + 用户自己的分类支出」一起给模型，
+           否则模型只能拿几张零散卡拼出一句「少点外卖」。 */
+        var top = null;
+        if (scope === 'all') {
+          try { top = AGENT_KB.topic(q, (agentSnapshot().topCategories) || []); } catch (e) { top = null; }
+        }
+        if (top) {
+          return {
+            ok: true,
+            brief: '话题骨架：' + top.title + '（' + top.dims.length + ' 个分类）',
+            data: {
+              ok: true, found: true, query: q, topic: top,
+              /* 卡片也跟着话题走：挂的是每个分类里最该点进去的那条，不是零散命中 */
+              hits: top.picks.length ? top.picks : hits,
+              note: '这是「分类作答」场景，不要只答一句。按 outline 的维度逐个讲：' +
+                '先一句点出最该动的那一类（有「你本月」数字就先引用它），再每类给一个今天就能做的动作，' +
+                '3~5 类讲完就停，别六类平均分配，也别念成清单。' +
+                '数字只能用 outline 里已有的，不要另算。'
+            }
+          };
+        }
         if (!hits.length) {
           return {
             ok: true, brief: '知识库未命中',
@@ -2928,6 +3476,9 @@
           };
         }
         var TYPE_NAME = { lesson: '理财学院', saving: '省钱助手', deal: '优惠日历', term: '谷圈黑话' };
+        /* 问「怎么 / 如何 / 有哪些」时用户要的是办法，命中几条就讲几条；问具体东西（这家多少钱、
+           这个词啥意思）时才收着讲 1~2 条。原来一律「只挑 1~2 条」，方法类问题因此永远答得很薄。 */
+        var howQ = /怎么|如何|怎样|哪些|有什么|有啥|办法|技巧/.test(q);
         return {
           ok: true,
           brief: '命中 ' + hits.length + ' 条（' + (TYPE_NAME[hits[0].type] || '知识库') + '：「' + hits[0].title + '」）',
@@ -2935,7 +3486,9 @@
             ok: true, found: true, query: q, hits: hits,
             note: 'content 已含「条件 / 避坑 / 可省金额 / 稳定度」，直接引用其中的数字与条件，不要另编价格；' +
               '价格带条目用来回答「XX 多少钱正常」；黑话条目用来回答「XX 是什么」；' +
-              '只挑最相关的 1~2 条说，不要念完整清单。'
+              (howQ
+                ? '用户问的是办法：按命中顺序把前 3 条各讲一句，每条一个能今天照做的动作，别只讲一条就收尾。'
+                : '只挑最相关的 1~2 条说，不要念完整清单。')
           }
         };
       }
@@ -2965,7 +3518,11 @@
           var stream = await Promise.resolve(cloudClient.llm.chat.completions.create({
             model: cloudChatModel.id,
             messages: messages,
-            stream: true
+            stream: true,
+            /* 强制 JSON 输出：不设它，模型会时不时直接说人话、跳过 {thought,calls,final}，
+               深度思考面板就只剩「没调工具，直接开口回话 / 见下方的回复」两句废话。
+               和意图分类那处（line 377）用同一套 SDK，流式 + json_object 已验证可用。 */
+            response_format: { type: 'json_object' }
           }));
           for await (var chunk of stream) {
             var c = chunk && chunk.choices && chunk.choices[0] && chunk.choices[0].delta &&
@@ -3002,7 +3559,9 @@
     var o = parseCloudJson(text);
     if (!o || typeof o !== 'object') { return null; }
     var plan = { thought: '', calls: [], final: '', choices: [] };
-    if (o.thought) { plan.thought = String(o.thought).slice(0, 60); }
+    /* 留 200 字而不是 60：这句会原样进「深度思考」面板，用户要看的是完整推理，
+       截太短会变成半句话。顶部一句话预览自己再收窄（agentTrace.think）。 */
+    if (o.thought) { plan.thought = String(o.thought).slice(0, 200); }
     if (o.final) { plan.final = String(o.final); }
     if (o.say && !plan.final) { plan.final = String(o.say); }
     /* 选项：接受字符串数组，也接受 {text/label/cmd} 对象数组；最多 4 条、每条 ≤28 字 */
@@ -3030,8 +3589,13 @@
       }
     }
     if (!plan.final && !plan.calls.length && o.reply) { plan.final = String(o.reply); }
-    /* 模型只给了选项却忘了写 final：补一句引导，别让这一轮空转 */
-    if (!plan.final && !plan.calls.length && plan.choices.length) { plan.final = '挑一个，我接着办。'; }
+    /* 模型只给了选项却忘了写 final：补一句引导，别让这一轮空转。
+       打上 fillerFinal 记号 —— 这句是本地补的套话，一个字事实都没有；
+       上层若发现这一轮之前其实跑过工具，会拿工具结果把它换掉。 */
+    if (!plan.final && !plan.calls.length && plan.choices.length) {
+      plan.final = '挑一个，我接着办。';
+      plan.fillerFinal = true;
+    }
     if (!plan.final && !plan.calls.length) { return null; }
     return plan;
   }
@@ -3054,7 +3618,7 @@
       '有边界：只谈钱不评人，不催消费、不劝借贷、不拿「穷」开玩笑'
     ],
     voice: [
-      '1~3 句，先结论后依据，一句里只强调一个数字',
+      '先结论后依据，一句里只强调一个数字；办事 1~2 句，讲方法按分类讲 3~5 类',
       '说「你」不说「您」，不自称 AI、助手、模型',
       '记账：报「记了什么」+ 一句有用观察',
       '劝阻：先给判断，再给替代（等 24 小时 / 平替 / 攒钱目标）',
@@ -3092,18 +3656,25 @@
       s = s.replace(/您/g, '你');
     }
     s = s.replace(/[ \t]+/g, ' ');
-    s = s.replace(/^[-*·]\s*/gm, '');          /* 模型爱用项目符号，气泡里很难看 */
+    /* 列表符号统一成「- 」，不再整行删掉：模型被要求用「1. 2. 3.」讲步骤，
+       星号 / 中点项目符号是同一类表达，删了会退化成一段连着的长句，
+       用户要的是能一眼扫下来的列表。 */
+    s = s.replace(/^[ \t]*[*·]\s+/gm, '- ');
     /* ③ 标点残渣：删词后会留下「，。」「。吗？」这类碎片，气泡里非常刺眼 */
     s = s.replace(/[，,、；;：:]\s*(?=[。！？])/g, '');
     s = s.replace(/([。！？])\s*(?=[。！？])/g, '');
     s = s.replace(/[，,、；;：:]{2,}/g, '，');
     s = s.replace(/^[，,、；;：:。！？\s]+/, '');
     s = s.replace(/\n{3,}/g, '\n\n');
-    /* ④ 太长就按句子边界截断：气泡超过三行，用户就不读了 */
-    if (s.length > 150) {
-      var cut = s.slice(0, 150);
-      var p = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'), cut.lastIndexOf('\n'));
-      s = p > 40 ? cut.slice(0, p + 1) : cut.replace(/[，,、；;：:]$/, '') + '…';
+    /* ④ 太长才截：原来 150 字硬截，等于把「分类作答」生生掐成三句——提示词让它讲五类，
+       用户永远只看到前三行，「回答不够详细」有一半是这里造成的。
+       现在按「300~400 字 + Emoji 锚点 + 三条列表」的目标给到 700 字符余量；
+       断点优先落在换行上——列表被拦腰截断比少讲一条更难看。 */
+    if (s.length > 700) {
+      var keep = s.slice(0, 700);
+      var p = Math.max(keep.lastIndexOf('。'), keep.lastIndexOf('！'), keep.lastIndexOf('？'),
+        keep.lastIndexOf('\n'));
+      s = p > 200 ? keep.slice(0, p + 1) : keep.replace(/[，,、；;：:]$/, '') + '…';
     }
     s = s.replace(/\s+\n/g, '\n').trim();
     /* ⑤ 只剩标点（套话全被删光）时别让用户看到「。」 */
@@ -3115,11 +3686,32 @@
   }
 
   /** 把最终回复转成安全的富文本（支持 **加粗** 与换行） */
+  /** 把最终回复转成安全的富文本：支持 **加粗**、有序 / 无序列表、空行分段。
+      只做这四样——够用，也不会把模型偶尔写出的标签当结构执行。
+      用户 2026-11-02 的要求：「Emoji 锚点 + 1. 2. 3. 列表 + 加粗关键字 + 段落留白」，
+      原来这里只把换行换成 <br>，序号和正文挤成一行、对齐全靠空格，看着像没排版。 */
   function agentTextHtml(t) {
     var s = esc(String(t || '').trim());
-    s = s.replace(/\*\*([^*\n]{1,30})\*\*/g, '<b>$1</b>');
-    s = s.replace(/(?:\r?\n){2,}/g, '<br><br>').replace(/\r?\n/g, '<br>');
-    return s;
+    s = s.replace(/\*\*([^*\n]{1,80})\*\*/g, '<b>$1</b>');
+    var lines = s.split('\n');
+    var out = [];
+    var gap = false;
+    var olRe = /^\s*(\d{1,2})[.、)]\s*(.+)$/;
+    var ulRe = /^\s*[-•·]\s*(.+)$/;
+    var i, m;
+    for (i = 0; i < lines.length; i++) {
+      var ln = lines[i].replace(/\s+$/, '');
+      if (!ln.trim()) { gap = true; continue; }
+      if ((m = ln.match(olRe))) {
+        out.push('<div class="md-li"><i class="md-n">' + m[1] + '</i><span>' + m[2] + '</span></div>');
+      } else if ((m = ln.match(ulRe))) {
+        out.push('<div class="md-li md-ul"><i class="md-dot">•</i><span>' + m[1] + '</span></div>');
+      } else {
+        out.push('<div class="md-p' + (gap ? ' md-gap' : '') + '">' + ln + '</div>');
+      }
+      gap = false;
+    }
+    return out.join('');
   }
 
   /* ---------------- Agent：可点选项（澄清 / 确认 / 下一步） ----------------
@@ -3133,6 +3725,9 @@
 
   /** 上一轮挂在气泡下的选项；用户再回一句后就作废，避免跨话题误命中 */
   var lastChoices = null;
+
+  /** 上一轮生存场景的 A/B 连环子应答表：点选项或手打同一句即直出，不调云端 */
+  var lastSV = null;
 
   /** 本轮 search_kb 命中的知识条目：渲染成可点跳转卡，挂在 AI 回复下方 */
   var agentKbHits = [];
@@ -3228,6 +3823,84 @@
     var out = model.length ? model : either;
     if (!out.length && /[？?]/.test(String(reply || ''))) { out = choiceGenericExits(reply); }
     return out.slice(0, 4);
+  }
+
+  /**
+   * 兜底「下一步」：模型忘了给 choices 时，按本轮命中的资料类型补两个能点的去处。
+   * 「积极给功能跳转和建议」不能全指望模型自觉——实测它有相当一部分回合答完就停。
+   * 只在有资料卡、且回复不是在提问时补（提问必须带自己的选项，不能拿这个顶）。
+   */
+  function agentNextChoices(hits) {    var has = {};
+    var i;
+    for (i = 0; i < hits.length; i++) { has[hits[i].type] = 1; }
+    var out = [];
+    if (has.guide || has.lesson) { out.push('打开理财学院'); }
+    if (has.saving) { out.push('带我去省钱图谱'); }
+    if (has.app && out.length < 2) { out.push('教我这个功能在哪'); }
+    if (has.deal && out.length < 2) { out.push('看看这周还有什么优惠'); }
+    /* 只命中一类（常见：全是省钱条目）时补一条通用去处，别让「下一步」只剩一个孤零零的按钮 */
+    if (out.length < 2) { out.push('看看这个月的开支结构'); }
+    return out.slice(0, 2);
+  }
+
+  /* 账单品类 → 省钱图谱分类。账本里「餐饮」是一个类，图谱里拆成外卖 / 快餐 / 食堂 / 饮品，
+     记账后要指路就得往里再走一层，否则只能给出笼统的「少点外卖」。 */
+  var SPEND_CAT_MAP = {
+    /* 餐饮先外卖、再食堂：这两条是「下次点之前」能立刻换的两条路，
+       快餐次之（麦当劳 13.9 属于同类里的兜底），饮品最后。 */
+    '餐饮': ['delivery', 'canteen', 'fastfood', 'drinks'],
+    '购物': ['daily', 'promo'],
+    '娱乐': ['fun'],
+    '社交': ['fun'],
+    '交通': ['transit'],
+    '学习': ['study'],
+    '居住': ['life'],
+    '医疗': ['life']
+  };
+
+  /**
+   * 记账成功后的「省钱雷达」：按品类从知识库挑最对症的两条，返回一句提示 + 可点的卡。
+   * 为什么放本地而不是全靠模型：这一轮它刚拿到工具结果，经常只回一句「记好了」；
+   * 而「记完顺手指个更省的办法」正是用户 2026-11-02 明确要的（示例二）。
+   */
+  function agentSpendRadar(cats, raw) {
+    var picks = [], seen = {}, i, j, k;
+    var said = String(raw || '');
+    for (i = 0; i < cats.length && picks.length < 2; i++) {
+      var keys = SPEND_CAT_MAP[cats[i]] || [];
+      /* 购物是个筐：买衣服和买纸巾在图谱里是两类。用户原话里提到衣物时先推唯品会 / 反季，
+         否则默认推超市日用——否则「刚买了件外套」会收到「去超市买纸巾」这种驴唇不对马嘴的雷达。
+         这里直接走检索而不是按分类取第一条：promo 分类的第一条是 618 囤货，不是唯品会。 */
+      if (cats[i] === '购物' && /衣|裤|鞋|外套|裙|帽|袜|穿搭/.test(said)) {
+        var cloth = AGENT_KB.search(said + ' 买衣服怎么省', 'saving');
+        for (k = 0; k < cloth.length && picks.length < 2; k++) {
+          if (seen[cloth[k].id]) { continue; }
+          seen[cloth[k].id] = 1;
+          picks.push(cloth[k]);
+        }
+        continue;
+      }
+      for (j = 0; j < keys.length && picks.length < 2; j++) {
+        /* 子类多时每个取 1 条（餐饮要的是「外卖 + 食堂」两条不同的路，不是两条外卖）；
+           只有一个子类时取 2 条，别让娱乐 / 交通只剩一张卡。 */
+        var got = AGENT_KB.byCat(keys[j], keys.length === 1 ? 2 : 1);
+        for (k = 0; k < got.length && picks.length < 2; k++) {
+          if (seen[got[k].id]) { continue; }
+          seen[got[k].id] = 1;
+          picks.push(got[k]);
+        }
+      }
+    }
+    if (!picks.length) { return null; }
+    var names = [];
+    for (i = 0; i < picks.length; i++) {
+      names.push(String(picks[i].title).replace(/（[^）]*）/g, '').replace(/\s*[·|].*$/, ''));
+    }
+    return {
+      /* 卡片就在下面、标题已经写清楚了，这行只说「挑的是什么」，不再复述一遍名字 */
+      line: names.join('、') + '，下次可以照着来。',
+      picks: picks
+    };
   }
 
   /** 选项按钮 HTML：data-cmd 复用既有委托 → handleSend(选项原文) */
@@ -3452,17 +4125,43 @@
       '· 口头禅（一轮最多用一个，别硬塞）：' + AGENT_PERSONA.catchphrase.join(' / ') + '。',
       '· 绝不出现：' + AGENT_PERSONA.banned.slice(0, 8).join('、') + ' 这类客服腔，也不要「希望对你有帮助」。',
       '· 用户说自己穷、乱花钱、后悔时：先接一句人话，再给一个具体动作；不评判人格，不念经。',
+      '· 用户说「想去 / 想买 / 想学」这类愿望时：先接住（别否定他），再把成本拆成三笔给个方向；' +
+        '绝不能回「钱已经花了，别自责」这种安慰模板 —— 他还没花，那是在跟他没说过的事说话。',
       '',
       '【说话风格·' + toneLabel() + '】（用户在设置里选的，切换立即生效）',
       tonePromptLines().join('\n'),
-      '· 风格永远低于【硬规则】和工具结果：冲突时先按规则说，再按风格修语气。',
+      '· 风格永远低于【硬规则】和工具结果：冲突时先按规则说，再按风格修语气。'
+    ];
+    /* 说话方式被手动锁定档位时，追加一段硬约束（自动档不占提示词长度） */
+    var vmLines = voiceModePromptLines();
+    if (vmLines.length) {
+      lines.push('');
+      lines.push('【说话方式·' + voiceModeLabel() + ' × 说话风格·' + toneLabel() +
+        '】（用户在聊天框上方手动锁定的，本轮必须遵守）');
+      lines = lines.concat(vmLines);
+      lines.push('· 真起冲突时先守方式：宁可口气不那么像设定的风格，也不能说着说着又开始算账 / 又开始哄。');
+    }
+    lines = lines.concat([
       '',
       '【输出格式】每轮只输出一个 JSON 对象，不要 Markdown、不要代码围栏、不要多余文字：',
-      '{"thought":"你现在打算做什么（≤30字，给人看的）","calls":[{"tool":"工具名","args":{}}],"final":"给用户看的回复，暂时没结论就留空","choices":["用户能直接点的一句","另一句"]}',
+      '{"thought":"这一轮你真正在拆什么、为什么这么做（1~2句，40~80字，给用户看的推理）","calls":[{"tool":"工具名","args":{}}],"final":"给用户看的回复，暂时没结论就留空","choices":["用户能直接点的一句","另一句"]}',
+      '',
+      '【思考过程 thought】—— 这行会原样进「深度思考」面板给用户看，写扎实才有用：',
+      '· 必填，不能是空字符串、不能省：哪怕这句不用查账、直接回答，也要写清「凭什么这么答、为什么不用工具」；',
+      '· 每轮写 1~2 句（40~80 字）：说清你这一轮在拆解什么、为什么选这个工具 / 这个答案；',
+      '· 严禁写成计划口号（如「先查知识库再回答」「拿到结果后讲清楚」）—— 那是空话，用户一眼看穿；',
+      '· 多轮必须层层推进：第 1 轮写「用户这句话的关键点 + 我打算怎么查、为什么这么查」；',
+      '  第 2 轮写「查到的东西对【这个用户】意味着什么、我打算按什么顺序讲、先讲哪条」——',
+      '  不能复述上一轮，也别和 final 重复（final 写结论，thought 只写「我为什么这么答」）。',
+      '· 记账 / 开面板这类办事轮，thought 也别空着：一句「金额品类已解析，直接记」比不写强。',
+      '· 例（出行省钱·2 轮）：第 1 轮 ＝「去广州怎么划算，关键在学生票资质和高铁/大巴换乘；先查 12306 学生票与中转的具体条件」；',
+      '  第 2 轮 ＝「库里 6 条都能用：学生票要先核验资质、中转比直达省、积分能抵现；按资质→换乘→避坑讲，先讲他最易漏的资质」。',
+      '',
       '· 需要工具结果才能回答 → calls 非空、final 留空；我会把结果以【工具执行结果】回给你；',
       '  （同一轮里既调工具又写 final，final 会被丢掉白写：先动手、看完结果再说话）',
       '· 结果可预见（例如记账）或根本不用工具 → 直接给 final，这样只花一轮；',
       '· 一句话里有多笔账 → 全部放进同一个 add_bills 的 bills 数组，一次记完，不要分多次调用。',
+      '· final 要分多行（列表 / 分段）时，换行写成 \\n —— JSON 字符串里直接换行会让整条解析失败，那就只能退回本地规则了。',
       '· choices 只在需要用户回一句时才给；不需要时留空数组 [] 或整个省略。',
       '',
       '【选项按钮 choices】—— final 里只要你让用户做选择 / 确认 / 补充，就必须给 choices',
@@ -3473,6 +4172,16 @@
       '· 例：用户说「课程」，你分不清是哪个意思 →',
       '  {"thought":"课程有两个意思，先问清","calls":[],"final":"课程是想记一笔课费，还是想看理财学院的课？","choices":["记一笔课费","打开理财学院的课"]}',
       '',
+      '【深度解析法则】（用户 2026-11-02 定，优先级高于语气风格）',
+      '· 讲省钱 / 理财 / 具体操作时不许只给结论：先一句判断，再 3 条今天就能做的动作，再一条避坑，最后给下一步，整段 300~400 字。',
+      '  字数明显不够就是没讲完（记账 / 撤回 / 开面板这类办事回复例外，仍只要 1~2 句）。',
+      '· 排版只用这四样：Emoji 做段首锚点、要点用「1. 2. 3.」、关键字用 **加粗**、段与段空一行。',
+      '  不要 # 标题、不要表格、不要代码块；一条列表写一行，别把三条挤进一段。',
+      '· 全链路：讲到怎么省，必须补「在哪个 App 的哪个入口做」。search_kb 结果里带 linked 的那条就是配套教学卡，连着讲；',
+      '  只说「多比价」「等大促」而不给入口，等于没讲完。',
+      '· 谷圈：用户说吧唧 / 痛包 / 立牌 / 谷子 / 盲盒 / 抽赏时，先用圈内口吻接住，再讲跟团防跑单、设谷子基金额度，不要一上来就劝退或直接记账。',
+      '· 记账成功后，若品类是餐饮 / 购物 / 娱乐 / 交通，除了一句结果，再给「省钱雷达」：1~3 条从 search_kb 对应条目里取的省法，加一个下一步。',
+      '',
       '【硬规则】',
       '1. 金额只能取自用户这句话（见下方【可用金额】），一个字都不能编。缺金额就问，问句里不要出现具体数字。',
       '2. 疑问句（怎么/吗/多少/能不能/值不值）不是记账；未来计划（明天、打算、约好）要记账时必须提醒「还没发生」。',
@@ -3481,9 +4190,14 @@
       '   例外（必须遵守）：用户已经明确表达「现在就买 / 现在就吃 / 不用等 / 帮我记上 / 别拦 / 确定要」→ 直接 add_bills 记账，' +
         '不许再开冷静卡；同一笔的冷静卡还在等他决定时，也不要开第二张。',
       '4. 同一个工具不要重复调用；工具返回 ok:false 就看 error 改参数，或改成问用户。',
-      '5. 一律按【你是谁】说话：口语、1~3 句、不列长清单、不复述卡片上已有的数字；' +
+      '5. 长度分三档，别一律压成 1~3 句：' +
+        '① 办事（记账 / 撤回 / 开面板 / 查余额）→ 1~2 句，卡片上已有的数字不要复述；' +
+        '② 讲一个具体东西（这家怎么点最省 / 这个词啥意思 / 多少钱正常）→ 200~300 字：入口、条件、避坑各一段；' +
+        '③ 讲方法（怎么省钱 / 钱不够花 / 怎么攒钱 / 理财入门 / 管不住手 / 某个场景怎么买最划算）→ 300~400 字，' +
+        '按【深度解析法则】的排版来：判断一句，然后 3 条编号动作（每条一句「怎么做 + 为什么」），再一条避坑，最后给下一步。' +
+        '先一句判断（有「你本月」的数字就先引用它），再 3~5 个分类各一句能照做的动作，最后一句收尾并给下一步。' +
         '语气可以直，但不许刻薄、不许说教、不许替用户下「你太穷了 / 你管不住手」这种判断。' +
-        '唯一例外：用户问某 App / 平台怎么用、怎么省钱（search_kb 命中 App 教学卡）时，' +
+        '唯一例外（必须遵守）：用户问某 App / 平台怎么用、怎么省钱的实操（search_kb 命中 App 教学卡）时，' +
         '把那张卡的要点逐条讲全，一条一句，宁多勿漏——「怎么用」答成一句话等于没答。',
       '6. 记账 / 撤回 / 冷静卡 都由工具自动出卡，final 只补一句有用的话，或留空字符串。',
       '   卡片上已经有按钮（「先不买」「仍然记下」）时，final 不要再把同样的选择用文字问一遍，choices 留空 —— 那是问第二遍。',
@@ -3499,21 +4213,53 @@
         '不许回「你可以在设置里找找」这种让他自己翻的答案。规则 / 操作说不清时再用 ai_guide 打开说明面板。',
       '12. 需要用户回一句才能继续时（分不清意思 / 要不要 / 缺金额 / 二选一），final 问句必须配 choices；' +
         'choices 里不许出现用户没说过的金额，也不许是离开上下文就看不懂的碎片。',
-      '13. 知识点问答（怎么省 / 哪家便宜 / 理财入门 / 消费心理 / 避坑 / 预算 / 校园贷 / 搞钱）：先 search_kb 取真实内容，' +
-        '再用 1~3 句做专业应答，不许凭印象编、不许编数字；答完自动挂"相关资料"卡，用户点一下就能去看。' +
-        '只有当用户明确要"带我去看看"时，才用 open_panel 带具体课节或条目。',
+      '13. 知识点问答（怎么省 / 哪家便宜 / 理财入门 / 消费心理 / 避坑 / 预算 / 校园贷 / 搞钱）：先 search_kb 取真实内容，再按返回的 note 讲，不许凭印象编、不许编数字。' +
+        '命中 topic（分类骨架）时**必须分类作答**：按 outline 的维度逐个讲，每个维度一句动作 + 一句为什么；' +
+        'outline 里有「你本月 xx 元」就先引用它，用来说明「为什么先砍这一类」；讲 3~5 类，讲完给一句总收口。' +
+        '这类问题答成一句是敷衍，把六类平铺成清单也是敷衍——挑和他情况最相关的三到五类讲透。' +
+        '答完自动挂"相关资料"卡，用户点一下就能去看；只有用户明确要"带我去看看"时才 open_panel 带具体课节或条目。',
       '14. 用户提到具体店名 / 品牌 / 品类（麦当劳、蜜雪、外卖、食堂、打印、教材、打车、会员…）或问"值不值 / 怎么点最省"时，' +
         '必须 search_kb 再答；返回的 content 里已经带「条件 / 避坑 / 省多少 / 稳定度」，直接引用其中的数字与条件，' +
         '不许自己另算一个价，也不许把「活动会变」的条目说成长期有效。',
       '15. 用户问「这个 App 怎么用 / 怎么导入账单 / 数据存在哪 / 能不能导出 / 怎么删记录 / 你能不能帮我改」时，' +
         '先 search_kb（scope=app，App 自身功能说明），按里面写死的路径回答，然后挂卡给入口，不许自己编菜单名或承诺没做的功能' +
-        '（注意：逐笔「修改 / 撤回」已经有了，别再说没有；「云同步」「实时比价」才是真的没有，必须如实说没有）。',
+        '（注意：逐笔「修改 / 撤回」已经有了，别再说没有；「云同步」「实时比价」才是真的没有，必须如实说没有。' +
+        '物价问题有「物价雷达」：按斤/度/吨等基准单位算单价，再对标生活经验区间——' +
+        '但那是经验区间，不是实时报价，别把它说成「实时比价」）。',
       '16. 用户问某个 App / 平台「怎么省钱 / 在哪领券 / 怎么弄最便宜」（淘宝、闲鱼、拼多多、美团、话费、寄快递、会员、电影票、12306…）时，' +
         '先 search_kb（命中 type=guide 的 App 教学卡），按里面的具体入口和条件答（「搜『U先试用』」这种可执行动作），' +
-        '不要只给「多比价」「等大促」这类正确但没用的话；答完顺带让用户点卡片直接跳到「理财学院 · App 教学」。',
+        '不要只给「多比价」「等大促」这类正确但没用的话；' +
+        '开头也别先下「这平台套路不多 / 没什么可省的」这种空评价再列一堆方法——前后会打脸，直接给动作；' +
+        '答完顺带让用户点卡片直接跳到「理财学院 · App 教学」。',
       '17. 跳转要带「具体对象」：用户说「打开理财学院里讲拿铁因子的那节」「省钱里食堂那条」时，' +
         'open_panel 除了 panel，再带 query（原话里的对象词），让它直接落到那一课 / 那一条，而不是只打开列表让用户自己翻。' +
         '一句话里有多个动作（「打开心愿单然后记一笔奶茶12」）时，拆成多次工具调用，按说话顺序执行，别只做一半。',
+      '18. 讲方法 / 做诊断 / 答知识时，结尾必须留一个「下一步」，只能从现成的东西里给：' +
+        '有相关资料卡 → 补一句「点下面卡片直接去」；能带他去某页 → 给 choices（「带我去省钱图谱」「看看这个月的预算」「教我怎么记账」）；' +
+        '都没有 → 给一个他下次能直接问的问题。给不出下一步的回答算没答完。' +
+        '不许承诺库里没有的东西（实时比价、自动下单、云同步都没有）。',
+      '19. 用户用「这几笔 / 那三笔 / 它们 / 刚才那些」指代上一轮的数字时，调用 list_bills 必须沿用上一轮的' +
+        '时间范围与品类（例如上一句说的是「本月餐饮 3 笔」，这里就带 {"scope":"month","category":"餐饮"}），' +
+        '拿不准就先问一句「你说的是餐饮那三笔吗」，绝不许直接查全账本——查出的笔数金额和上一句对不上，用户会当作你在编。' +
+        'list_bills 之后，final 要说清这些钱花在哪（每笔的名字 + 金额，最多 3 个），不要只复述「N 笔 · 合计」这种卡片上已有的数字。',
+      '20. 用户问「贵不贵 / 划算吗 / 是不是被坑 / 这个价正常吗 / 多少钱算贵」（买菜、水果、水电费、房租、超市、外卖、奶茶、打印、理发…）时，' +
+        '先调 price_check：item 用说的东西名，qty 与 unit 用原话里的数量与单位，total 用他花的钱，一个字都不许自己估；' +
+        '返回 code=NO_QTY 说明没说数量或单位，这时必须问清「多少斤 / 多少度 / 多少吨」，不许假定，也不许先给结论；' +
+        '返回的 band 才是唯一可用的参考价，禁止凭印象说「一般 15 块一斤」这种没来源的数字；' +
+        '结尾要说明参考价是生活经验区间、不是今天的实时报价。',
+      '21. 地域口径（默认服务对象是广东轻工职业技术大学 · 佛山南海北区）：用户没提城市时，所有物价判断都按佛山南海 / 广轻大基准——' +
+        '食堂一荤一素 10~12 元、两荤一素 15 元左右、早餐包子 1.5~2 元、猪脚饭 15~18、兰州拉面 12~15、快餐小炒 18~25、' +
+        '宿舍电 0.6~0.7 元/度、水 3~4 元/吨、公交与地铁起步 2 元、周边单间 600~1200 元/月。' +
+        '用户说了别的城市（北京 / 成都 / 老家县城…）就换整把尺子：一线 +50%~80%、二线 +20%~30%、三四线 −20%~40%（一碗面 8~10 元），' +
+        '并说明「区间已按当地水平折算」。系数不许自己乘，一律取 price_check 返回的 data.region。' +
+        '用户去的是市中心 / 商圈（祖庙、天河、万达、珠江新城…）时，除了正常判断，必须补一句：' +
+        '市中心商圈存在溢价，同样的东西通常比大学城贵 30% 以上，建议回学校周边消费。',
+      '22. 用户说「不是 / 不对 / 我没问这个 / 答偏了 / 我说的是 X」时，这是**纠正**，不是新问题，必须三步走：' +
+        '① 第一句先认下（「刚才答偏了，我当成你在吐槽凑单了」），不许辩解，也不许装作没听见直接换题；' +
+        '② 复述他真正要的（把 X 说出来）；③ 再给答案。' +
+        '上一轮的语境必须接着用：他先说「双十一怎么玩京东」、纠正说「不是，我要了解京东」时，' +
+        '答案要同时带上「京东」和「双十一」两个坐标，不能当全新对话从零开始。' +
+        '纠正之后不要重复上一轮已经说过的内容，只补真正缺的那部分。',
       '',
       '【示例】用户说「中午黄焖鸡18，晚上和舍友AA付了50」：',
       '{"thought":"两笔餐饮，一次记完","calls":[{"tool":"add_bills","args":{"bills":' +
@@ -3528,6 +4274,42 @@
       '【语气示例二·被问穷不穷】用户说「我是不是太穷了」，先 get_balance：',
       '「不是你穷，是这个月花超了 180，主要在外卖。先把外卖砍一半，月底就能松口气。」',
       '',
+      '【语气示例三·问方法（怎么省 / 攒钱 / 钱不够花）】这是最容易答砸的一类：只回一句「少点外卖」就是敷衍。',
+      '用户说「怎么才能省钱」→ 先 search_kb({query:"怎么才能省钱"})，拿到 topic 骨架后按分类讲：',
+      '「先动最大的一头：你这个月日用已经花了 120，洗衣液纸巾别在校内买，走一趟校外超市能省三成。' +
+        '吃的三件事——18:30 后食堂半价清仓、外卖先进「拼好饭」、麦当劳随时能点 13.9 的 1+1。' +
+        '出行先把 12306 学生资质核验做了，一学年 4 次学生票。' +
+        '三类一起砍坚持不过一周，先只砍最贵的那一类。想挑一类细看，点下面卡片。」',
+      '  注意：金额全部来自 outline 的「你本月」和条目原文，一个字都不许自己编；',
+      '  choices 给 ["带我去省钱图谱","看看这个月的开支结构"]——这就是「给下一步」。',
+      '  反面教材（别这样）：「省钱可以先从少点外卖开始，记账能帮你看清花销。」——一句正确但没用的话。',
+      '',
+      '【语气示例四·记账后给省钱雷达】用户说「今天点外卖花了 35」，add_bills 之后：',
+      '「✅ **记账成功**：餐饮 - 外卖 35 元。',
+      '📊 **预算体检**：这个月餐饮已经占了 62%，恩格尔系数偏高，再这么点月底会紧。',
+      '💡 **省钱雷达 · 外卖三招**：',
+      '1. **拼好饭**：美团首页搜「拼好饭」，同店 10~15 元能吃饱，月底救星；',
+      '2. **隐藏红包**：点单前先去微信搜「外卖返利」小程序领 2~5 元红包，再回 App 付；',
+      '3. **换食堂**：走十分钟去食堂，一荤一素 12 块，一周少点三次就是两杯瑞幸。',
+      '👉 **下一步**：点下面「拼好饭」那条，看看今天哪家最便宜。」',
+      '  注意：占比来自 get_balance / get_spending，省法来自 search_kb 命中的条目，两处都不许自己编。',
+      '',
+      '【语气示例五·谷圈】用户说「我想买个盲盒吧唧，大概 50 块」：',
+      '「🚨 **吃谷防坑雷达启动**',
+      '盲抽的期望值往往很低。只想要某一个角色，直接去闲鱼搜「角色名 + 吧唧」收确认款，通常比抽便宜，也没有抽不到的风险。',
+      '1. **防跑单**：跟团前先看团长有没有 3 次以上成功开团记录，只走闲鱼等平台担保，拒绝任何微信私转；',
+      '2. **设额度**：每月从生活费里划一笔固定的「谷子基金」，比如 100 元，超了就停手，别月底吃土；',
+      '3. **先查价**：搜一下这款的近期成交价，别按卖家开口价直接下单。',
+      '👉 **下一步**：去闲鱼看看有没有好价出，或者先查查这款的热度和均价，别盲目下手。」',
+      '  注意：这句是「想买」不是「已买」，不要记账，也不要用冷静卡打断，先把圈内信息给足。',
+      '',
+      '【语气示例六·问物价】用户说「今天在超市买了两个苹果，花了 12 块，贵不贵啊」→ 先 price_check({item:"苹果",qty:2,unit:"个",total:12})：',
+      '「🍎 两个苹果合 6 元一个，折成斤是 15 元/斤，比菜市场的正常价（4~8 元/斤）高出一倍，这单确实刺客。',
+      '1. **换渠道**：同品质去校门口流动摊散称，同样的钱能多买一倍；',
+      '2. **看克数**：按盒卖的先看盒子写多少克，大盒子常常只有半盒果。',
+      '👉 下次买水果直接去菜市场，能尝还便宜。参考价是生活经验区间，不是今天的实时报价。」',
+      '  注意：单价与区间只能来自 price_check 的返回；用户没说量就先问「多少斤/多少度」，不要假定。',
+      '',
       '【现在】' + ENG.formatDate(now) + ' 周' + WEEK_CN[now.getDay()] + ' ' + nowHM() +
         '，可用金额：' + (ctx.amounts.length ? ctx.amounts.join(' / ') : '（用户这句没提金额）'),
       '【账本快照】' + JSON.stringify(snap),
@@ -3540,55 +4322,243 @@
       AGENT_KB.indexText(),
       '· 用户问「怎么省 / 哪家便宜 / 怎么看懂基金 / 消费心理 / 避坑 / 预算怎么分 / 校园贷 / 搞钱」这类知识点时，' +
         '先调 search_kb：query 直接填用户原话（中文按 2 字切分，原话比关键词更准），' +
-        '返回的 content 已含「条件 / 避坑 / 省多少 / 稳定度」，据此用 1~3 句作答，别凭印象编，别编数字。',
+        '返回的 content 已含「条件 / 避坑 / 省多少 / 稳定度」，据此作答，别凭印象编，别编数字。',
+      '· 这类问题如果返回了 topic（分类骨架），说明用户问的是「整体怎么办」而不是某一样东西：' +
+        '照 outline 的维度分类讲，别压成一句。骨架里的维度、金额都来自他的账本与库里的真实条目，不用另找。',
       '· 用户没提具体店名、只说「钱不够花 / 想攒钱 / 总忍不住」这类时，search_kb 会把话题钉到对应课程，照样先查再答。',
       '· 你答完会自动在气泡下挂一张「相关资料」卡（可点直接去看）；若用户明确说「带我去看看 / 打开那个课」，' +
         '再调 open_panel 带具体目标：open_panel({lesson:"cooldown"}) 开理财学院某课，open_panel({entry:"fastfood.mcd.01"}) 开省钱某条。',
       '',
       '【工具】',
       toolLines.join('\n')
-    ];
+    ]);
     return lines.join('\n');
   }
 
   /* ---------------- Agent：思考轨迹 UI ---------------- */
 
+  var agentDeepSeq = 0;   /* 「深度思考」面板的 aria-controls 需要一个唯一 id */
+
+  /** 把工具入参压成一行短摘要：用户想看的是「它到底传了什么」，不是一坨 JSON */
+  function agentArgsPeek(args) {
+    if (!args || typeof args !== 'object') { return ''; }
+    var ks = Object.keys(args);
+    if (!ks.length) { return ''; }
+    var parts = [];
+    var i;
+    for (i = 0; i < ks.length && i < 4; i++) {
+      var v = args[ks[i]];
+      var s;
+      if (v === null || v === undefined) { s = '空'; }
+      else if (Array.isArray(v)) { s = '[' + v.length + ' 项]'; }
+      else if (typeof v === 'object') { s = '{…}'; }
+      else { s = String(v); }
+      if (s.length > 20) { s = s.slice(0, 20) + '…'; }
+      parts.push(ks[i] + '=' + s);
+    }
+    if (ks.length > 4) { parts.push('…'); }
+    return parts.join(' ');
+  }
+
   /**
    * 智能体思考卡（原生 <details>，无需事件绑定）：
    *   运行中展开并逐条追加「工具 + 结果」，结束后保留为可折叠轨迹。
-   * 只保留最近一张展开，历史轨迹自动收起 —— 聊天不至于被思考过程淹没。
+   *   顶部一句 thought 是「首轮计划」的预览，末轮 thought 往往与回复重复，不重复占位。
+   *   卡底另挂「深度思考」开关：点开按轮次还原完整推理路径
+   *   （这轮想了什么 → 调了哪个工具、传了什么参数、拿回什么 → 怎么收尾）。
+   *   默认收起：可解释性要随手可得，但不能让推理过程抢占聊天主视觉。
    */
-  function agentTrace() {
+  function agentTrace(opts) {
+    var o = opts || {};
+    /* 标签与量词都可定制：本地固定回答复用同一张卡，但标签写「本地判定」、
+       量词写「步」—— 规则命中不该伪装成模型推理，这是诚实性问题。 */
+    var tagText = o.tag || '智能体';
+    var callWord = o.callWord || '个工具';
+    var deepLabel = o.deepLabel || '深度思考';
+    var deepLabelOff = o.deepLabelOff || '收起思考';
     var prev = DOC.querySelectorAll('#chatList .agent-card[open]');
     var i;
     for (i = 0; i < prev.length; i++) { prev[i].removeAttribute('open'); }
+    var deepId = 'agentDeep-' + (++agentDeepSeq);
 
     var body = addAIMessage(
-      '<details class="agent-card" open>' +
+      '<details class="agent-card"' + (o.collapsed ? '' : ' open') + '>' +
       '<summary class="agent-card-head">' +
       '<span class="agent-spark" aria-hidden="true"></span>' +
       '<b class="agent-name">' + esc(petDisplayName()) + '</b>' +
-      '<span class="agent-tag">智能体</span>' +
+      '<span class="agent-tag' + (o.tagClass ? ' ' + o.tagClass : '') + '">' + esc(tagText) + '</span>' +
       '<span class="agent-state">正在理解你的话…</span>' +
       '</summary>' +
       '<div class="agent-thought" hidden></div>' +
       '<ol class="agent-steps"></ol>' +
+      '<button type="button" class="agent-deep-btn" aria-expanded="false" ' +
+      'aria-controls="' + deepId + '">' +
+      '<span class="adb-ico" aria-hidden="true"></span>' +
+      '<span class="adb-txt">' + esc(deepLabel) + '</span>' +
+      '<span class="adb-count" hidden></span>' +
+      '</button>' +
+      '<div class="agent-deep" id="' + deepId + '" hidden></div>' +
       '</details>');
     var card = body.querySelector('.agent-card');
     var thoughtEl = body.querySelector('.agent-thought');
     var listEl = body.querySelector('.agent-steps');
     var stateEl = body.querySelector('.agent-state');
+    var deepBtn = body.querySelector('.agent-deep-btn');
+    var deepTxt = body.querySelector('.adb-txt');
+    var deepCnt = body.querySelector('.adb-count');
+    var deepEl = body.querySelector('.agent-deep');
     var n = 0;
+    var t0 = Date.now();
+    var doneAt = null;    /* finish 后冻结耗时：早先按「展开那一刻」算，点击越晚数字越大 */
+    var rounds = [];
+    var cur = null;
+    var shownSay = '';    /* 气泡里最终显示的那句话：面板里的「答」若与它几乎一致就不再抄一遍 */
+
+    /** 去标点后比对。气泡会过 agentVoice 去 AI 味，逐字相等很少见，
+        所以「一方包含另一方」或「公共前缀过半」都算同一句。 */
+    function flatSay(s) {
+      return String(s || '').replace(/[\s\u3000「」『』“”"'‘’，。！？、,.!?~～；;：:—-]/g, '');
+    }
+    function nearSay(a, b) {
+      if (!a || !b) { return false; }
+      if (a === b) { return true; }
+      var s = a.length <= b.length ? a : b;
+      var l = a.length <= b.length ? b : a;
+      if (s.length >= 8 && l.indexOf(s) !== -1) { return true; }
+      var i = 0;
+      while (i < s.length && s.charAt(i) === l.charAt(i)) { i++; }
+      return i >= 8 && i / l.length > 0.5;
+    }
+
+    /* 把当前采集到的轮次重绘成面板。条目很少（轮次 ≤3、工具 ≤6），
+       整体重建比增量 patch 简单且不会漏状态；收起时不画，省一次 layout。
+       三条去重规则（用户反馈「深度思考重复说明」，截图里同一句话出现三遍）：
+         · 只有一轮时不写「第 1 轮」——标题里的「1 轮」已经说过；
+         · 末轮的「答」与聊天气泡近似时不重复贴，确有改写才留「原话」对照；
+         · 面板展开时卡面上的预览句 / 步骤列表同时收起（见 toggleDeep）。 */
+    function renderDeep() {
+      if (!rounds.length) {
+        deepEl.innerHTML = '<div class="ad-empty">这轮还没开始推理</div>';
+        return;
+      }
+      var callCount = 0;
+      var modelMs = 0;
+      var h = [];
+      var j, k;
+      for (j = 0; j < rounds.length; j++) {
+        callCount += rounds[j].calls.length;
+        modelMs += rounds[j].ms || 0;
+      }
+      var single = rounds.length === 1;
+      var span = ((doneAt || Date.now()) - t0) / 1000;
+      var meta;
+      if (o.localMeta) {
+        meta = '本地判定 · ' + callCount + ' 步 · ' + span.toFixed(1) + 's';
+      } else if (single && !callCount) {
+        /* 一问一答：说「1 轮」等于什么都没说，直接报模型用时。
+           卡片建立到收尾若明显更久（排队 / 重试 / 首字节慢），把总耗时一并写上，
+           否则「共 12s、第 1 轮 1.4s」两个数字自己打架，看着就像坏了。 */
+        meta = '直接作答 · ' + (modelMs / 1000).toFixed(1) + 's';
+        if (span - modelMs / 1000 > 1.5) { meta += ' · 整轮 ' + span.toFixed(1) + 's'; }
+      } else if (single) {
+        meta = '调了 ' + callCount + ' 个工具 · 共 ' + span.toFixed(1) + 's';
+      } else {
+        meta = rounds.length + ' 轮 · ' + callCount + ' ' + callWord + ' · 共 ' + span.toFixed(1) + 's';
+      }
+      var shownFlat = flatSay(shownSay);
+      h.push('<div class="ad-meta">' + meta + '</div>');
+      for (j = 0; j < rounds.length; j++) {
+        var rd = rounds[j];
+        var isLast = (j === rounds.length - 1);
+        h.push('<div class="ad-round">');
+        if (!single) {
+          h.push('<div class="ad-head"><span class="ad-n">' +
+            (o.localMeta ? '判定' : ('第 ' + rd.n + ' 轮')) + '</span>' +
+            '<span class="ad-ms">' + (rd.ms === null ? '思考中…' : (rd.ms / 1000).toFixed(1) + 's') +
+            '</span></div>');
+        }
+        if (rd.thought) {
+          h.push('<div class="ad-line"><b>' + (o.localMeta ? '依据' : '想') + '</b><span>' + esc(rd.thought) + '</span></div>');
+        }
+        if (rd.plain) {
+          h.push('<div class="ad-line"><b>做</b><span>' + esc(rd.plain) + '</span></div>');
+        }
+        for (k = 0; k < rd.calls.length; k++) {
+          var c = rd.calls[k];
+          h.push('<div class="ad-call' + (c.ok === false ? ' bad' : '') + '">' +
+            '<span class="ad-tool">' + esc(c.title) + '</span>' +
+            (c.argsText ? '<em>' + esc(c.argsText) + '</em>' : '') +
+            /* 本地工具多在 10ms 内返回，低于 100ms 不报，免得每行挂个 0.0s 成噪音 */
+            (c.ms >= 100 ? '<span class="ad-cost">' + (c.ms / 1000).toFixed(1) + 's</span>' : '') +
+            (c.brief ? '<span class="ad-back">→ ' + esc(c.brief) + '</span>' : '') +
+            '</div>');
+        }
+        if (rd.final) {
+          var same = isLast && shownFlat && nearSay(flatSay(rd.final), shownFlat);
+          /* 和气泡几乎一样就别抄第二遍，只留一句「见下方」把这一轮收个尾；
+             真有改写（agentVoice 去 AI 味）时才把原话摆出来对照 */
+          h.push('<div class="ad-line ad-answer"><b>' + (same ? '答' : (isLast && shownFlat ? '原话' : '答')) +
+            '</b>' + (same
+              ? '<span class="ad-echo">见下方的回复</span>'
+              : '<span>' + esc(rd.final) + '</span>') + '</div>');
+        }
+        h.push('</div>');
+      }
+      deepEl.innerHTML = h.join('');
+    }
+
+    function previewThought(t) {
+      /* 只保留首轮：末轮 thought 往往和回复重复，且首轮才看得出它想干什么 */
+      if (!t || thoughtEl.textContent) { return; }
+      thoughtEl.hidden = false;
+      thoughtEl.textContent = '「' + String(t).replace(/[「」"]/g, '') + '」';
+    }
+
+    function toggleDeep(ev) {
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      var open = deepEl.hidden;
+      if (open) { renderDeep(); }
+      deepEl.hidden = !open;
+      /* 展开面板时，卡面上那句预览和步骤列表一起收起来 —— 同一件事不在同一张卡里说两遍。
+         用内联 display 而不是 hidden 属性：.agent-steps 自带 display:flex，会盖掉 [hidden]。 */
+      thoughtEl.style.display = open ? 'none' : '';
+      listEl.style.display = open ? 'none' : '';
+      /* 小标同理：面板一展开，「2 轮」就写在 meta 行里了，按钮上再挂一遍是多余的 */
+      deepCnt.style.display = open ? 'none' : '';
+      deepBtn.className = 'agent-deep-btn' + (open ? ' on' : '');
+      deepBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      deepTxt.textContent = open ? deepLabelOff : deepLabel;
+      /* 不做任何滚动（用户反馈「点击总会自动往下拉」）：toggle 原来直接调 scrollChat()，
+         把视图拽到最新一条消息——正在回看上面卡片的人，一点按钮页面就自己跳走。
+         开关的职责只是展开/收起，面板超出屏幕的部分让用户自己滚。 */
+    }
+    deepBtn.addEventListener('click', toggleDeep);
+
     return {
       row: body.parentNode,
       card: card,
-      thought: function (t) {
-        /* 只保留「首轮计划」那句：末轮 thought 往往和回复重复，且首轮才看得出它想干什么 */
-        if (!t || thoughtEl.textContent) { return; }
-        thoughtEl.hidden = false;
-        thoughtEl.textContent = '「' + String(t).replace(/[「」"]/g, '') + '」';
+      /** 外面想看推理过程时可直接调（例如「为什么这么答」入口） */
+      open: function () { if (deepEl.hidden) { toggleDeep(); } },
+      thought: previewThought,
+      /** 计时快照：整轮时长 vs 每轮模型时长。差得多说明时间花在排队/重试上，
+          不是模型慢 —— 面板里那句「整轮 Xs」就是从这儿来的，排障时也能直接看日志 */
+      timing: function () {
+        return {
+          total: ((doneAt || Date.now()) - t0),
+          rounds: rounds.map(function (r) { return r.ms || 0; })
+        };
       },
-      step: function (title, brief, ok) {
+      /** 新起一轮：ms 是「模型想这一轮花了多久」，由调用方掐表传入（含工具执行会失真） */
+      think: function (roundNo, t, ms) {
+        cur = {
+          n: roundNo, thought: String(t || ''), calls: [], final: '',
+          at: Date.now(), ms: typeof ms === 'number' ? ms : null
+        };
+        rounds.push(cur);
+        previewThought(t);
+        if (!deepEl.hidden) { renderDeep(); }
+      },
+      step: function (title, brief, ok, args, ms) {
         n++;
         var li = DOC.createElement('li');
         li.className = ok === false ? 'bad' : 'ok';
@@ -3597,15 +4567,218 @@
           (brief ? '<i>' + esc(brief) + '</i>' : '') + '</span>';
         listEl.appendChild(li);
         stateEl.textContent = '正在处理…（' + n + ' 步）';
-        scrollChat();
+        if (cur) {
+          cur.calls.push({
+            title: String(title || ''), brief: String(brief || ''),
+            ok: ok !== false, argsText: agentArgsPeek(args), ms: ms || 0
+          });
+        }
+        if (!deepEl.hidden) { renderDeep(); }
+        /* 面板开着说明用户正在检视这张卡：每步都把视图拽到底部等于打断阅读 */
+        if (deepEl.hidden) { scrollChat(); }
+      },
+      /** 这一轮没有计划、也没有工具，只有一句人话：如实记下「没调工具」，
+          绝不编一句「想」来充数（用户一眼就能看出那是套话，而且会和回复重复） */
+      plain: function (why) {
+        if (cur) { cur.plain = String(why || ''); }
+        if (!deepEl.hidden) { renderDeep(); }
+      },
+      /** 模型这一轮的原始答复：留原话，便于用户核对最终回复有没有被改写 */
+      answer: function (txt) {
+        if (cur) { cur.final = String(txt || ''); }
+        if (!deepEl.hidden) { renderDeep(); }
       },
       thinking: function () { stateEl.textContent = '正在整理结果…'; },
       slow: function (sec) { stateEl.textContent = '模型有点慢，已经等了 ' + sec + ' 秒…'; },
-      finish: function (calls) {
+      finish: function (calls, shownText) {
+        if (cur && cur.ms === null) { cur.ms = Date.now() - cur.at; }
+        doneAt = Date.now();
+        if (typeof shownText === 'string') { shownSay = shownText; }
         stateEl.textContent = calls ? ('已完成 · ' + calls + ' 步') : '已完成';
         card.className = card.className.replace(/\s*done/, '') + ' done';
+        /* 按钮旁的小标：多轮报轮次、有工具报步数，一问一答就干脆不挂 ——
+           否则「1 轮」会和面板标题、轮次标题各重复一遍（截图里的三重重复） */
+        var badge = '';
+        if (o.localMeta) { badge = n + ' 步'; }
+        else if (rounds.length > 1) { badge = rounds.length + ' 轮'; }
+        else if (n) { badge = n + ' 步'; }
+        deepCnt.hidden = !badge;
+        deepCnt.textContent = badge;
+        deepCnt.style.display = deepEl.hidden ? '' : 'none';   /* 面板开着时不重复挂小标 */
+        if (!deepEl.hidden) { renderDeep(); }
       }
     };
+  }
+
+  /* ---------------- 本地判定：固定回答也要摊开依据 ----------------
+     问题：省钱攻略、优惠日历、记账快路径这些「本地固定回答」不经过模型，
+     于是聊天里只剩一张凭空冒出来的卡片，用户看不出它凭什么这么答。
+     做法：复用同一张思考卡，但标签写「本地判定」、量词用「步」，
+     内容只描述真实发生的事（规则命中 / 知识库检索 / 为什么不调模型），
+     绝不写成「模型正在思考」—— 把规则伪装成推理是欺骗，不是可解释性。 */
+
+  var localTraceChain = Promise.resolve();   /* 连发两句时串行，避免判定卡与答案交叉 */
+
+  /** 意图 → 判定步骤。纯计算，不渲染、不写账本 */
+  function localPlanOf(raw) {
+    var res;
+    try {
+      res = INTENT.classifyIntent(raw, { now: new Date(), lastBill: buildIntentViewCtx().lastBill });
+    } catch (e) { return null; }
+    if (!res) { return null; }
+    var conf = Math.round((Number(res.confidence) || 0) * 100) / 100;
+    var tierWord = { high: '高', mid: '中', low: '低', verylow: '很低' }[res.tier] || res.tier;
+    var first = ['识别意图', String(res.intent) + ' · 置信度 ' + conf + '（' + tierWord + '）'];
+    /* 低置信且云端可用：本地会先问云端二次裁决，这时候说「不调模型」就是假话 */
+    var askCloud = (res.tier === 'low' && cloudReady && needsCloudVerdict(res));
+    var steps = [first];
+
+    if (askCloud) {
+      steps.push(['分流', '本地拿不准 → 请云端二次裁决（3 秒超时，只允许在本地前 2 个候选里改判）']);
+      steps.push(['说明', '改判范围被锁死，防止模型把「查账」理解成「记账」']);
+    } else {
+      var why = {
+        record: '记账是确定性动作：金额和品类都由规则解析，交给模型只会慢 3~5 秒',
+        query: '数字必须来自账本本身，让模型复述一遍反而容易编',
+        advice: '固定知识直接给原文，模型改写会丢生效条件和避坑细节',
+        dataop: '改删是精确操作，本地做可回滚，过模型反而多一层不确定',
+        chitchat: '闲聊不需要查账，本地回一句更自然，也省一次等待',
+        command: '明确指令，本地直接执行',
+        unknown: '没听清就不猜：猜错会写脏账，先问清楚'
+      }[res.intent] || '本地能确定的，就不绕远路';
+      steps.push(['分流', '本地执行，不调模型']);
+      steps.push(['说明', why]);
+    }
+    /* 「想」这一行必须自报家门：早先非记账一律写「这句话本地就能判定，先看依据」，
+       等于没说 —— 展开面板的人要的是「它把这句当成了什么」 */
+    var thinkWord = {
+      record: '这是记账，金额和品类都解析出来了，不必等模型',
+      query: '问的是账本里的数，本地能算，别让模型复述',
+      advice: '问的是方法，知识库里有原文，直接给',
+      dataop: '要改删账目，本地做精确又可回滚',
+      chitchat: '闲聊一句，不用查账',
+      command: '是条明确指令，本地直接执行',
+      unknown: '没听清，先问清楚，猜着记会写脏账'
+    }[res.intent] || '这句话本地就能判定';
+    return {
+      think: thinkWord,
+      steps: steps
+    };
+  }
+
+  /** 命令（commandMatch 命中）的判定依据：按处理函数精确匹配，不靠 key 字符串 */
+  function localCmdPlan(cmd) {
+    var f = cmd && cmd.fn;
+    function P(think, a, b, c) {
+      var s = [['识别指令', (cmd.alias || cmd.key || '').slice(0, 24)]];
+      if (a) { s.push(a); }
+      if (b) { s.push(b); }
+      if (c) { s.push(c); }
+      return { think: think, steps: s };
+    }
+    if (f === showSaveMoneyGuide) {
+      return P('问的是「怎么省钱」，属于方法咨询：查内置省钱图谱，不动账本',
+        ['检索知识库', '省钱图谱 12 类 · 每条含具体动作 / 生效条件 / 可省金额'],
+        ['说明', '固定知识直接给原文，模型改写会丢避坑细节，还慢 5 秒']);
+    }
+    if (f === showMakeMoneyGuide) {
+      return P('问的是「怎么赚钱」，属于方法咨询：给可执行路子，不动账本',
+        ['检索知识库', '学生可做的赚钱路子（含门槛与时间成本）'],
+        ['说明', '固定知识，不调模型；收入相关不做任何自动记账']);
+    }
+    if (f === showLearnGuide) {
+      return P('想学理财，属于内容导航：列出课程，不判定账本',
+        ['检索知识库', '理财学院课程表（含时长与难度）'],
+        ['说明', '导航类回答，直接给入口']);
+    }
+    if (f === showCoolingGuide) {
+      return P('问的是「剁手冷静法」是什么，属于方法说明：讲清再给测试入口',
+        ['检索知识库', '48 小时法则课程正文'],
+        ['说明', '固定方法，不调模型']);
+    }
+    if (f === showDealsTodayCard || f === showKfcDealsCard) {
+      return P('问的是今天的优惠，属于日历查询：查内置优惠日历，不查账本',
+        ['检索知识库', '优惠日历（商家活动 / 会员日 / 平台大促）'],
+        ['说明', '活动信息是固定表，不调模型；也不代表真的便宜，会同时给价格带']);
+    }
+    if (f === showSavingsSearch || f === showSavingsIndex || f === showSavingsGraph ||
+      f === showSavingsBook || f === showSavingsPanelToday) {
+      return P('问的是省钱知识 / 省钱账，属于知识检索：查省钱图谱，不动账本',
+        ['检索知识库', '省钱图谱条目（动作 / 门槛 / 可省金额 / 稳定度）'],
+        ['说明', '固定条目，直接给原文，不调模型']);
+    }
+    if (f === showDealCompareFromText) {
+      return P('问的是「划不划算」，属于比价：用价格带和账本习惯算，不靠模型估',
+        ['计算', '对目标价与历史价格带做比较'],
+        ['说明', '算错会影响买不买，必须本地可复算']);
+    }
+    if (f === showBalanceCard) {
+      return P('问余额，属于查账：账本本地就有，不必问模型',
+        ['计算', '按本周期预算 − 已支出 + 收入实时聚合'],
+        ['说明', '数字必须来自账本，模型复述容易编']);
+    }
+    if (f === showPieCard) {
+      return P('问花销占比，属于查账：分类聚合本地算更快',
+        ['计算', '按品类聚合并算占比'],
+        ['说明', '数字直接来自账本，不调模型']);
+    }
+    if (f === showAiGuidePanel) {
+      return P('问我能做什么，属于能力说明：直接给清单',
+        ['说明', '按实际已有能力列，不吹没做的功能']);
+    }
+    if (f === showGoalGuide) {
+      return P('提到攒钱，属于目标规划：先问清目标和期限再算',
+        ['识别', '「攒钱买 X」= 建目标，不是记账']);
+    }
+    return P('这是一条明确的本地指令，不需要推理：直接执行',
+      ['执行', '本地运行，不调模型（省 3~5 秒）']);
+  }
+
+  /** 打开面板 / 弹表单这类导航命令不插判定卡：那不是「回答」，
+      面板本身就是反馈，插卡只会让手指多等 300ms */
+  function localCmdNeedsTrace(cmd) {
+    var f = cmd && cmd.fn;
+    if (!f) { return false; }
+    return !(f === openSettingsPage || f === openDrawer || f === openIncomeModal ||
+      f === openImportSheet || f === openOcrModal || f === openWishSheet ||
+      f === openAnalysisSheet || f === showEntryGuide);
+  }
+
+  /** 播放判定链后执行 run：每步 110ms，3 步约 330ms —— 看得见，但不拖手感 */
+  function localTracePlay(plan, run) {
+    var trace = agentTrace({
+      tag: '本地判定', tagClass: 'local', callWord: '步', localMeta: true,
+      deepLabel: '判断依据', deepLabelOff: '收起依据'
+    });
+    trace.think(1, plan.think);
+    var steps = plan.steps || [];
+    var i = 0;
+    function tick() {
+      if (i >= steps.length) {
+        trace.finish(steps.length);
+        try { run(); } catch (e) {
+          if (global.console && console.error) { console.error('[local-trace] 执行失败', e); }
+        }
+        return;
+      }
+      var s = steps[i++];
+      trace.step(s[0], s[1], true);
+      setTimeout(tick, 110);
+    }
+    tick();
+  }
+
+  /** 统一入口：本地链路一律先留判定痕迹，再出答案 */
+  function withLocalTrace(plan, run) {
+    if (!plan) { run(); return; }
+    localTraceChain = localTraceChain.then(function () {
+      return new Promise(function (done) {
+        localTracePlay(plan, function () { run(); done(); });
+      });
+    })['catch'](function (e) {
+      if (global.console && console.error) { console.error('[local-trace]', e); }
+      run();
+    });
   }
 
   /* ---------------- Agent：主循环 ---------------- */
@@ -3613,17 +4786,19 @@
   function agentExec(call, ctx, trace) {
     var tool = agentTool(call.tool);
     if (!tool) {
-      trace.step(String(call.tool || '未知工具'), '没有这个工具', false);
+      trace.step(String(call.tool || '未知工具'), '没有这个工具', false, call.args, 0);
       return { tool: String(call.tool), ok: false, error: '没有名为「' + call.tool + '」的工具，可用工具见系统提示' };
     }
     var res;
+    var calledAt = Date.now();
     try {
       res = tool.run(call.args || {}, ctx) || {};
     } catch (e) {
       res = { ok: false, brief: '执行异常', data: { ok: false, error: String(e && e.message ? e.message : e) } };
     }
     var ok = res.ok !== false;
-    trace.step(tool.title, res.brief || '', ok);
+    /* 带上入参与耗时：深度思考面板要能说清「传了什么、跑多久」 */
+    trace.step(tool.title, res.brief || '', ok, call.args, Date.now() - calledAt);
     ctx.calls.push({ tool: tool.name, ok: ok, brief: res.brief || '' });
     /* search_kb 的命中结果收集到 agentKbHits，agentOne 据此渲染可点跳转卡 */
     if (tool.name === 'search_kb' && res.data && res.data.hits) { agentKbHits = res.data.hits.slice(); }
@@ -3683,7 +4858,10 @@
         agentTurnLog.push({
           ts: Date.now(), raw: raw, rounds: round, calls: ctx.calls,
           handled: !!out.handled, reply: out.reply || '', reason: out.reason || '',
-          choices: (out.choices || []).slice()
+          choices: (out.choices || []).slice(),
+          /* 整轮 vs 每轮模型耗时：面板上「整轮 12s、第 1 轮 1.4s」这类数字对不上时，
+             从 AJ_AGENT_LOG() 里能一眼看出多出来的时间在哪一段 */
+          timing: (trace && trace.timing) ? trace.timing() : null
         });
         while (agentTurnLog.length > 30) { agentTurnLog.shift(); }
         resolve(out);
@@ -3694,6 +4872,9 @@
         var left = deadline - Date.now();
         if (left < 3000) { settle(agentWrapUp(ctx)); return; }
         round++;
+        /* 这一轮模型想了多久：从发起请求到拿回计划。深度思考面板按这个报数，
+           比「两轮之间的间隔」准——后者会把工具执行时间算进下一轮，末轮还会显示 0.0s */
+        var roundAt = Date.now();
         agentLLM(messages, Math.min(AGENT_ROUND_MS, left)).then(function (r) {
           /* 模型彻底没响应：只在「还没动过账本」时才允许回退本地链路 */
           if (!r.text) {
@@ -3708,6 +4889,12 @@
               var plain = String(r.text).trim();
               if (plain && plain.indexOf('{') === -1) {
                 var said = agentVoice(plain);
+                /* 这里是「模型没按计划格式回、直接给了一句人话」的兜底。
+                   以前这里塞一句「这句不用查账，直接答」当想法：既不是模型想的，
+                   又和回复重复。现在只记真实发生的事——没调工具、直接开口。 */
+                trace.think(round, '', Date.now() - roundAt);
+                trace.plain('没调工具，直接开口回话');
+                trace.answer(plain);
                 agentRemember(raw, said);
                 settle({ handled: true, reply: said, rounds: round, calls: 0 });
                 return;
@@ -3718,7 +4905,8 @@
             settle(agentWrapUp(ctx));
             return;
           }
-          if (plan.thought) { trace.thought(plan.thought); }
+          /* 每轮都登记一次：深度思考面板靠它切分「第 N 轮」，并带上这一轮的模型耗时 */
+          trace.think(round, plan.thought, Date.now() - roundAt);
 
           var obs = [];
           var k;
@@ -3735,13 +4923,29 @@
 
           if (plan.final) {
             var txt = String(plan.final).trim();
+            /* 套话换成事实：模型这一轮只给了选项、没写正文（「挑一个，我接着办。」是
+               agentParsePlan 本地补的），可前面几轮已经跑过工具 —— brief 里就写着用户
+               要的答案（「本自然月「餐饮」 3 笔：食堂 12、黄焖鸡 18、拿铁 15（合计 45）」）。
+               实测「看看这几笔都是什么」被答成「挑一个，我接着办。」，卡上明明有明细，
+               正文却一个字没有。用结果顶掉套话，比再烧一轮稳。 */
+            if (plan.fillerFinal && !executed) {
+              var withBrief = ctx.calls.filter(function (cc) { return cc.ok && cc.brief; });
+              if (withBrief.length) {
+                txt = withBrief[withBrief.length - 1].brief;
+                if (!/[。！？]$/.test(txt)) { txt += '。'; }
+                trace.plain('模型只给了选项、没写正文，正文用工具结果顶上');
+              }
+            }
             /* 有记账动作时，final 里如果再出现金额容易和收据卡打脸 —— 保留原文，只做长度兜底 */
             if (txt.length > 400) { txt = txt.slice(0, 400); }
+            /* 深度面板留模型原话：最终回复还要过 agentVoice 去 AI 味，用户能对照看出改了哪儿 */
+            trace.answer(txt);
             if (executed) {
               /* 同一轮里既调工具又下结论，结论一定写于事实之前（例如「两笔都记好了」
                  而其中一笔其实进了冷静期）。先当兜底存着，等看过工具结果再说。
-                 选项同理：模型若在这一轮给了 choices，也得等工具跑完再挂出去。 */
-              ctx.deferredFinal = txt;
+                 选项同理：模型若在这一轮给了 choices，也得等工具跑完再挂出去。
+                 本地补的套话不进押后队列：留给 agentWrapUp 用工具结果重写。 */
+              ctx.deferredFinal = plan.fillerFinal ? '' : txt;
               ctx.deferredChoices = plan.choices.slice();
             } else {
               txt = agentVoice(txt);
@@ -3802,12 +5006,23 @@
     return true;
   }
 
+  /** 智能体没接住时的本地接手说明：账本没被动过这件事必须讲清楚 */
+  function localFallbackPlan() {
+    return {
+      think: '云端这一步没接上，本地接手 —— 账本没有被改动',
+      steps: [
+        ['回退', '智能体超时 / 输出无法解析'],
+        ['接手', '走本地规则链路，不重复记账']
+      ]
+    };
+  }
+
   /** 接管入口：跑智能体；首轮失败则拆掉思考卡、透明回退本地规则链路 */
   var agentChain = Promise.resolve();   /* 用户连发两句时串行执行，避免两轮工具互相踩账本 */
 
   function agentHandle(raw) {
     agentChain = agentChain.then(function () { return agentOne(raw); })['catch'](function () {
-      localAssistantLoop(raw);
+      withLocalTrace(localFallbackPlan(), function () { localAssistantLoop(raw); });
     });
   }
 
@@ -3835,13 +5050,19 @@
           if (global.console && console.info) {
             console.info('[agent] 回退本地规则链路：' + ((out && out.reason) || '未知原因'));
           }
-          localAssistantLoop(raw);
+          withLocalTrace(localFallbackPlan(), function () { localAssistantLoop(raw); });
           done();
           return;
         }
-        trace.finish(out.calls || 0);
         var say = agentVoice(out.reply);
+        /* 把最终显示的话交给思考卡：面板里的「答」若与气泡几乎一致就不再重复贴 */
+        trace.finish(out.calls || 0, say);
         var choices = agentChoicesOf(out.choices || [], say, raw);
+        /* 模型没给下一步、但这轮挂了资料卡时补两个去处：讲完方法总要留个能点的地方，
+           否则用户只能自己去翻（用户要的「积极给功能跳转和建议」）。问句不补——提问自带选项。 */
+        if (!choices.length && agentKbHits.length && !/[？?]/.test(say)) {
+          choices = agentNextChoices(agentKbHits);
+        }
         /* 记住这一轮挂出去的选项：用户手打「要 / 第二个」时能映射回完整句 */
         lastChoices = choices.length ? { items: choices.slice(), ts: Date.now() } : null;
         if (say || choices.length || agentKbHits.length) {
@@ -3870,6 +5091,14 @@
   var undoStack = [];
   /** 纠错待补金额：上一轮问「要改成多少」后置位，下一句纯数字直接改这一笔（不新增账单） */
   var correctionPending = null;
+  /**
+   * 物价雷达待补数量：用户说「电费 180 块贵不贵」时先追问「用了多少度」，
+   * 这里记住总价与品类，下一句「300 度」就直接算完 —— 丢了它就得让用户重说一遍。
+   * { id, item, total, ts } | null，仅内存，2 分钟过期。
+   */
+  var pricePending = null;
+  /** 追问那一句的地域尺子：下一句「300 度」里没有地名，得跟着问题一起记住 */
+  var pricePendingRegion = null;
   /** 轻量视图历史：记录进入子视图（专家/目标/看板）前的视图（仅内存，不持久化）。供「返回」按钮使用 */
   var viewHistory = [];
   /** 双 UI 视图集：完整版四视图 / 简洁版八屏（含 AI 对话记账屏 sai、省钱屏 ssave） */
@@ -4079,6 +5308,11 @@
         text: (s.toneCustom && typeof s.toneCustom.text === 'string')
           ? s.toneCustom.text.trim().slice(0, 120) : ''
       },
+      // 说话模式（voice.js）：auto = 看情绪和金额自己选；其余 = 用户手动锁死。
+      // ⚠ 白名单写在这里而不是只靠 UI：localStorage 里可能留着旧值 / 手改的值，
+      //   放行未知值会让 classify 收到一个自己不认识的档位。
+      voiceMode: (s.voiceMode === 'chat' || s.voiceMode === 'breakdown' ||
+        s.voiceMode === 'comfort') ? s.voiceMode : 'auto',
       // 诊断卡主动提示去重：存「已提示过的周期起点」，一个周期只提示一次
       hintCycle: (typeof s.hintCycle === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.hintCycle))
         ? s.hintCycle : '',
@@ -4095,7 +5329,7 @@
         poke: !((s.mascot && s.mascot.poke === false)),
         pet: !((s.mascot && s.mascot.pet === false)),
         skin: (s.mascot && (s.mascot.skin === 'azhang' || s.mascot.skin === 'sprite' ||
-          s.mascot.skin === 'pro')) ? s.mascot.skin : null
+          s.mascot.skin === 'pro' || s.mascot.skin === 'baobao')) ? s.mascot.skin : null
       },
       // 界面风格：记账同款（微信绿）/ 学习台紫 / 贴纸账本（手账贴纸风）
       // ⚠ 同样是白名单：新增皮肤必须加进来，否则持久化时被兜底成 'app'
@@ -4129,6 +5363,9 @@
         total: clampNumber(budget.total, 0, 9999999, DATA.DEFAULT_BUDGET.total),
         payday: Math.round(clampNumber(budget.payday, 1, 28, DATA.DEFAULT_BUDGET.payday)),
         cooldownThreshold: clampNumber(budget.cooldownThreshold, 0, 9999999, DATA.DEFAULT_BUDGET.cooldownThreshold),
+        /* 2026-11-04：分类预算改为「占比」为准（百分数），金额由占比 × 生活费算出。
+           这样生活费改了各分类按比例自动重算，用户也能直接改比例。 */
+        catBudgets: normalizeCatBudgets(budget.catBudgets),
         cycleStart: (typeof budget.cycleStart === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(budget.cycleStart))
           ? budget.cycleStart : ''
       },
@@ -4512,6 +5749,8 @@
         var pp = global.AJ && global.AJ.petPro;
         var prof = (pp && typeof pp._profile === 'function') ? pp._profile() : null;
         el.innerHTML = mascotBarProHead(prof);
+      } else if (skin === 'baobao') {
+        el.innerHTML = mascotBarBaobaoHead();
       } else {
         var mk = el.getAttribute('data-mood') || 'chill';
         var meta = MOOD.MOOD_META[mk] || {};
@@ -4858,27 +6097,77 @@
        单笔且来自纠错标记才走这条路；冷静期挂起的那笔不在此列（不会进 committed）。 */
     var editFrom = (list.length === 1) ? flow.editPending : null;
     flow.editPending = null;
+    /* 省钱雷达：记完顺手指一条更省的路（用户 2026-11-02：记账后要给「省钱雷达」）。
+       放在这里而不是等模型开口，是因为模型这一轮往往只回一句「记好了」，而本地规则链路
+       根本没有模型。一批多笔只在最后一条消息上挂一次，避免刷屏。 */
+    var radarHtml = '';
+    var radarBill = null;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].type !== 'income') { radarBill = list[i]; break; }
+    }
+    if (radarBill) {
+      var rd = agentSpendRadar([radarBill.category], String(radarBill.note || ''));
+      if (rd) {
+        radarHtml = '<div class="radar-hint">💰 <b>省钱雷达</b>：' + esc(rd.line) + '</div>' +
+          kbCardHtml(rd.picks);
+      }
+    }
     for (i = 0; i < list.length; i++) {
       var bill = list[i];
       var head;
+      var chatLead = false;   /* 模式一：小额日常账单走口语化确认，不再叠一张「理财专家说」 */
       if (editFrom && bill.type !== 'income') {
         head = aiBubble('<b>已改好</b>：「' + esc(editFrom.note) + '」从 <b>' + money(editFrom.amount) +
           '</b> 改成 <b>' + money(bill.amount) + '</b>，归到 <span class="hl">' + esc(bill.category) + '</span>。');
       } else if (bill.type === 'income') {
         head = aiBubble(ic('receipt', 'bico-brand', '记账成功') + '<b>【记账成功】</b>这是一笔收入（' + esc(bill.source || '其他') + '），已经加进本周期，不计入支出统计。');
       } else {
-        head = aiBubble('<b>【记账成功】</b>记上了，归到 <span class="hl">' + esc(bill.category) + '</span>' +
-          (bill.merchant ? '，商家 <span class="hl">' + esc(bill.merchant) + '</span>' : '') + '。' +
-          (bill.motivation === '情绪' ? '<br>今天是不是有点累？偶尔买点开心没事，别让它变成习惯就行。' : ''));
+        /* 模式一（聊天式）：18 块的黄焖鸡不必顶着「【记账成功】」的公文腔。
+           预算提醒直接折进这句话里，就不再叠一张教练卡 —— 同屏两段劝导反而吵。
+           自动档：300 元以上 / 大额冷静命中时仍走原来的正式汇报（那是模式二的场景）。
+           手动锁「聊天」：阈值放宽到 1000 —— 用户自己说了要一句话，就别再塞明细；
+           但千元以上的大额仍然走正式汇报，那种账不该被一句话打发掉。 */
+        var vmBill = voiceModeKey();
+        var casual = '';
+        if (VOICE && !VOICE.missing && typeof VOICE.chatBill === 'function' &&
+          (vmBill === 'chat'
+            ? Number(bill.amount) < 1000
+            : (vmBill === 'auto' && Number(bill.amount) < 300))) {
+          casual = VOICE.chatBill({
+            amount: bill.amount,
+            note: bill.note || bill.merchant,
+            category: bill.category,
+            remaining: overview.budgetState.remaining,
+            daysLeft: overview.cycle.remainingDays,
+            over: overview.budgetState.isOver ? overview.budgetState.overBy : 0
+          }, toneKey(getSettings().tone));
+        }
+        if (casual) {
+          chatLead = true;
+          head = aiBubble(esc(casual));
+        } else {
+          head = aiBubble('<b>【记账成功】</b>记上了，归到 <span class="hl">' + esc(bill.category) + '</span>' +
+            (bill.merchant ? '，商家 <span class="hl">' + esc(bill.merchant) + '</span>' : '') + '。' +
+            (bill.motivation === '情绪' ? '<br>今天是不是有点累？偶尔买点开心没事，别让它变成习惯就行。' : ''));
+        }
       }
       var html = head + billCardHtml(bill, true);
-      html += balanceOverviewHtml(overview);
-      html += coachSayHtml(COACH.oneLineAdvice(bill, overview));
-      /* 大额支出劝阻：命中时在余额概览 / 一句话建议之后追加「大额冷静」卡（收入不触发） */
+      /* 模式一已经把「还剩多少 / 还有几天」写进那句话里了，再摆一张余额概览
+         就是同一个数字说两遍（同屏看着像两份账单）。正式汇报才需要明细台账。 */
+      if (!chatLead) { html += balanceOverviewHtml(overview); }
+      if (!chatLead) { html += coachSayHtml(COACH.oneLineAdvice(bill, overview)); }
+      /* 大额支出劝阻：命中时在余额概览 / 一句话建议之后追加「大额冷静」卡（收入不触发）。
+         例外：这笔刚从冷静流程里出来（走完问答或主动跳过），不再追一张 —— 用户已经
+         表过态了，再拦一次就是「点了跳过又弹出同一张卡」的死循环。 */
       if (bill.type !== 'income') {
+        var justCooled = coolFlowDone &&
+          Math.abs(coolFlowDone.amount - bill.amount) < 0.011 &&
+          (Date.now() - coolFlowDone.ts) < 5000;
         var bigSpend = COACH.bigSpendAdvice(bill, overview);
-        if (bigSpend && bigSpend.hit) { html += bigSpend.html; }
+        if (bigSpend && bigSpend.hit && !justCooled) { html += bigSpend.html; }
+        if (justCooled) { coolFlowDone = null; }
       }
+      if (i === list.length - 1) { html += radarHtml; }
       addAIMessage(html);
       /* 账本联动：购物 + 备注/商家含谷 → 弹正版确认提示（防买到祖国版） */
       if (bill.type !== 'income' && bill.category === '购物' &&
@@ -4902,8 +6191,28 @@
   }
   /** 返回 true 表示已本地处理（拦截），调用方应 return */
   function guIntercept(raw) {
-    if (GU_GUIDE_CMDS.test(raw)) { addAIMessage(buyGuideAnswer()); return true; }
-    if (GU_KEYWORDS.test(raw) && !guIsBookkeeping(raw)) { addAIMessage(guQuickNote(raw)); return true; }
+    if (GU_GUIDE_CMDS.test(raw)) {
+      withLocalTrace({
+        think: '问的是买谷方法，属于防坑知识：给速览，不动账本',
+        steps: [
+          ['识别', '「买谷指南」类提问'],
+          ['检索知识库', '消协 / 监管口径的 5 条避坑结论'],
+          ['说明', '固定知识，不调模型；这不是省钱，是防损']
+        ]
+      }, function () { addAIMessage(buyGuideAnswer()); });
+      return true;
+    }
+    if (GU_KEYWORDS.test(raw) && !guIsBookkeeping(raw)) {
+      withLocalTrace({
+        think: '提到二次元消费，先给一条针对性提醒',
+        steps: [
+          ['识别', '买谷 / 抽谷关键词'],
+          ['匹配', '盲抽 / 拼团 / 出谷 / 通用 四种提醒之一'],
+          ['说明', '固定话术，不查账本']
+        ]
+      }, function () { addAIMessage(guQuickNote(raw)); });
+      return true;
+    }
     return false;
   }
   /** 结构化买谷指南问答（模块6）：5 问一句话结论 + 展开 */
@@ -5010,6 +6319,11 @@
       '  </div>' +
       '</div>';
     addAIMessage(html);
+    /* 大额吃谷：冷静卡只说「这笔占预算多少」，但谷圈用户此刻更怕的是买到祖国版、
+       或者跟团被跑单。补一张渠道确认提示（正版 / 尾单 / 散货的坑）。 */
+    if (/谷|吧唧|立牌|流麻|谷子|盲盒|抽赏|周边|痛包|海景/.test(String(draft.note || ''))) {
+      addAIMessage(guBuyNoteHtml());
+    }
   }
 
   function dcRow(label, valueHtml) {
@@ -5109,6 +6423,12 @@
   /** 剁手冷静法会话状态：{item, price, step, answers}；step 为 0 基索引 */
   var cooling = null;
 
+  /* 刚走完（或主动跳过）冷静流程的那一笔：reportCommitted 不再为它追「大额冷静」卡。
+     没有这个豁免，用户点「跳过问答，直接记下 600」→ 入账 → 又弹一张
+     「先晾 48 小时，点下面按钮评估」→ 等于同一笔被拦两次，而且第二次还是他自己点的跳过。
+     只豁免 5 秒内、同金额的那一笔，不扩大范围。 */
+  var coolFlowDone = null;   /* { amount, ts } */
+
   /** 启动剁手冷静法（用户表达「想买 XX」时由 sendToAssistant 调用）
    *  @param {boolean} [alreadyRecorded] 本会话中这笔支出是否已经被记过账。
    *        true  → 来自 reportCommitted 里对已记账单追的大额冷静卡，结论卡
@@ -5133,15 +6453,30 @@
   }
 
   function renderCoolingIntro() {
+    /* 卡片原来只有「开始冷静问答」一个出口：不想答这 3 个问题的人只能干看着，
+       要么被迫走完流程，要么把卡片留在聊天里当没看见。给三条路：
+       ① 答题（主）② 跳过问答直接记下（明确要买的人）③ 算了不买了（文字链，最轻）。
+       三个出口的分量递减，视觉上仍是「一个主按钮 + 一个次按钮 + 一条文字链」。 */
+    var actions = '';
+    actions += '<button type="button" class="dc-primary" data-act="cool-next">开始冷静问答</button>';
+    if (cooling.alreadyRecorded) {
+      /* 来自已完成入账的大额冷静卡：这笔钱已经在账本里，跳过=确认，绝不能再 commit */
+      actions += '<button type="button" class="dc-secondary" data-act="cool-dismiss">跳过问答，这笔已经记下了</button>';
+    } else if (cooling.price > 0) {
+      actions += '<button type="button" class="dc-secondary" data-act="cool-skip-quiz">跳过问答，直接记下 ' +
+        money(cooling.price) + '</button>';
+      actions += '<button type="button" class="dc-link" data-act="cool-quit">算了，不买了</button>';
+    } else {
+      /* 没价格时「直接记下」会记成 0 元账，只能给「不买了」这一个出口 */
+      actions += '<button type="button" class="dc-secondary" data-act="cool-quit">算了，不买了</button>';
+    }
     var html =
       '<div class="decision-card cool-card">' +
       '  <div class="dc-icon cool"><svg viewBox="0 0 24 24"><use href="#i-stop"/></svg></div>' +
       '  <div class="dc-title">剁手冷静法</div>' +
       '  <div class="dc-sub">想买：' + esc(cooling.item) + '</div>' +
       '  <div class="dc-detail">' + dcRow('方法', '回答 3 个问题，30 秒看清该不该买') + '</div>' +
-      '  <div class="dc-actions">' +
-      '    <button type="button" class="dc-primary" data-act="cool-next">开始冷静问答</button>' +
-      '  </div>' +
+      '  <div class="dc-actions">' + actions + '</div>' +
       '</div>';
     addAIMessage(html);
   }
@@ -5247,6 +6582,8 @@
   /** 结论后选择「仍然购买」：直接入账（已走完冷静流程，不再二次弹冷静期） */
   function coolingRecord() {
     if (!cooling) { return; }
+    /* 打上「这笔刚过冷静流程」的标记，供 reportCommitted 跳过「大额冷静」追问卡 */
+    coolFlowDone = { amount: cooling.price, ts: Date.now() };
     /* 品类按商品名判，别再一律写「购物」：剁手冷静法也会被夜宵烧烤、火锅、奶茶触发，
        全塞进「购物」会让餐饮统计和恩格尔系数偏低，用户在账单分析里会看到一笔分类错的账。 */
     var guessRaw = '';
@@ -6177,6 +7514,11 @@
    */
   /** 看板「理财课」卡里可点开的资源（与渲染时同一份顺序，供弹窗按索引取用） */
   var learnResourceCache = [];
+  /* 2026-11-03：这张卡 7 条太占屏（用户反馈「这里太长了，加个折叠」）。
+     默认只露前 3 条，其余收进「展开全部 · 还有 N 条」；展开状态在本会话内记住，
+     重新渲染不会又缩回去。 */
+  var learnExpanded = false;
+  var LEARN_PREVIEW_N = 3;
 
   function renderLearnCard() {
     var card = $('learnCard');
@@ -6186,7 +7528,7 @@
       ? COACH.learningResources()
       : [];
     var list = [];
-    var rows = '';
+    var items = [];
     var i;
     for (i = 0; i < all.length; i++) {
       var r = all[i];
@@ -6196,18 +7538,29 @@
       var idx = list.length - 1;
       var kind = learnKind(r);
       /* 整行是「详情」入口：点开看完整讲解，弹窗里再给「打开原页面」 */
-      rows += '<div class="learn-item" role="button" tabindex="0" data-learn="' + idx + '">' +
+      items.push('<div class="learn-item" role="button" tabindex="0" data-learn="' + idx + '">' +
         '<span class="learn-main">' +
         '<span class="learn-label">' + esc(r.label) + '</span>' +
         (r.desc ? '<span class="learn-desc">' + esc(r.desc) + '</span>' : '') +
         '</span>' +
         '<span class="learn-badge lb-' + kind.cls + '">' + kind.name + '</span>' +
         '<span class="learn-go" aria-hidden="true">›</span>' +
-        '</div>';
+        '</div>');
     }
     learnResourceCache = list;
+
+    var foldable = list.length > LEARN_PREVIEW_N;
+    var shown = (learnExpanded || !foldable) ? items.length : LEARN_PREVIEW_N;
+    var rows = items.slice(0, shown).join('');
+    if (foldable) {
+      var rest = Math.max(0, list.length - shown);
+      rows += '<button class="learn-more" type="button" data-learn-more="1" aria-expanded="' +
+        (learnExpanded ? 'true' : 'false') + '">' +
+        (learnExpanded ? '收起' : ('展开全部 · 还有 ' + rest + ' 条')) +
+        '<span class="learn-more-ico" aria-hidden="true">' + (learnExpanded ? '⌃' : '⌄') + '</span></button>';
+    }
     box.innerHTML = rows;
-    card.hidden = (rows === '');
+    card.hidden = (list.length === 0);
   }
 
   /**
@@ -7000,7 +8353,116 @@
   /* 简洁版 · 日常型（单功能单屏）渲染                                     */
   /* ================================================================== */
 
-  var SP_QUICK_CATS = ['餐饮', '交通', '购物', '其他'];
+  /* 首页快捷栏 + 分类预算共用同一份分类清单（2026-11-04 扩到 8 类）：
+     4 列网格会自然排成两行；预算页也按这份清单生成行，两边永不错位。 */
+  var SP_QUICK_CATS = ['餐饮', '交通', '购物', '社交', '学习', '娱乐', '居住', '其他'];
+
+  /* ===================== 分类预算（2026-11-04） =====================
+     首页快捷栏每个分类可以各设一个有上限的额度：留空 = 按生活费占比自动
+     （DATA.CATEGORY_BUDGET_RATIO），填了 = 自定义，快捷栏小签带 ✎。
+     额度与「已花」都按本周期口径算，和预算环、期末预测同源。
+     行由 renderCatBudgetRows() 按 SP_QUICK_CATS 动态生成（8 类不再手写 HTML）。 */
+
+  /** 归一化：只保留 > 0 的金额项（0 / 空 = 自动，不落盘）。金额模型：自定义就是绝对 ¥。 */
+  function normalizeCatBudgets(raw) {
+    var out = {};
+    var src = (raw && typeof raw === 'object') ? raw : {};
+    var keys = ['餐饮', '交通', '购物', '社交', '学习', '娱乐', '居住', '其他'];
+    for (var i = 0; i < keys.length; i++) {
+      var v = Number(src[keys[i]]);
+      if (isFinite(v) && v > 0) { out[keys[i]] = ENG.round2(v); }
+    }
+    return out;
+  }
+
+  /**
+   * 某分类本周期额度（金额优先模型）。
+   * - 有自定义 ¥ 预算：直接用这个数字，不依赖生活费（生活费为 0 也能显示、首页也能出小签）；
+   * - 否则走自动：生活费 × 默认占比，只有生活费 > 0 才算得出金额；
+   * - amount=0 表示「这分类当前没有可用额度」（自动且生活费为 0）。
+   * @return {{amount:number, custom:boolean, pct:number}} pct 是「占生活费的百分比」派生值，仅展示用。
+   */
+  function catBudgetOf(cat) {
+    var cb = (state.budget && state.budget.catBudgets) || {};
+    var custom = Number(cb[cat]) || 0;
+    var def = (DATA.CATEGORY_BUDGET_RATIO && DATA.CATEGORY_BUDGET_RATIO[cat]) || 0;
+    var defPct = ENG.round2(def * 100);
+    if (custom > 0) { return { amount: ENG.round2(custom), custom: true, pct: defPct }; }
+    var total = Number(state.budget && state.budget.total) || 0;
+    if (total > 0 && def > 0) {
+      return { amount: ENG.round2(total * def), custom: false, pct: defPct };
+    }
+    return { amount: 0, custom: false, pct: defPct };
+  }
+
+  /**
+   * 渲染设置页的「分类预算」清单（按 SP_QUICK_CATS 生成，8 类不再手写 HTML）。
+   * 每行：分类名 + 灰字（自动 ¥x（占 N%）· 已花 ¥y；自定义时写「自定义 ¥x」）
+   *      + 金额输入框（占位符就是自动金额，单位 元，可直接改）
+   *      + 自定义时才出现「自动」小键，点一下把这行清回自动。
+   * 金额优先：自定义 ¥ 不依赖生活费，生活费为 0 也能用、首页也能出小签。
+   */
+  function renderCatBudgetRows() {
+    var box = $('catbList');
+    if (!box) { return; }
+    var totalNow = Number(state.budget.total) || 0;
+    var html = '';
+    for (var i = 0; i < SP_QUICK_CATS.length; i++) {
+      var cat = SP_QUICK_CATS[i];
+      var bd = catBudgetOf(cat);
+      var defPct = Math.round((DATA.CATEGORY_BUDGET_RATIO && DATA.CATEGORY_BUDGET_RATIO[cat] || 0) * 100);
+      /* 占位符 = 自动会用多少钱（生活费为 0 时写「自动」，避免误导成已设的值） */
+      var ph = (bd.custom) ? '' : ((bd.amount > 0) ? String(Math.round(bd.amount)) : '自动');
+      html += '<div class="catb-row" data-catb-row="' + esc(cat) + '">' +
+        '<div class="catb-info"><b>' + esc(cat) + '</b>' +
+        '<small data-catb-hint="' + esc(cat) + '"></small></div>' +
+        '<button class="catb-auto" type="button" data-catb-auto="' + esc(cat) + '"' +
+        (bd.custom ? '' : ' hidden') + '>自动</button>' +
+        '<div class="catb-edit">' +
+        '<input type="number" min="0" step="10" inputmode="decimal" data-catb-input="' + esc(cat) + '"' +
+        ' value="' + (bd.custom ? bd.amount : '') + '"' +
+        ' placeholder="' + ph + '" />' +
+        '<span>元</span></div></div>';
+    }
+    box.innerHTML = html;
+
+    /* 灰字单独填一次（文案带金额，拼进模板会很长） */
+    var ovB = getOverview();
+    var ctx = { totalNow: totalNow, spentMap: (ovB.cycleAgg && ovB.cycleAgg.byCategory) || {} };
+    for (var j = 0; j < SP_QUICK_CATS.length; j++) { fillCatBudgetHint(SP_QUICK_CATS[j], ctx); }
+  }
+
+  /** 单行灰字（金额优先 + 占比派生）+ 「自动」键显隐。实时读取输入框当前值，没保存也能看到反馈。 */
+  function fillCatBudgetHint(cat, ctx) {
+    var hint = document.querySelector('[data-catb-hint="' + cat + '"]');
+    if (!hint) { return; }
+    var c = ctx || {};
+    var totalNow = (typeof c.totalNow === 'number') ? c.totalNow : (Number(state.budget.total) || 0);
+    var spent = Number((c.spentMap || {})[cat]) || 0;
+    var defPct = Math.round((DATA.CATEGORY_BUDGET_RATIO && DATA.CATEGORY_BUDGET_RATIO[cat] || 0) * 100);
+    var autoAmt = (totalNow > 0 && defPct > 0) ? ENG.round2(totalNow * defPct / 100) : 0;
+    /* 以输入框当前值为准：用户正在打字时也立刻反馈，不必等保存 */
+    var inp = document.querySelector('[data-catb-input="' + cat + '"]');
+    var raw = inp ? String(inp.value || '').trim() : '';
+    var live = (raw !== '' && isFinite(Number(raw))) ? Number(raw) : 0;
+    var custom = live > 0;
+    var amount = custom ? live : autoAmt;
+    if (custom) {
+      hint.textContent = '自定义 ' + money(amount) + '（自动是 ' + (autoAmt > 0 ? money(autoAmt) : defPct + '%') +
+        '）· 已花 ' + money(spent);
+      hint.className = 'is-custom';
+    } else if (totalNow > 0) {
+      hint.textContent = '自动 ' + money(amount) + '（占 ' + defPct + '%）· 已花 ' + money(spent);
+      hint.className = '';
+    } else {
+      hint.textContent = '自动（占 ' + defPct + '% · 生活费填了才算出金额）';
+      hint.className = 'is-warn';
+    }
+    var row = hint.closest('.catb-row');
+    var btn = row ? row.querySelector('[data-catb-auto]') : null;
+    if (btn) { btn.hidden = !custom; }
+  }
+
   var SP_CAT_ICON = {
     '餐饮': 'i-cat-food', '社交': 'i-cat-social', '购物': 'i-cat-shop', '学习': 'i-cat-study', '交通': 'i-cat-transit',
     '娱乐': 'i-cat-fun', '居住': 'i-cat-home', '电费': 'i-cat-elec', '燃气费': 'i-cat-gas', '医疗': 'i-cat-med', '其他': 'i-cat-other', '收入': 'i-cat-income'
@@ -7076,18 +8538,41 @@
     var bs = ov.budgetState;
     $('spRemain').textContent = money(bs.remaining);
     $('spDaily').textContent = money(bs.dailyAllowance);
+    /* 预算进度线：与完整版 budget-bar 同源——宽度=剩余/总额，颜色随健康度
+       （safe 白 / tight 琥珀 / danger 红；没设预算 = muted 半透明，不假装安全） */
+    var heroFill = $('spBarFill');
+    if (heroFill) {
+      var totalB = Number(state.budget.total) || 0;
+      var ratioB = totalB > 0 ? Math.max(0, Math.min(1, bs.remaining / totalB)) : 0;
+      heroFill.style.width = (ratioB * 100).toFixed(1) + '%';
+      var heroEl = heroFill.closest('.sp-hero');
+      if (heroEl) {
+        heroEl.classList.remove('state-safe', 'state-tight', 'state-danger', 'state-muted');
+        heroEl.classList.add(totalB > 0 ? 'state-' + bs.status : 'state-muted');
+      }
+    }
     var d = ov.today;
     var week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
     $('spDateLine').textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + week + ' · 今天想记点什么？';
     var q = '';
     var i;
+    var catSpent = (ov.cycleAgg && ov.cycleAgg.byCategory) || {};
     for (i = 0; i < SP_QUICK_CATS.length; i++) {
       var c = SP_QUICK_CATS[i];
-      q += '<button type="button" class="sp-q" data-cat="' + esc(c) + '">' +
+      /* 分类额度小签：额度 > 0 才显示；自定义额度带 ✎，点它直接去设置里改 */
+      var bd = catBudgetOf(c);
+      var tag = '';
+      if (bd.amount > 0) {
+        var left = ENG.round2(bd.amount - (Number(catSpent[c]) || 0));
+        tag = '<span class="sp-q-tag' + (left < 0 ? ' is-over' : '') + (bd.custom ? ' is-custom' : '') +
+          '" data-catbudget="' + esc(c) + '" title="点这里设置「' + esc(c) + '」的分类预算">' +
+          (bd.custom ? '✎ ' : '') + (left < 0 ? '超 ' + money(-left) : '剩 ' + money(left)) + '</span>';
+      }
+      q += '<button type="button" class="sp-q' + (tag ? ' has-tag' : '') + '" data-cat="' + esc(c) + '">' +
         /* 方案 M2：容器 wash 统一中性色（见 .sp-q-ico），分类语义只留图标本色，
            消除餐饮绿/交通蓝/购物紫的彩虹感 */
         '<span class="sp-q-ico" style="--sc:' + categoryColor(c) + ';--sc-ink:' + categoryInk(c) + '">' + spCatIcon(c) + '</span>' +
-        esc(c) + '</button>';
+        esc(c) + tag + '</button>';
     }
     $('spQuick').innerHTML = q;
     var today = ov.todayStr;
@@ -7242,6 +8727,15 @@
       });
     }
     $('spQuick').addEventListener('click', function (e) {
+      /* 点额度小签 = 去设置里改这个分类的预算（不能顺带触发记账） */
+      var badge = (e.target && e.target.closest) ? e.target.closest('[data-catbudget]') : null;
+      if (badge) {
+        e.preventDefault();
+        e.stopPropagation();
+        /* 复用既有的「打开设置并滚到某分区」：会顺带高亮预算组，用户一眼看到改哪 */
+        openSettingsGroup('setGroupBudget');
+        return;
+      }
       var q = e.target.closest ? e.target.closest('.sp-q[data-cat]') : null;
       if (q) { openQuickAddModal(q.getAttribute('data-cat')); }
     });
@@ -7684,7 +9178,7 @@
     if (k === 'custom') {
       var c = toneCustom();
       if (!c.name && !c.text) {
-        return ['· 用户选了「自定义人设」但还没写内容，按默认说话方式：口语、直白、1~3 句。'];
+        return ['· 用户选了「自定义人设」但还没写内容，按默认说话方式：口语、直白；办事一两句，讲方法分点讲全。'];
       }
       return [
         '· 用户自定义人设' + (c.name ? '「' + c.name + '」' : '（没起名字，保持现在的自称）') +
@@ -7726,13 +9220,203 @@
     return head + body;
   }
 
+  /* ---------------- 说话模式（voice.js 的「模式键」） ---------------- */
+
+  /** 允许的档位：auto + 三种真模式（顺序即聊天区那颗键的显示顺序） */
+  var VOICE_MODES = ['auto', 'chat', 'breakdown', 'comfort'];
+
+  /** 归一化：未知值一律回落「自动」，绝不让一个拼错的档位卡死判定 */
+  function voiceModeKey(v) {
+    var k = String(v === undefined ? getSettings().voiceMode : v);
+    return VOICE_MODES.indexOf(k) >= 0 ? k : 'auto';
+  }
+
+  /** 档位显示名（聊天区的键、Toast、提示词共用一份） */
+  function voiceModeLabel(key) {
+    var k = voiceModeKey(key);
+    if (VOICE && !VOICE.missing && typeof VOICE.modeName === 'function') {
+      return VOICE.modeName(k);
+    }
+    return ({ auto: '自动', chat: '聊天', breakdown: '拆解', comfort: '树洞' })[k] || '自动';
+  }
+
+  /**
+   * 档位元信息（键上的 icon / 名字 / 一句话说明）。
+   * 缺 voice.js 时用本地替身，保证那颗键照样能点、能显示。
+   */
+  function voiceModeList() {
+    if (VOICE && !VOICE.missing && VOICE.MODES && VOICE.MODES.length) { return VOICE.MODES; }
+    return [
+      { key: 'auto', name: '自动', icon: '🎚️', hint: '看情绪和金额自己选' },
+      { key: 'chat', name: '聊天', icon: '💬', hint: '一句话，像发微信' },
+      { key: 'breakdown', name: '拆解', icon: '🔍', hint: '分层算清楚' },
+      { key: 'comfort', name: '树洞', icon: '🫂', hint: '先接情绪，不算账' }
+    ];
+  }
+
+  /**
+   * 渲染所有「说话方式」键（聊天区一个、设置页一个，同一份 DOM 结构）。
+   *
+   * 为什么四个胶囊全平铺、而不是「点一下循环切一档」：
+   * 循环只能看到「现在是什么」，看不到「还有哪些可选」——
+   * 用户得点三下才知道有「树洞」这一档。四个摆开，一眼就是全部选择。
+   */
+  function renderVoiceModeBars() {
+    var boxes = DOC.querySelectorAll('[data-vm-box]');
+    if (!boxes.length) { return; }
+    var cur = voiceModeKey();
+    var list = voiceModeList();
+    for (var b = 0; b < boxes.length; b++) {
+      var h = '';
+      for (var i = 0; i < list.length; i++) {
+        var m = list[i];
+        var on = m.key === cur;
+        h += '<button type="button" class="vm-chip' + (on ? ' on' : '') +
+          '" data-vm="' + esc(m.key) + '" aria-pressed="' + (on ? 'true' : 'false') +
+          '" title="' + esc(m.hint || ('说话方式：' + m.name)) + '">' +
+          '<span class="vm-ico" aria-hidden="true">' + m.icon + '</span>' +
+          '<span class="vm-name">' + esc(m.name) + '</span></button>';
+      }
+      boxes[b].innerHTML = h;
+      /* 锁死档位时整条键轻微上色：让它和「自动」有视觉区分，
+         否则用户过一会儿会忘记自己手动固定过，还以为是 AI 抽风。 */
+      boxes[b].setAttribute('data-vm-cur', cur);
+      boxes[b].classList.toggle('locked', cur !== 'auto');
+      /* 语气也挂在这条键上：CSS 靠它把前缀从「说法」改成「说法·教练」。
+         两层是叠加关系，用户在同一个位置就能看到「方式 × 风格」现在的组合。 */
+      boxes[b].setAttribute('data-vm-tone', toneKey(getSettings().tone));
+      boxes[b].setAttribute('title',
+        '说话方式 × 语言风格（' + toneLabel() + '）—— 风格可在「设置 → AI 说话风格」里换');
+    }
+    /* 设置页那行「当前：…」跟着变，省得用户在两处各看一遍 */
+    var now = $('setVoiceNow');
+    if (now) {
+      var hintNow = '看情绪和金额自己选';
+      for (var j = 0; j < list.length; j++) {
+        if (list[j].key === cur) { hintNow = list[j].hint || hintNow; }
+      }
+      now.textContent = '当前：' + voiceModeLabel(cur) + '（' + hintNow + '）｜措辞：' + toneLabel();
+    }
+  }
+
+  /**
+   * 切换说话方式：立刻生效（下一句就按新档位）、立刻存盘、给一句轻提示。
+   * 不走 renderSettingsPage 重绘整页 —— 聊天区那颗键不该因为切档而重排。
+   */
+  function setVoiceMode(k) {
+    var key = voiceModeKey(k);
+    var old = voiceModeKey();
+    if (key === old) { return; }
+    getSettings().voiceMode = key;
+    state.settings = normalizeSettings(getSettings());
+    saveState();
+    renderVoiceModeBars();
+    var hint = '';
+    var list = voiceModeList();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].key === key) { hint = list[i].hint || ''; }
+    }
+    showToast('说话方式：' + voiceModeLabel(key) + (hint ? '（' + hint + '）' : ''), 'ok');
+  }
+
+  /**
+   * 「说话方式 × 语言风格」叠加后到底长什么样 —— 给云端模型的一句成品示例。
+   *
+   * 为什么必须给成品、不能只给形容词：模型看到「方式是树洞、风格是铁面教练」，
+   * 很容易两边各取一半（要么哄了要么冷了）。给一句现成的话，它才知道边界在哪：
+   * 方式决定说几句、要不要算账；风格决定这几句用什么口气。
+   * 自定义人设不给示例（用户写什么就是什么），只保留「方式」约束。
+   */
+  var VM_TONE_SAMPLE = {
+    'chat|gentle': '「记好啦，18 块的黄焖鸡，这月还剩 620，稳的～」——一句，带点语气词。',
+    'chat|strict': '「记上了，18。今天还剩 30 的额度。」——一句，不带语气词。',
+    'chat|rational': '「已入账：餐饮 18 元，本周期剩余 620 元。」——一句，只有事实与数字。',
+    'breakdown|gentle': '先接一句「这笔确实不便宜」，再分层讲账；语气软，但该拦的照拦。',
+    'breakdown|strict': '不寒暄，直接上数字和结论，分三点、每点一句话。',
+    'breakdown|rational': '像报表批注：口径 → 数字 → 结论，全程不出现安慰句。',
+    'comfort|gentle': '「先抱一下，钱花了就花了，明天咱们再一起看账。」两句内收住。',
+    'comfort|strict': '「哭完了就去睡，明天把账翻出来看。」接一句就够，不哄。',
+    'comfort|rational': '「这笔已经发生，能调的只有下个月的额度。」只陈述，不煽情。'
+  };
+
+  function vmToneSample(mode, tone) {
+    if (tone === 'custom') {
+      return '按用户设定的口吻说，但说几句、要不要算账，仍听这一档的。';
+    }
+    return VM_TONE_SAMPLE[mode + '|' + tone] || '';
+  }
+
+  /**
+   * 锁死档位时给云端模型的硬约束（自动档返回空数组，一个字都不多写）。
+   *
+   * 为什么提示词也要管：本地只拦得住「短句 + 单金额」的快路径，
+   * 超过 14 字就走云端了。档位若只写在本地分支里，用户锁了「树洞」
+   * 却发现长句子还是被算了一通账 —— 那颗键就成了摆设。
+   *
+   * 第二层：方式只定了「说多少」，口气仍要跟着用户选的语言风格走。
+   * 两段提示词如果各说各的，模型会把它们读成二选一；所以这里显式写出叠加关系 + 一句成品。
+   */
+  function voiceModePromptLines() {
+    var k = voiceModeKey();
+    var lines;
+    if (k === 'chat') {
+      lines = [
+        '· 聊天式：像发微信，1~3 句就说完；可以用「哎、哈、嘛」这类语气词，不列表、不分点、不堆 emoji。',
+        '· 预算提醒最多顺带一句，不写「结论 → 常识 → 避坑」三段式。'
+      ];
+    } else if (k === 'breakdown') {
+      lines = [
+        '· 硬核拆解：把账分层讲清（事实 → 常识 → 避坑），可以分点，但不许说教、不许写「要理性消费」这种空话。',
+        '· 数字一律来自工具结果，给了多少就引多少，不要自己乘系数。'
+      ];
+    } else if (k === 'comfort') {
+      lines = [
+        '· 情绪树洞：先接情绪，不记账、不算账、不开卡片、不追问金额细节；2~3 句就够。',
+        '· 想给建议就给一个最小的动作（「先睡一觉」「明天一起看账」），不要列清单。',
+        '· 接住之后必须留一条能往下走的路，不许停在安慰：想去 / 想买就把钱拆成三笔' +
+          '（交通住宿门票 / 本体配件维修），或者约「明天一起看账」，让用户知道下一步做什么。',
+        '· 不许假设用户已经买过、已经花了钱。「我真的很想去北京旅游」= 还没去，' +
+          '回「别骂自己，钱已经花了」会让他觉得你根本没在听。'
+      ];
+    } else {
+      return [];
+    }
+    /* 叠加层：只有锁了方式才写。自动档没有「方式」可言，硬编一句会变成新的模板。 */
+    var t = toneKey(getSettings().tone);
+    lines.push('· 和【说话风格·' + toneLabel() + '】叠加，不是二选一：这一档管「说几句、要不要算账」，' +
+      '风格管「这几句用什么口气」，两条同时满足。');
+    var sample = vmToneSample(k, t);
+    if (sample) { lines.push('· 叠加后的样子：' + sample); }
+    return lines;
+  }
+
+  /**
+   * 树洞的出口：锁了树洞之后，「查余额 / 账单分析 / 攒钱」这类明确操作不能被安慰吃掉。
+   *
+   * 为什么必须有：树洞回复里挂的两个按钮是 data-cmd 直接走 handleSend 的，
+   * 会再进一次情绪判断；不豁免的话，用户点「我想攒钱去旅行」，回的还是一句安慰 ——
+   * 按钮就成了骗人的装饰。
+   *
+   * 三条限制防误伤：① 长句不算（超过 16 字基本是在倾诉，不是在点功能）；
+   * ② 带情绪词的不算（「我好焦虑，帮我看看账」是在说情绪，先接情绪）；
+   * ③ 只认白名单里的操作词，不认「钱 / 账」这种大词。
+   */
+  var COMFORT_EXIT = /查余额|账单分析|设置预算|心愿单|攒钱|饼图|看板|记一笔/;
+  var COMFORT_EMO = /焦虑|崩溃|难受|累|烦|后悔|自责|撑不住|委屈|睡不着|失眠/;
+
+  function comfortExit(raw) {
+    var s = String(raw || '').replace(/\s+/g, '');
+    if (!s || s.length > 16) { return false; }
+    if (COMFORT_EMO.test(s)) { return false; }
+    return COMFORT_EXIT.test(s);
+  }
+
   /** 自定义描述的字数（120 上限，超了模型也记不住重点） */
   function renderToneCount() {
     var el = $('setToneCount');
     var ta = $('setToneText');
     if (el && ta) { el.textContent = String(ta.value || '').length + '/120'; }
   }
-
   /**
    * 边打字边更新卡片上的「试听」位。
    * 只改 textContent、不重绘整页：重绘会把正在输入的光标位置弄丢。
@@ -9843,17 +11527,37 @@
     renderOcrState();
   }
 
-  function saveSettings() {
+  function saveSettings(opts) {
+    var quiet = !!(opts && opts.quiet);
     var total = Number($('setTotal').value);
     var payday = Number($('setPayday').value);
     var cooldown = Number($('setCooldown').value);
     state.budget.total = clampNumber(total, 0, 9999999, state.budget.total);
     state.budget.payday = Math.round(clampNumber(payday, 1, 28, state.budget.payday));
     state.budget.cooldownThreshold = clampNumber(cooldown, 0, 9999999, state.budget.cooldownThreshold);
+    /* 分类预算：输入框是「金额（元）」，留空 = 用自动额度（不落盘） */
+    var nextCat = {};
+    var catInputs = document.querySelectorAll('[data-catb-input]');
+    for (var ci = 0; ci < catInputs.length; ci++) {
+      var catKey = catInputs[ci].getAttribute('data-catb-input');
+      var rawVal = String(catInputs[ci].value == null ? '' : catInputs[ci].value).trim();
+      if (rawVal === '' || !catKey) { continue; }
+      var amt = clampNumber(Number(rawVal), 0, 9999999, 0);
+      if (amt > 0) { nextCat[catKey] = ENG.round2(amt); }
+    }
+    state.budget.catBudgets = nextCat;
     saveState();
     /* 统一设置面板后保存不再整页关闭：留在原地刷新周期行，用户可继续改其他设置 */
     renderCycleInfo();
     renderAll();
+    /* 手动保存也要重绘分类预算行：否则刚填的自定义不会长出「自动」键 */
+    renderCatBudgetRows();
+    /* 逐行「自动」/「重置」这类小动作不刷屏：只给一条 toast，不往聊天里塞气泡 */
+    if (quiet) {
+      renderCatBudgetRows();
+      showToast((opts && opts.toast) || '分类预算已更新', 'ok');
+      return;
+    }
     var ov = getOverview();
     addAIMessage(aiBubble('设置已更新：生活费 ' + money(state.budget.total) + '，发钱日 ' +
       state.budget.payday + ' 号，冷静期阈值 ' + money(state.budget.cooldownThreshold) +
@@ -10132,6 +11836,8 @@
     $('setTotal').value = String(state.budget.total);
     $('setPayday').value = String(state.budget.payday);
     $('setCooldown').value = String(state.budget.cooldownThreshold);
+    /* 分类预算：行由 SP_QUICK_CATS 生成，金额 / 占比 / 已花都写在灰字里 */
+    renderCatBudgetRows();
     renderCycleInfo();
     var ocrCred = OCR.getCredentials();
     $('setOcrId').value = ocrCred.secretId || '';
@@ -10344,6 +12050,9 @@
         getSettings().tone = toneKey(input.value);
         persistSettings();
         renderAll();
+        /* 说话方式那条键的前缀（「说法·教练」）也依赖语气，切完要跟着重画一遍，
+           否则用户改了风格、键上还写着旧的那层，会以为没生效。 */
+        renderVoiceModeBars();
         /* 自定义人设会接管聊天里的自称，标题与欢迎语要跟着改；
            内置风格不改名，但重回一次也没副作用（同一个名字写回同一个位置）。 */
         renderChatPeerName();
@@ -10943,6 +12652,7 @@
     { say: '我最近都买了啥', hint: '翻账单' },
     { say: '想买双 600 的鞋，值不值', hint: '拦冲动' },
     { say: '怎么省钱', hint: '给方案' },
+    { say: '两个苹果12块，贵不贵', hint: '物价雷达' },
     { say: '今天有什么优惠', hint: '查优惠' },
     { say: '带我去心愿单', hint: '直接跳转' }
   ];
@@ -14124,6 +15834,15 @@
     addAIMessage(aiBubble(DEALS.kfcCardHtml(dealsNow())));
   }
 
+  /** 聊天入口：物价雷达卡。工具（price_check）与本地链路共用同一张卡，
+   *  保证「同样的输入，卡上的数字永远一样」——卡片只放数字，判断与避坑在正文里。 */
+  function showPriceRadarCard(r) {
+    if (!PRICE || !r || !r.ok) { return; }
+    switchView('chat');
+    addAIMessage(aiBubble(PRICE.cardHtml(r)));
+    scrollChat();
+  }
+
   /** 聊天入口：比价（先从话里抽商品名与预算，再让用户填报价） */
   function showDealCompareFromText(raw) {
     switchView('chat');
@@ -14207,7 +15926,7 @@
   /**
    * 省钱助手的二级 tab。2026-10-28 起「省钱雷达」与「省钱图谱」彻底合并：
    * 原来的两个全屏 sheet + 一级分段控件（#saveHubSeg）已删除，
-   * 现在只剩一组二级 tab：今天 / 14 天日历 / 比价计算器 / 图谱 / 大全 / 省钱账 / 说明。
+   * 现在只剩一组二级 tab：今天 / 14 天日历 / 比价计算器 / 物价雷达 / 图谱 / 大全 / 省钱账 / 说明。
    * 「今天」用图谱那套卡片 UI（统计条 + 省钱动作 + 打卡），并把雷达的当天品牌活动并进来，
    * 同一品牌只出现一次 —— 两个模块说同一件事会让用户以为是两笔不同的机会。
    */
@@ -14228,6 +15947,11 @@
     /* 就绪校验：雷达侧（calendar / compare）与图谱侧（map / index / book / about）分开校验 */
     if ((want === 'calendar' || want === 'compare') && !dealsReady()) {
       addAIMessage(aiBubble('省钱雷达模块没加载起来，刷新一下页面再试。'));
+      return;
+    }
+    /* 物价雷达页签只依赖 priceradar.js，缺了单独降级，不拖累其他页签 */
+    if (want === 'price' && !PRICE) {
+      addAIMessage(aiBubble('物价雷达模块没加载起来，刷新一下页面再试。'));
       return;
     }
     if ((want === 'map' || want === 'index' || want === 'book' || want === 'about') && !savingsReady()) {
@@ -14296,13 +16020,18 @@
     if (!pane) { return; }
     var body = pane.parentNode;
     var keepTop = body ? body.scrollTop : 0;
-    /* 雷达侧内容（14 天日历 / 比价）与图谱侧内容（今天 / 图谱 / 大全 / 省钱账 / 说明）
+    /* 雷达侧内容（14 天日历 / 比价 / 物价雷达）与图谱侧内容（今天 / 图谱 / 大全 / 省钱账 / 说明）
        共用同一个内容区，靠 hidden 切换 —— 两个内容容器都保留，事件委托不用重写。 */
     var dp = $('dealsPane');
     var sp = $('savingsPane');
-    var radarSide = (hubTab === 'calendar' || hubTab === 'compare');
+    var radarSide = (hubTab === 'calendar' || hubTab === 'compare' || hubTab === 'price');
     if (radarSide) {
-      if (dp) { dp.hidden = false; dp.innerHTML = (hubTab === 'calendar') ? dealsCalendarHtml(dealsNow()) : dealsCompareHtml(dealsNow()); }
+      if (dp) {
+        dp.hidden = false;
+        dp.innerHTML = (hubTab === 'calendar') ? dealsCalendarHtml(dealsNow())
+          : (hubTab === 'price') ? priceHubHtml()
+            : dealsCompareHtml(dealsNow());
+      }
       if (sp) { sp.hidden = true; }
     } else {
       if (dp) { dp.hidden = true; }
@@ -14320,7 +16049,7 @@
 
   /**
    * 二级 tab 切换（合并后只剩这一组分段）。点当前已激活的那一项不重绘。
-   * @param {string} tab 'today' | 'calendar' | 'compare' | 'map' | 'index' | 'book' | 'about'
+   * @param {string} tab 'today' | 'calendar' | 'compare' | 'price' | 'map' | 'index' | 'book' | 'about'
    */
   function switchSaveHub(tab) {
     if (tab === hubTab) { return; }
@@ -16825,6 +18554,463 @@
     return true;
   }
 
+  /* ================================================================== */
+  /* 物价雷达：问「贵不贵」不是记账，先算单价再对标基准                      */
+  /* ================================================================== */
+
+  /** 品类 id → 基准条目（追问数量后凭 id 找回，避免用户改口把品类带歪） */
+  function priceEntryById(id) {
+    if (!PRICE || !id) { return null; }
+    for (var i = 0; i < PRICE.BASELINES.length; i++) {
+      if (PRICE.BASELINES[i].id === id) { return PRICE.BASELINES[i]; }
+    }
+    return null;
+  }
+
+  /** 判定链：三步都真实发生过，不是为了让面板好看而编的 */
+  function pricePlan(r, parsed) {
+    var steps = [
+      ['拆单位', parsed.qty + ' ' + parsed.unit + (parsed.perUnit ? '（按每单位报价）' : '') + ' / 共 ' +
+        PRICE.fmt(parsed.total) + ' 元'],
+      ['算单价', r && r.ok ? r.formula : '总价 ÷ 数量']
+    ];
+    if (r && r.ok && r.hasBaseline) {
+      steps.push(['对标基准', r.item + ' ' + PRICE.fmt(r.band.low) + '~' + PRICE.fmt(r.band.high) +
+        ' 元/' + r.baseUnit + ' → ' + r.levelLabel]);
+    } else if (r && r.ok) {
+      steps.push(['对标基准', '基准表里没有「' + r.item + '」，只给单价不下结论']);
+    }
+    return {
+      think: '问的是物价：本地能算清，总价 ÷ 数量 = 单价，再对标生活基准区间，不猜价',
+      steps: steps
+    };
+  }
+
+  /** 出结论：卡片放数字，正文放判断 + 避坑，互不重复 */
+  function priceAnswer(r, total) {
+    var choices = [];
+    if (r && r.ok && total) {
+      choices.push(r.item + ' ' + PRICE.fmt(total) + ' 记一笔');
+    }
+    addAIMessage(aiBubble(PRICE.cardHtml(r) + agentTextHtml(PRICE.say(r))) +
+      choiceButtonsHtml(choices));
+    lastChoices = choices.length ? { items: choices.slice(), ts: Date.now() } : null;
+    scrollChat();
+  }
+
+  /** 缺数量/单位时的追问（规格硬要求：没说单位必须先问，不许替用户假定） */
+  function priceAsk(parsed, regBand) {
+    /* 记账的待补槽位要清掉：接下来这句「300 度」是回答物价，不是回答「多少钱」 */
+    pendingClear();
+    pricePending = {
+      id: parsed.entry.id, item: parsed.entry.name,
+      total: parsed.total, ts: Date.now()
+    };
+    pricePendingRegion = regBand || null;
+    var miss = PRICE.analyze({ entry: parsed.entry, total: parsed.total, region: regBand || null });
+    var text = '「' + parsed.entry.name + ' ' + PRICE.fmt(parsed.total) + ' 元」——买了多少' +
+      parsed.entry.unit + '？\n' +
+      '说个量我才能算出单价（' + parsed.entry.name + '的参考价是按' +
+      parsed.entry.unit + '算的，不知道单位就会算错一倍）。';
+    addAIMessage(aiBubble(agentTextHtml(text)) + choiceButtonsHtml(miss.choices || []));
+    scrollChat();
+  }
+
+  /**
+   * 物价问题总入口。
+   * @return {boolean} 已接管则 true（调用方直接 return）
+   */
+  /**
+   * 本地链路的地域尺子：按用户原话判城市，再把折算参数塞进 analyze。
+   * 本部（没提城市）返回 null，analyze 收到的输入与以前一模一样。
+   */
+  function priceRegionOf(raw) {
+    if (!REGION) { return null; }
+    var det = null;
+    try { det = REGION.detect(raw); } catch (e) { det = null; }
+    return det ? REGION.band(det) : null;
+  }
+
+  /** 带地域尺子的 analyze（不动 parsed 对象本身，避免一处改了、另一处跟着变） */
+  function priceAnalyze(p, regBand) {
+    var o = {
+      item: p.item, entry: p.entry, qty: p.qty, unit: p.unit, total: p.total, text: ''
+    };
+    if (regBand) { o.region = regBand; }
+    return PRICE.analyze(o);
+  }
+
+  function priceTakeOver(raw) {
+    if (!PRICE) { return false; }
+    /* 先看是不是「一组开销」（房租 / 水电 / 通勤 / 数码 / 衣服 / 买药）：
+       同一台雷达的另一种读法，命中就走月开销，不命中再判单价。 */
+    if (priceSceneTakeOver(raw)) { return true; }
+    if (typeof PRICE.looksLikePriceAsk !== 'function') { return false; }
+    var hit = PRICE.looksLikePriceAsk(raw);
+    if (!hit) { return false; }
+    var regBand = priceRegionOf(raw);
+    var p = hit.parsed;
+    if (hit.kind === 'compute') {
+      var r = priceAnalyze(p, regBand);
+      logIntent(raw, 'price', 0.94, 'high', null, 'radar-' + (r.ok ? r.level : r.code));
+      withLocalTrace(pricePlan(r, p), function () { priceAnswer(r, p.total); });
+      return true;
+    }
+    if (hit.kind === 'ask') {
+      /* 「点外卖 35 贵不贵」这类：单份/单次本身就是 1，硬追问「多少单」很蠢；
+         analyze 内部只在「1 份是常态」的单位上才按 1 算，其余仍然追问。 */
+      var ra = priceAnalyze(p, regBand);
+      if (ra.ok) {
+        logIntent(raw, 'price', 0.93, 'high', null, 'radar-' + ra.level);
+        var pa = { item: p.item, entry: p.entry, qty: ra.qty, unit: ra.unit, total: p.total, perUnit: false };
+        withLocalTrace(pricePlan(ra, pa), function () { priceAnswer(ra, p.total); });
+        return true;
+      }
+      logIntent(raw, 'price', 0.92, 'high', null, 'radar-ask');
+      withLocalTrace({
+        think: '问的是物价，但没说买了多少：单位不明不能猜，先问清再算',
+        steps: [['认品类', p.entry.name + ' · 基准按 ' + p.entry.unit + '算'],
+          ['缺数量', '只有总价 ' + PRICE.fmt(p.total) + ' 元，问清多少' + p.entry.unit]]
+      }, function () { priceAsk(p, regBand); });
+      return true;
+    }
+    /* band：只问「多少钱算贵」，没给价 → 给参考线并请他把价说出来 */
+    logIntent(raw, 'price', 0.9, 'high', null, 'radar-band');
+    withLocalTrace({
+      think: '问的是「多少钱算贵」，属于问基准线：直接给区间，不猜他的实际价格',
+      steps: [['查基准', p.entry.name + ' ' + PRICE.fmt(p.entry.low) + '~' +
+        PRICE.fmt(p.entry.high) + ' 元/' + p.entry.unit],
+        ['给判据', '超过 ' + PRICE.fmt(Math.round(p.entry.high * 1.5)) + ' 元/' +
+          p.entry.unit + ' 算贵得离谱']]
+    }, function () {
+      addAIMessage(aiBubble(agentTextHtml(
+        PRICE.bandSay(p.entry, regBand) +
+        (regBand && regBand.downtown ? '\n\n' + REGION.downtownNote(regBand) : ''))));
+      scrollChat();
+    });
+    return true;
+  }
+
+  /**
+   * 生存开销的判定链：三步都真实发生过（认场景 → 逐项拆 → 加总/摊现金流），
+   * 面板标签是「本地判定」，不冒充模型推理。
+   */
+  function svPlan(r) {
+    var think = {
+      rent: '租房问的不是标价：房租之外还压着水电、网费、物业，签约当天还要一次掏押金',
+      utility: '水电不算清单价就等于没算：度数 × 电价，民用和商用差一倍',
+      transport: '通勤能提前算死：单程差价 × 2 × 天数，就是每月差的钱',
+      digital: '数码的价格跟着渠道走：教育优惠是长期折扣，大促是节点折扣，首发最贵',
+      clothes: '衣服看单次穿着成本，不看标价：价格 ÷ 穿几次，才是真实单价',
+      medical: '买药的差价在渠道和名字：同成分不同商品名，价差能到几倍'
+    }[r.scene] || '这属于生存开销，本地按费率逐项算，不凭印象报价';
+
+    var steps = [['认场景', r.name + ' · ' + r.title]];
+    if (r.rows && r.rows.length) {
+      var first = r.rows[0];
+      steps.push(['拆第一项', first.label + ' ' + first.value +
+        (first.note ? '（' + first.note + '）' : '')]);
+    }
+    if (r.rows && r.rows.length > 1) {
+      steps.push(['逐项加总', r.rows.length + ' 项 → ' +
+        (r.total ? r.total.value : '见卡片')]);
+    }
+    if (r.sub) {
+      steps.push(['摊一次现金流', r.sub.label + ' ' + r.sub.value]);
+    }
+    return { think: think, steps: steps };
+  }
+
+  /** 出结果：聊天里一条富叙事（发射头 + 透视 + 常识 + 避坑 + A/B 连环），面板仍用 tab 版。
+   *  表头由 voice.js 按场景轮换，避免每条回复都「账单透视 / 生存常识 / 避坑指南」一个样。 */
+  /* 用户在纠正上一轮时会这么说。上下文断裂最伤人的形态不是答错，
+     是答错了还装作没听见、直接换一套说辞——所以纠正时必须先认一句。
+     prevSv 单独存：lastSV 会被 svFollowup 在未命中时清空，
+     而「认账」需要的恰恰是那个已经被清掉的上一轮。 */
+  var SV_CORRECT_HEAD = /^(不是|不对|不不|我没问|答偏|我说的是|我不是这个|别答|你答错|搞错了)/;
+  var prevSv = null;
+
+  function svAnswer(r, raw) {
+    var choices = (r.choices || []).slice(0, 3);
+    var headers = null;
+    if (VOICE && !VOICE.missing && typeof VOICE.headerSet === 'function') {
+      headers = VOICE.headerSet(String(r.scene || '') + '|' + String(raw || ''),
+        voiceModeKey(), toneKey(getSettings().tone));
+    }
+    /* 地域尺子：默认报「佛山南海 · 广轻大」，用户提到别的城市/市中心才追加说明。
+       同一条卡里只加一行，不重排 —— 换城市是为了让数字站得住，不是为了换个模板。 */
+    var regionLine = '';
+    if (REGION) {
+      try {
+        var det = REGION.detect(raw);
+        regionLine = REGION.sceneNote(r.scene, det) || '';
+        var dn = REGION.downtownNote(det);
+        if (dn) { regionLine = regionLine ? regionLine + '\n' + dn : dn; }
+      } catch (e) { regionLine = ''; }
+    }
+    var opts = {};
+    if (headers) { opts.headers = headers; }
+    if (regionLine) { opts.regionLine = regionLine; }
+    /* 纠正上一轮：先认一句，再说这轮答的是什么。
+       条件是「这句带否定开头」且「这轮场景和上一轮不同」——同一场景被否掉不叫答偏，
+       那是没答到点上，另说。 */
+    var lead = '';
+    var rawS = String(raw || '').trim();
+    if (SV_CORRECT_HEAD.test(rawS) && prevSv && (Date.now() - prevSv.ts) < 120000 &&
+      prevSv.name && prevSv.name !== r.name) {
+      lead = '<div class="sv-lead">刚才答偏了：我拿「' + esc(prevSv.name) +
+        '」的框子接的，其实你问的是另一件事。</div>';
+    }
+    /* 承接上一轮的语境：用户先问「双十一怎么玩京东」、补一句「我要了解京东」时，
+       这一句本身没有「双十一」三个字，但答案不该丢掉它 —— 双十一问京东和平时问京东
+       是两套答案。这里把上一轮的大促名带进来，不重问一遍。 */
+    if (!lead && r.scene === 'playbook' && prevSv && prevSv.text &&
+      (Date.now() - prevSv.ts) < 300000) {
+      var promoInPrev = String(prevSv.text).match(/双十一|双11|618|年货节|大促|预售/);
+      var promoInRaw = rawS.match(/双十一|双11|618|年货节|大促|预售/);
+      if (promoInPrev && !promoInRaw) {
+        lead = '<div class="sv-lead">接着你上一条说的「' + esc(promoInPrev[0]) + '」来讲：</div>';
+      }
+    }
+    addAIMessage(aiBubble(lead + SV.chatHtml(r, (headers || regionLine) ? opts : null)));
+    lastChoices = choices.length ? { items: choices.slice(), ts: Date.now() } : null;
+    /* 记住这一轮的场景与子应答，供 A/B 连环点回来时直出，不走云端。
+       name 存下来是为了下一句「不是，我要…」时能说出「我拿哪个框子接的」。 */
+    lastSV = (r && r.scene) ? { scene: r.scene, name: r.name || '', followups: r.followups || {} } : null;
+    prevSv = { name: (r && r.name) || '', text: rawS.slice(0, 60), ts: Date.now() };
+    scrollChat();
+  }
+
+  /**
+   * A/B 连环：点上一轮生存卡的选项（或手打同一句），命中最后一轮的 followups 就直出子应答。
+   * 必须在通用意图判断之前拦截——否则「教我怎么辨别中介合同陷阱」会被场景识别再抢成一张新卡。
+   * 命中后清空状态；未命中也清 lastSV，避免陈旧场景误伤后续消息。
+   * @return {boolean} 已接管则 true
+   */
+  function svFollowup(raw) {
+    if (!SV || !lastSV || !lastSV.followups) { return false; }
+    var key = String(raw || '').trim();
+    var ans = lastSV.followups[key];
+    lastSV = null;
+    lastChoices = null;
+    if (!ans) { return false; }
+    addAIMessage(aiBubble(SV.followupHtml(ans)));
+    scrollChat();
+    return true;
+  }
+
+  /** ⌨ 快捷键速查：按「?」或点输入框上方的「⌨ 快捷键」chip 唤起。
+   *  界面要让人找得到快捷键——只写在文档里等于没有。 */
+  function showKbdHelp() {
+    var rows = [
+      ['/', '聚焦输入框，不用鼠标去点'],
+      ['?', '打开这张速查卡'],
+      ['↑ ↓', '输入框里回翻上一条 / 下一条发过的话'],
+      ['Esc', '关掉当前弹层'],
+      ['Enter', '发送']
+    ];
+    var h = '<div class="kbd-head">⌨ 键盘快捷键</div>';
+    for (var i = 0; i < rows.length; i++) {
+      h += '<div class="kbd-row"><span class="kbd">' + esc(rows[i][0]) + '</span>' +
+        '<span class="kbd-desc">' + esc(rows[i][1]) + '</span></div>';
+    }
+    h += '<div class="kbd-foot">按「?」随时唤起这张卡。</div>';
+    addAIMessage(aiBubble(h));
+    scrollChat();
+  }
+
+  /* ---- 省钱助手面板里的「物价雷达」页签 ----
+     聊天里那套判定有了，但很多人是直接翻面板的：页签里放同一个试算框 +
+     整张基准表。两条路共用同一份 BASELINES、同一套 analyze 判定，
+     不存在「面板一套价、聊天另一套价」。 */
+
+  /** 面板里的地域尺子：只影响这个页签的展示与试算，不动账本、不改聊天里的历史 */
+  var priceHubRegion = 'home';
+
+  /** 页签内容：试算框（结果就地渲染，不进聊天流）+ 按渠道分组的基准表 */
+  function priceHubHtml() {
+    if (!PRICE) {
+      return '<div class="pr-hub-hint">物价雷达模块没加载起来，其他页签不受影响，刷新页面可恢复。</div>';
+    }
+    var curDet = REGION ? REGION.preset(priceHubRegion) : null;
+    var h = '<div class="pr-hub-head">聊天里问「贵不贵」用的就是这台雷达：输入一句话就地试算，只对标基准，不动你的账本。</div>';
+    /* 地域尺子：四个档位直接点，比让人打「我在北京」快；
+       换档只换尺子，不换结论口径（结论永远写「基准：xx · 经验区间」）。 */
+    if (REGION && REGION.PRESETS) {
+      h += '<div class="pr-hub-region"><span class="pr-hub-region-l">📍 用哪把尺子</span>';
+      for (var ri = 0; ri < REGION.PRESETS.length; ri++) {
+        var rp = REGION.PRESETS[ri];
+        h += '<button type="button" class="pr-hub-chip' +
+          (rp.key === priceHubRegion ? ' on' : '') + '" data-pr-region="' + esc(rp.key) + '">' +
+          esc(rp.label) + '</button>';
+      }
+      h += '</div>';
+      h += '<div class="pr-hub-region-note">' + esc(REGION.say(curDet)) +
+        '。换城市时整条基准带按等级折算，结论也跟着变。</div>';
+    }
+    h += '<div class="pr-hub-form">' +
+      '<input id="prHubInput" class="pr-hub-input" type="text" ' +
+      'placeholder="比如：排骨 35 一斤 / 电费 180 / 房租 1800" aria-label="物价试算输入">' +
+      '<button type="button" class="pr-hub-go" data-pr-go="1">算一下</button>' +
+      '</div>';
+    h += '<div id="prHubOut"><div class="pr-hub-hint">算完给四档结论（便宜 / 正常 / 偏贵 / 离谱）+ 避坑提示；没说数量会先问你。</div></div>';
+    /* 基准表按渠道分组：买肉去菜市场、打印去打印店，分组比一张长表好翻 */
+    var groups = {}, order = [];
+    for (var i = 0; i < PRICE.BASELINES.length; i++) {
+      var e = PRICE.BASELINES[i];
+      var ch = e.channel || '其他';
+      if (!groups[ch]) { groups[ch] = []; order.push(ch); }
+      groups[ch].push(e);
+    }
+    h += '<div class="pr-hub-sub">基准表 · ' + PRICE.BASELINES.length +
+      ' 类 · ' + esc(REGION ? REGION.label(curDet) : '本地') +
+      ' 经验区间，不联网、不保证商家当下价格</div>';
+    for (i = 0; i < order.length; i++) {
+      var list = groups[order[i]];
+      h += '<div class="pr-hub-cat">' + esc(order[i]) + '</div><div class="pr-hub-rows">';
+      for (var j = 0; j < list.length; j++) {
+        var b = list[j];
+        var rl = (REGION && curDet) ? REGION.scale(b.low, b.high, curDet) : { low: b.low, high: b.high };
+        h += '<div class="pr-hub-row"><span class="pr-hub-item">' + esc(b.name) +
+          '</span><span class="pr-hub-band">' + PRICE.fmt(rl.low) + ' ~ ' +
+          PRICE.fmt(rl.high) + ' 元/' + esc(b.unit) + '</span></div>';
+      }
+      h += '</div>';
+    }
+    return h;
+  }
+
+  /** 页签内试算：接管顺序与聊天一致（生存场景 → 单价判定），结果就地渲染 */
+  function priceHubCalc() {
+    var out = $('prHubOut');
+    var inp = $('prHubInput');
+    if (!out || !inp) { return; }
+    var raw = String(inp.value || '').trim();
+    if (!raw) {
+      out.innerHTML = '<div class="pr-hub-hint">先说一句：买了什么、花了多少（比如「猪肉 25 一斤」「电费 180」）。</div>';
+      return;
+    }
+    if (!PRICE) {
+      out.innerHTML = '<div class="pr-hub-hint">物价雷达模块没加载起来，刷新页面再试。</div>';
+      return;
+    }
+    /* 面板里选的尺子：换档只换基准带，算法一字不改（同一个 analyze） */
+    var hbDet = REGION ? REGION.preset(priceHubRegion) : null;
+    var hbBand = REGION ? REGION.band(hbDet) : null;
+    /* 场景类（房租/水电/通勤/数码/衣服/买药）优先 —— 与聊天 priceTakeOver 同序 */
+    if (SV && typeof SV.fromText === 'function') {
+      var sr = null;
+      try { sr = SV.fromText(raw); } catch (e) { sr = null; }
+      if (sr && sr.ok) {
+        var srNote = SV.say(sr);
+        if (REGION && hbDet) {
+          var srReg = REGION.sceneNote(sr.scene, hbDet);
+          if (srReg) { srNote += '\n' + srReg; }
+        }
+        out.innerHTML = '<div class="pr-card sr-card sr-' + esc(sr.scene) + '">' +
+          SV.cardHtml(sr) + '</div><div class="pr-hub-note">' + esc(srNote) + '</div>';
+        return;
+      }
+    }
+    var hit = (typeof PRICE.looksLikePriceAsk === 'function') ? PRICE.looksLikePriceAsk(raw) : null;
+    if (!hit) {
+      /* 面板里的框是明摆着的试算框，比聊天宽松：聊天里「猪肉 25 一斤」没问句该去记账，
+         这里用户就是来算的 —— 直接走 parse，认出品类就给结论，不必非带「贵不贵」。 */
+      var p0 = (typeof PRICE.parse === 'function') ? PRICE.parse(raw) : null;
+      if (p0 && p0.item && p0.total !== null) {
+        var r0 = priceAnalyze(p0, hbBand);
+        if (r0.ok) {
+          out.innerHTML = '<div class="pr-card">' + PRICE.cardHtml(r0) + '</div>' +
+            '<div class="pr-hub-note">' + esc(PRICE.say(r0)) + '</div>';
+        } else {
+          out.innerHTML = '<div class="pr-hub-hint">「' + esc(p0.entry.name) + ' ' +
+            PRICE.fmt(p0.total) + ' 元」——还差一个数：买了多少' + esc(p0.entry.unit) +
+            '？补上量再点「算一下」（比如「' + esc(p0.entry.name) + ' ' +
+            PRICE.fmt(p0.total) + ' 2' + esc(p0.entry.unit) + '」）。</div>';
+        }
+        return;
+      }
+      if (p0 && p0.item && p0.entry) {
+        /* 认出了品类但没说价：给参考线 */
+        out.innerHTML = '<div class="pr-hub-note">' + esc(PRICE.bandSay(p0.entry, hbBand)) + '</div>';
+        return;
+      }
+      out.innerHTML = '<div class="pr-hub-hint">没认出这句。照「物品 价格 数量单位」说，或问「XX 贵不贵」「房租 1800」。</div>';
+      return;
+    }
+    var p = hit.parsed;
+    if (hit.kind === 'band') {
+      /* 只问「多少钱算贵」：给参考线，让他把实际价说出来 */
+      out.innerHTML = '<div class="pr-hub-note">' + esc(PRICE.bandSay(p.entry, hbBand)) + '</div>';
+      return;
+    }
+    if (hit.kind === 'ask') {
+      var ra = priceAnalyze(p, hbBand);
+      if (!ra.ok) {
+        /* 缺数量：就地追问，不往聊天里塞问题 */
+        out.innerHTML = '<div class="pr-hub-hint">「' + esc(p.entry.name) + ' ' +
+          PRICE.fmt(p.total) + ' 元」——还差一个数：买了多少' + esc(p.entry.unit) +
+          '？补上量再点「算一下」（比如「' + esc(p.entry.name) + ' ' +
+          PRICE.fmt(p.total) + ' 2' + esc(p.entry.unit) + '」）。</div>';
+        return;
+      }
+      out.innerHTML = '<div class="pr-card">' + PRICE.cardHtml(ra) + '</div>' +
+        '<div class="pr-hub-note">' + esc(PRICE.say(ra)) + '</div>';
+      return;
+    }
+    /* compute：数量总价都齐，直接算 */
+    var r = priceAnalyze(p, hbBand);
+    out.innerHTML = '<div class="pr-card">' + PRICE.cardHtml(r) + '</div>' +
+      '<div class="pr-hub-note">' + esc(PRICE.say(r)) + '</div>';
+  }
+
+  /**
+   * 物价雷达的补充场景（租房 / 水电 / 通勤 / 数码 / 衣服 / 买药）。
+   * 不是另一个入口：由 priceTakeOver 先调它，场景不命中才走单价判定。
+   * 房租这类问题的价值不在「单价贵不贵」，而在于「真实月开销」和「签约那天要掏多少」，
+   * 所以先问这个。门控在 SV.detect 内部：带金额又没有咨询口吻的一律放行，交回记账。
+   * @return {boolean} 已接管则 true
+   */
+  function priceSceneTakeOver(raw) {
+    if (!SV || typeof SV.fromText !== 'function') { return false; }
+    var r;
+    try { r = SV.fromText(raw); } catch (e) { return false; }
+    if (!r || !r.ok) { return false; }
+    logIntent(raw, 'survival', 0.93, 'high', null, 'sv-' + r.scene);
+    /* 上一轮的物价追问作废：接下来这句是房租/通勤，不是「多少度」 */
+    pricePending = null;
+    pricePendingRegion = null;
+    pendingClear();
+    withLocalTrace(svPlan(r), function () { svAnswer(r, raw); });
+    return true;
+  }
+
+  /**
+   * 追问后的续接：「电费 180 块贵不贵」→「300 度」。
+   * 只认纯数量回答（≤24 字、不含评价词），否则清掉 pending 当新话题。
+   * @return {boolean} 已接管则 true
+   */
+  function priceResume(raw) {
+    if (!pricePending || !PRICE) { return false; }
+    if ((Date.now() - pricePending.ts) > 120000) { pricePending = null; pricePendingRegion = null; return false; }
+    var q = PRICE.parseQty(raw);
+    var stillAsk = PRICE.looksLikePriceAsk(raw);
+    var pure = q && !stillAsk && String(raw).replace(/\s+/g, '').length <= 24;
+    if (!pure) { pricePending = null; pricePendingRegion = null; return false; }
+    var entry = priceEntryById(pricePending.id);
+    var total = pricePending.total;
+    var regSaved = pricePendingRegion;
+    pricePending = null;
+    pricePendingRegion = null;
+    if (!entry) { return false; }
+    var parsed = { item: entry.name, entry: entry, qty: q.qty, unit: q.unit, total: total, perUnit: false };
+    /* 地域沿用上一句的判断（「电费 180 贵吗」→「300 度」里那句没有地名） */
+    var r = priceAnalyze(parsed, regSaved);
+    logIntent(raw, 'price', 0.95, 'high', null, 'radar-resume-' + (r.ok ? r.level : r.code));
+    withLocalTrace(pricePlan(r, parsed), function () { priceAnswer(r, total); });
+    return true;
+  }
+
   /**
    * 消息主入口（C7）：命令 -> 本地意图分类 -> pending 续接 -> 高置信本地执行
    * -> 低置信云端二次裁决 -> 兜底 L3 澄清。
@@ -16847,6 +19033,10 @@
       return;
     }
 
+    /* ①.01 生存场景 A/B 连环：点上一轮的选项 / 手打同一句，直出子应答。
+       必须在通用意图判断之前拦截，否则会被场景识别再抢成一张新卡。 */
+    if (svFollowup(raw)) { return; }
+
     /* P0：纠错待补金额——上一轮问「要改成多少」，这一句若为纯数字，直接改上一笔金额（不新增账单） */
     if (correctionPending && (Date.now() - correctionPending.ts) < 120000) {
       var cAmts = NLP.findAmounts(raw);
@@ -16866,12 +19056,60 @@
       correctionPending = null; /* 不是纯金额，清掉，正常处理 */
     }
 
+    /* ①.02 物价雷达续接：上一轮问了「多少斤 / 多少度」，这一句就是答案 */
+    if (priceResume(raw)) { return; }
+
+    /* ①.03 情绪树洞（模式三）：超支崩溃 / 冲动消费 / 深夜 emo —— 先接情绪，不记账、不算账。
+       自动档只在「没有明确开销场景」时接管：说「房租 1500 好焦虑」还是先把账算清；
+       纯情绪（「一冲动买了没用的东西，好废」）才走树洞。
+       手动锁「树洞」则无视场景一律接 —— 用户按了这颗键就是在说「我现在不要算账」，
+       这时候还拿房租把他拽回去算，比答错更伤。
+       平台专项：记账工具里，情绪句即便带金额也不自动入账 ——
+       情绪崩溃时被硬塞一张账单，比不记这一笔更伤人。 */
+    var vmNow = voiceModeKey();
+    if (VOICE && !VOICE.missing && VOICE.isComfort(raw, null, vmNow) && !comfortExit(raw)) {
+      var cfScene = null;
+      if (SV && typeof SV.fromText === 'function') {
+        try { cfScene = SV.fromText(raw); } catch (e) { cfScene = null; }
+      }
+      if (!cfScene || vmNow === 'comfort') {
+        logIntent(raw, 'comfort', 0.9, 'high', null, 'voice-comfort');
+        /* 树洞不是终点。用户原话：「这说完也要分析呀」——
+           只说「别自责」等于把人撂在那儿，得留两个真能点的出口。
+           愿望句（想去 / 想买）不能塞「钱已经花了」那套安慰，文案分型在 voice.js 里做；
+           这里只负责把出口摆对：想去旅行 → 攒钱目标；情绪 → 账单分析 / 预算。 */
+        var cfWish = (typeof VOICE.isWish === 'function') && VOICE.isWish(raw);
+        var cfPicks = cfWish
+          ? ['我想攒钱去旅行', '看看这月的账单分析']
+          : ['看看这月的账单分析', '设置预算'];
+        addAIMessage(aiBubble(esc(VOICE.comfort({ raw: raw, tone: toneKey(getSettings().tone) }))) +
+          choiceButtonsHtml(cfPicks));
+        lastChoices = { items: cfPicks.slice(), ts: Date.now() };
+        lastSV = null;
+        pendingClear();
+        scrollChat();
+        return;
+      }
+    }
+
+    /* ①.04 物价雷达：问「贵不贵」是问句，不是流水。
+       必须排在命令匹配之前 —— 命令层的「带金额一律记账」会把
+       「两个苹果 12 块，贵不贵」记成一笔假账，而这句其实一个字都没说要记账。
+       内部先走补充场景（房租 2000 贵吗 → 真实月开销 + 签约现金流），
+       不命中再判单价四档；门控都在各自 detect 里，带金额又没咨询口吻的一律放行回记账。 */
+    if (priceTakeOver(raw)) { return; }
+
     /* ① 明确命令（最高优先级；commandMatch 内部已实现「带金额一律记账」的 hasAmount 门控） */
     var cmd = commandMatch(raw);
     if (cmd) {
       pendingClear();
       logIntent(raw, 'command', 0.99, 'high', null, cmd.key);
-      cmd.fn();
+      /* 固定回答也要留下判定痕迹：用户要能看出「这是规则命中，不是模型编的」 */
+      if (localCmdNeedsTrace(cmd)) {
+        withLocalTrace(localCmdPlan(cmd), function () { cmd.fn(); });
+      } else {
+        cmd.fn();
+      }
       return;
     }
 
@@ -16900,7 +19138,8 @@
       return;
     }
 
-    localAssistantLoop(raw);
+    /* 本地规则链路同样是「回答」：先摊开判定依据再出结果 */
+    withLocalTrace(localPlanOf(raw), function () { localAssistantLoop(raw); });
   }
 
   /**
@@ -16985,9 +19224,17 @@
   function handleSend(text) {
     var raw = String(text || '').trim();
     if (!raw) { return; }
+    /* 「?」快捷键速查：内部命令（双下划线开头），不进气泡历史、不进发送历史 */
+    if (raw === '__kbdHelp') { showKbdHelp(); return; }
     /* 「要 / 第一个 / 2」这类含糊确认：映射成上一轮选项里的完整一句，
        用户气泡也显示映射后的句子 —— 否则 AI 问二选一、他回「要」，两边都接不住。 */
     raw = resolveChoiceEcho(raw);
+    /* 发送历史（供输入框 ↑ / ↓ 回翻）：去重、只留最近 30 条、内部命令不入册 */
+    if (chatHistory[chatHistory.length - 1] !== raw) {
+      chatHistory.push(raw);
+      if (chatHistory.length > 30) { chatHistory.shift(); }
+    }
+    chatHistoryIdx = -1;
     /* 建议引擎的「最近行为」输入：只留内存，不落盘 */
     try { AGENT_SUGGEST.remember(raw, ''); } catch (e) { /* 引擎未就绪时忽略 */ }
     addUserMessage(raw);
@@ -17193,6 +19440,15 @@
         seen[c.cmd] = 1;
         picked.push(c);
       }
+      /* 快捷键速查常驻一枚（不占 4 枚个性化名额）：键盘「?」只是第二通道，
+         界面上必须也有入口，否则快捷键等于没写。 */
+      var hasKbd = false;
+      for (i = 0; i < picked.length; i++) {
+        if (picked[i].cmd === '__kbdHelp') { hasKbd = true; break; }
+      }
+      if (!hasKbd) {
+        picked.push({ id: 'kbd', label: '⌨ 快捷键', cmd: '__kbdHelp', why: '按 ? 也能打开', w: 1 });
+      }
       return picked;
     }
 
@@ -17278,10 +19534,18 @@
       var opts = clarifyOptions(raw);
       clarifyAt = Date.now();
       var lead = '这句我不敢乱猜，你点一个我马上办：';
-      try {
+      /* 澄清同样要留下判定痕迹：让用户看到「为什么问」而不是「它又不懂了」 */
+      withLocalTrace({
+        think: '这句话我没把握，不猜 —— 先让你选一个方向',
+        steps: [
+          ['判断', '意图不明确（' + opts.length + ' 种可能）'],
+          ['处理', '给可点选项，不自己编一个'],
+          ['说明', '猜错会写脏账，多问一句比记错便宜']
+        ]
+      }, function () {
         addAIMessage(aiBubble(esc(lead)) + choiceButtonsHtml(opts));
         AGENT_METRICS.mark('clarify_show', { q: String(raw).slice(0, 12), n: opts.length });
-      } catch (e) { return false; }
+      });
       return true;
     }
 
@@ -17315,8 +19579,29 @@
   global.AJ_NAV_RESOLVE = function (q) { return AGENT_NAV.resolve(q); };
   global.AJ_SUGGEST_LIST = function () { return AGENT_SUGGEST.list(); };
   global.AJ_KB_SEARCH = function (q, scope) { return AGENT_KB.search(q, scope || 'all'); };
+  global.AJ_KB_TOPIC = function (q) {
+    var sp = [];
+    try { sp = (agentSnapshot().topCategories) || []; } catch (e) {}
+    return AGENT_KB.topic(q, sp);
+  };
+  /** 直接跑 search_kb 工具，看模型实际会收到什么（topic 骨架 / note / 挂哪些卡） */
+  global.AJ_KB_TOOL = function (q) {
+    var t = agentTool('search_kb');
+    return t ? t.run({ query: q }) : null;
+  };
+  /* 回复后处理与「下一步」兜底：验收要能直接看截断线和补出来的选项 */
+  global.AJ_VOICE = function (t) { return agentVoice(t); };
+  /** 富文本渲染（列表 / 加粗 / 段间距）：验收要看真渲染出来的 HTML，不是看源文本 */
+  global.AJ_MD = function (t) { return agentTextHtml(t); };
+  /** 计划解析：模型把 final 写成多行列表（JSON 里带裸换行）时能不能救回来 */
+  global.AJ_PARSE_PLAN = function (t) { return agentParsePlan(t); };
+  /** 记账后的省钱雷达：传账单品类（餐饮 / 购物 / …），看会挂哪两张卡 */
+  global.AJ_RADAR = function (cats, raw) { return agentSpendRadar(cats || ['餐饮'], raw || ''); };
+  global.AJ_NEXT_CHOICES = function (hits) { return agentNextChoices(hits || []); };
   global.AJ_KB_STATS = function () { return AGENT_KB.stats(); };
   global.AJ_KB_CARD = function (q, scope) { return kbCardHtml(AGENT_KB.search(q, scope || 'all')); };
+  /** 用现成的 hits 渲染资料卡（话题骨架挂的是分类代表条目，不是 search 的零散命中） */
+  global.AJ_KB_CARD_OF = function (hits) { return kbCardHtml(hits || []); };
 
   /* ---- Dim3：按时间/预算生成动态快捷 chips + 会话级主动提示 ---- */
   var proactiveShown = false;
@@ -17699,15 +19984,16 @@
   /* 结束页「已学会」清单：与 onboard.js 的 step id 一一对应。
      v3 起每步都覆盖一整个页面，清单也按页列全（10 条），只在结束页汇总一次。 */
   var OB_LEARN = [
-    { id: 'bill', label: '一句话 / 语音 / 截图记账' },
+    { id: 'bill', label: '一句话 / 语音 / 截图 / 记收入' },
+    { id: 'aihelp', label: '「能做什么」32 个功能直达' },
     { id: 'budget', label: '看懂剩余预算与日均' },
     { id: 'detail', label: '翻流水、筛条件、分析账单' },
     { id: 'wish', label: '想买先放冷静期' },
-    { id: 'save', label: '省钱雷达 + 155 条图谱' },
+    { id: 'save', label: '省钱中心 + 155 条图谱' },
     { id: 'dazai', label: '凑单计算器、审批宝' },
     { id: 'coach', label: '性格测试、建议、理财学院' },
     { id: 'goals', label: '攒钱目标与存钱罐' },
-    { id: 'settings', label: '预算、主题、数据备份' }
+    { id: 'settings', label: '界面、宠物、通知、账号、备份' }
   ];
 
   function obApi() { return global.AJ.onboard || null; }
@@ -17928,9 +20214,17 @@
   }
 
   function obDots(total, cur) {
+    var ob = obApi();
+    var state = null;
+    try { state = ob ? ob.load() : null; } catch (e) { state = null; }
     var h = '';
     for (var i = 1; i <= total; i++) {
-      h += '<i class="' + (i <= cur ? 'on' : '') + '"></i>';
+      var cls = (i <= cur ? 'on' : '');
+      /* 跳过的步骤在进度条上留一个空心环：跳过和「下一步」都只是翻页，
+         不在进度条上留痕，用户根本分不清自己刚才点的是哪一个。 */
+      var st = (ob && ob.STEPS) ? ob.STEPS[i] : null;
+      if (st && state && ob.wasSkipped(state, st.id)) { cls += (cls ? ' ' : '') + 'skip'; }
+      h += '<i class="' + cls + '"></i>';
     }
     return h;
   }
@@ -17948,10 +20242,11 @@
     h += '<h3 class="ob-title">' + esc(step.title) + '</h3>';
     h += '<p class="ob-body">' + esc(body) + '</p>';
     /* 这页还能做什么：一页一次讲全，避免用户点十几下还看不全功能 */
-    if (step.points && step.points.length) {
+    var pts = (mode === 'simple' && step.pointsSimple) ? step.pointsSimple : step.points;
+    if (pts && pts.length) {
       h += '<ul class="ob-mini">';
-      for (var k = 0; k < step.points.length; k++) {
-        h += '<li><b>' + esc(step.points[k][0]) + '</b><small>' + esc(step.points[k][1]) + '</small></li>';
+      for (var k = 0; k < pts.length; k++) {
+        h += '<li><b>' + esc(pts[k][0]) + '</b><small>' + esc(pts[k][1]) + '</small></li>';
       }
       h += '</ul>';
     }
@@ -18250,6 +20545,28 @@
     obShowIndex(i + 1);
   }
 
+  /** 跳过这步的短暂回执。
+      「跳过这步」和「下一步」都只是翻页（跳过只是多记一条 skippedSteps），
+      没有回执时两者看起来完全一样——用户实测反馈「两个按钮效果都一样」，
+      所以这里补一条 2 秒的提示 + 进度条空心环（见 obDots）。 */
+  function obSkipFlash() {
+    var pop = obEls && obEls.pop;
+    if (!pop) { return; }
+    var old = pop.querySelector('.ob-skipnote');
+    if (old && old.parentNode) { old.parentNode.removeChild(old); }
+    var n = DOC.createElement('p');
+    n.className = 'ob-skipnote';
+    n.textContent = '已跳过这步 · 之后能在「设置 → 新手引导」重看';
+    var btns = pop.querySelector('.ob-btns');
+    if (btns && btns.parentNode) { btns.parentNode.insertBefore(n, btns.nextSibling); }
+    else { pop.appendChild(n); }
+    setTimeout(function () {
+      if (!n.parentNode) { return; }
+      n.className = 'ob-skipnote out';
+      setTimeout(function () { if (n.parentNode) { n.parentNode.removeChild(n); } }, 320);
+    }, 2200);
+  }
+
   function obSkipStep() {
     var ob = obApi();
     if (!ob) { return; }
@@ -18261,6 +20578,7 @@
     ob.skipStep(mode);
     if (ob.status(mode) === 'done') { obEndGuide('done'); return; }
     obShowIndex(ob.stepIndex(mode));
+    obSkipFlash();   /* 必须在上面的重渲染之后，否则会被 pop.innerHTML 冲掉 */
   }
 
   function obJumpToStepId(id) {
@@ -18472,6 +20790,15 @@
   }
 
   function bindEvents() {
+    /* 说话方式键（聊天区 / 设置页共用）：内容随渲染重建，所以委托到 document 上。
+       只认 [data-vm]，不认整条 .vm-bar —— 点空白处不该切档。 */
+    DOC.addEventListener('click', function (e) {
+      var btn = (e.target && e.target.closest) ? e.target.closest('[data-vm]') : null;
+      if (!btn) { return; }
+      e.preventDefault();
+      setVoiceMode(btn.getAttribute('data-vm'));
+    });
+
     $('btnSend').addEventListener('click', function () {
       handleSend($('chatInput').value);
     });
@@ -18480,6 +20807,28 @@
       if (e.key === 'Enter' || e.keyCode === 13) {
         e.preventDefault();
         handleSend($('chatInput').value);
+        return;
+      }
+      /* ↑ / ↓：单行输入框里回翻发送历史。↑ 从最新一条往回走；
+         ↓ 走到最后一条之后再按一次 = 清空回到「没翻历史」的状态。 */
+      if (e.key === 'ArrowUp' || e.keyCode === 38) {
+        if (!chatHistory.length) { return; }
+        e.preventDefault();
+        if (chatHistoryIdx === -1) { chatHistoryIdx = chatHistory.length - 1; }
+        else if (chatHistoryIdx > 0) { chatHistoryIdx--; }
+        $('chatInput').value = chatHistory[chatHistoryIdx];
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.keyCode === 40) {
+        if (chatHistoryIdx === -1) { return; }
+        e.preventDefault();
+        chatHistoryIdx++;
+        if (chatHistoryIdx >= chatHistory.length) {
+          chatHistoryIdx = -1;
+          $('chatInput').value = '';
+        } else {
+          $('chatInput').value = chatHistory[chatHistoryIdx];
+        }
       }
     });
 
@@ -18530,6 +20879,26 @@
         pendingAnswer(pendEl.getAttribute('data-val'), pendEl.getAttribute('data-pend'));
         return;
       }
+      /* ---- 物价雷达补充场景卡：三段 tab（透视 / 常识 / 避坑）----
+         纯前端切换，不走 handleSend：切 tab 是「换一面看同一笔账」，不是发新消息。 */
+      var srTab = e.target.closest ? e.target.closest('.sr-tab') : null;
+      if (srTab) {
+        var srCard = srTab.closest('.sr-card');
+        if (srCard) {
+          var srBtns = srCard.querySelectorAll('.sr-tab');
+          var srPanes = srCard.querySelectorAll('.sr-pane');
+          var srIdx = parseInt(srTab.getAttribute('data-srtab'), 10) || 0;
+          for (var sb = 0; sb < srBtns.length; sb++) {
+            srBtns[sb].className = 'sr-tab' + (sb === srIdx ? ' on' : '');
+            srBtns[sb].setAttribute('aria-selected', sb === srIdx ? 'true' : 'false');
+          }
+          for (var sp = 0; sp < srPanes.length; sp++) {
+            srPanes[sp].hidden = sp !== srIdx;
+          }
+        }
+        return;
+      }
+
       /* ---- 知识跳转卡：点一下直接打开对应课节 / 省钱条目 / 优惠日历 / 价格带 / 黑话 ---- */
       var kbJump = e.target.closest ? e.target.closest('[data-kb-lesson],[data-kb-entry],[data-kb-deal],[data-kb-band],[data-kb-term],[data-kb-faq],[data-kb-settings],[data-kb-apppanel],[data-kb-guide]') : null;
       if (kbJump) {
@@ -18691,6 +21060,24 @@
         resolveCooldown(false);
       } else if (name === 'cool-next') {
         if (cooling) { renderCoolingQuestion(); }
+      } else if (name === 'cool-skip-quiz') {
+        /* 跳过问答直接记：用户明确不想被问三题。
+           先把卡片收口成一句「已跳过」——否则这张卡会一直挂着「开始冷静问答」，
+           看起来像没点成功；再走 coolingRecord（内部 commitBill + 出收据卡）。 */
+        var skipBox = act.closest ? act.closest('.dc-actions') : null;
+        var skipItem = cooling ? cooling.item : '这笔';
+        if (skipBox) {
+          skipBox.innerHTML = '<div class="cool-note">已跳过问答，「' + esc(skipItem) + '」直接记上了。</div>';
+        }
+        coolingRecord();
+      } else if (name === 'cool-quit') {
+        /* 最轻的出口：不答题也不买了。等同结论卡的「先不买了」——
+           钱进「省下的钱」，东西放进心愿单晾 48 小时。 */
+        var quitBox = act.closest ? act.closest('.dc-actions') : null;
+        if (quitBox) {
+          quitBox.innerHTML = '<div class="cool-note">好，那先不买。已经放进心愿单晾着。</div>';
+        }
+        coolingSkip();
       } else if (name === 'cool-answer') {
         coolingAnswer(act.getAttribute('data-val'), act);
       } else if (name === 'cool-record') {
@@ -18710,9 +21097,14 @@
           true
         );
       } else if (name === 'cool-dismiss') {
-        /* 已入账场景的结论卡「已经记下了」确认按钮：只清会话态、给一句提醒，
-           绝不二次 commit（防御性去重护栏 commitBill 也兜底）。 */
+        /* 已入账场景的确认出口（intro 卡的「跳过问答」/ 结论卡的「已经记下了」）：
+           只清会话态、给一句提醒，绝不二次 commit（commitBill 里还有去重护栏兜底）。
+           顺带把卡片按钮收口成一行字——留着的按钮点了没反应，比没有按钮更像故障。 */
         if (cooling) {
+          var disBox = act.closest ? act.closest('.dc-actions') : null;
+          if (disBox) {
+            disBox.innerHTML = '<div class="cool-note">好，这笔已经记上了。下次先晾 48 小时。</div>';
+          }
           addAIMessage(aiBubble('这笔已经帮你记上了，下次再冲动前先晾 48 小时～'));
           cooling = null;
         }
@@ -18775,6 +21167,33 @@
     $('btnAddGoal').addEventListener('click', openGoalModal);
     $('btnSettings').addEventListener('click', openSettingsPage);
     $('btnSaveSettings').addEventListener('click', saveSettings);
+    /* 2026-11-04：分类预算的两个快捷键——逐行「自动」清回自动，底部「重置」全部清回 */
+    if ($('catbList')) {
+      $('catbList').addEventListener('click', function (e) {
+        var b = (e.target && e.target.closest) ? e.target.closest('[data-catb-auto]') : null;
+        if (!b) { return; }
+        e.preventDefault();
+        var cat = b.getAttribute('data-catb-auto');
+        var inp = document.querySelector('[data-catb-input="' + cat + '"]');
+        if (inp) { inp.value = ''; }
+        saveSettings({ quiet: true, toast: '「' + cat + '」已恢复自动额度' });
+      });
+      /* 实时反馈：正在输入就刷新这行的灰字与「自动」键，不必等保存 */
+      $('catbList').addEventListener('input', function (e) {
+        var inp = (e.target && e.target.closest) ? e.target.closest('[data-catb-input]') : null;
+        if (!inp) { return; }
+        var cat = inp.getAttribute('data-catb-input');
+        var ovB = getOverview();
+        fillCatBudgetHint(cat, { totalNow: Number(state.budget.total) || 0, spentMap: (ovB.cycleAgg && ovB.cycleAgg.byCategory) || {} });
+      });
+    }
+    if ($('btnCatbReset')) {
+      $('btnCatbReset').addEventListener('click', function () {
+        var ins = document.querySelectorAll('[data-catb-input]');
+        for (var ri = 0; ri < ins.length; ri++) { ins[ri].value = ''; }
+        saveSettings({ quiet: true, toast: '已全部重置为自动比例' });
+      });
+    }
     $('btnCycleReset').addEventListener('click', restorePaydayCycle);
     $('btnSaveOcr').addEventListener('click', saveOcrCredentials);
     $('btnClearOcr').addEventListener('click', clearOcrCredentials);
@@ -18826,6 +21245,14 @@
     /* ---- 看板信息块的详情弹窗 ----
        理财课整行进弹窗（右侧 ↗ 仍是一步直达）；诊断 / 恩格尔 / 成就各开自己的详情。 */
     $('learnMini').addEventListener('click', function (e) {
+      /* 折叠开关优先：「展开全部 / 收起」不是条目，别走下面的详情弹窗 */
+      var more = (e.target && e.target.closest) ? e.target.closest('[data-learn-more]') : null;
+      if (more) {
+        e.preventDefault();
+        learnExpanded = !learnExpanded;
+        renderLearnCard();
+        return;
+      }
       var row = (e.target && e.target.closest) ? e.target.closest('[data-learn]') : null;
       if (!row) { return; }
       e.preventDefault();
@@ -18862,7 +21289,7 @@
       if (b) { switchSaveHub(b.getAttribute('data-hub-tab')); }
     });
     /* 页签行右缘渐隐开关（简洁版 styles.css 的 .hub-fade mask 配套）：
-       只在「7 个胶囊放不下且还没滚到最右」时挂类。页签是 7 个固定胶囊，
+       只在「8 个胶囊放不下且还没滚到最右」时挂类。页签是 8 个固定胶囊，
        scrollWidth 只随视口宽度/字号缩放变，监听 scroll + resize 即够；
        简洁版页签常驻可见，init 时首查一次即可生效。 */
     var hubTabsEl = $('hubTabs');
@@ -18887,6 +21314,35 @@
     /* ---- 省钱雷达：切 tab / 比价计算 / 导出日历 ---- */
     $('btnDealsCard').addEventListener('click', function () { openSaveHub('radar'); });
     $('dealsPane').addEventListener('click', function (e) {
+      /* 物价雷达页签的「算一下」：内容随页签整体重绘，只能委托到容器上 */
+      if (e.target.closest && e.target.closest('[data-pr-go]')) { priceHubCalc(); return; }
+      /* 地域尺子：换一档整页重绘（基准表与试算都跟着换），不碰聊天历史 */
+      var regBtn = e.target.closest ? e.target.closest('[data-pr-region]') : null;
+      if (regBtn) {
+        priceHubRegion = regBtn.getAttribute('data-pr-region') || 'home';
+        renderHubSheet();
+        return;
+      }
+      /* 省钱助手面板里的生存卡（房租/水电…）也用 .sr-card 三段 tab，
+         切 tab 是「换一面看同一笔账」，纯前端切换（聊天区那份在 chatListEl 里已处理，
+         这里补上让面板里的那份也能切）。 */
+      var srTab = e.target.closest ? e.target.closest('.sr-tab') : null;
+      if (srTab) {
+        var srCard = srTab.closest('.sr-card');
+        if (srCard) {
+          var srBtns = srCard.querySelectorAll('.sr-tab');
+          var srPanes = srCard.querySelectorAll('.sr-pane');
+          var srIdx = parseInt(srTab.getAttribute('data-srtab'), 10) || 0;
+          for (var sb = 0; sb < srBtns.length; sb++) {
+            srBtns[sb].className = 'sr-tab' + (sb === srIdx ? ' on' : '');
+            srBtns[sb].setAttribute('aria-selected', sb === srIdx ? 'true' : 'false');
+          }
+          for (var sp = 0; sp < srPanes.length; sp++) {
+            srPanes[sp].hidden = sp !== srIdx;
+          }
+        }
+        return;
+      }
       var del = e.target.closest ? e.target.closest('[data-del-row]') : null;
       if (del) {
         syncDealForm();
@@ -18945,6 +21401,12 @@
       if (t && t.classList && t.classList.contains('rs-pic')) { t.classList.add('is-broken'); }
     }, true);
     $('dealsPane').addEventListener('keydown', function (e) {
+      /* 物价雷达试算框：Enter 直接算，和「算一下」同一条路径 */
+      if (e.target && e.target.id === 'prHubInput' && (e.key === 'Enter' || e.keyCode === 13)) {
+        e.preventDefault();
+        priceHubCalc();
+        return;
+      }
       if (e.target && e.target.id === 'rsKw' && (e.key === 'Enter' || e.keyCode === 13)) {
         e.preventDefault();
         runRealSearch();
@@ -19472,6 +21934,21 @@
         if ($('billFilterMask') && !$('billFilterMask').hidden) { closeBillFilterSheet(); }
         if (!$('ocrMask').hidden) { closeOcrModal(); }
         if ($('modalMask').hidden && !$('settingsMask').hidden) { closeSettingsPage(); }
+        return;
+      }
+      /* ---- 快捷键（焦点在输入类元素上时不抢，避免把按键吃掉）----
+         「/」聚焦聊天输入框；「?」弹速查卡。速查卡本身也在界面上有入口
+         （输入框上方的「⌨ 快捷键」chip），键盘只是第二通道。 */
+      if (e.key === '/' || e.key === '?' || e.key === '？') {
+        var tK = e.target;
+        var isInput = tK && (tK.tagName === 'INPUT' || tK.tagName === 'TEXTAREA' || tK.isContentEditable);
+        if (isInput || e.ctrlKey || e.metaKey || e.altKey) { return; }
+        e.preventDefault();
+        if (e.key === '?') { showKbdHelp(); }
+        else {
+          var inp = $('chatInput');
+          if (inp) { inp.focus(); }
+        }
       }
     });
 
@@ -19640,8 +22117,8 @@
    *   pro    记账小管家   —— 参数化小人 + 绕行小猪 + 形象工坊，petpro.js
    * 数组顺序就是「换一只」按钮的循环顺序。
    */
-  var PET_SKIN_ORDER = ['azhang', 'sprite', 'pro'];
-  var PET_SKIN_NAME = { azhang: '阿账', sprite: '存钱罐精灵', pro: '记账小管家' };
+  var PET_SKIN_ORDER = ['azhang', 'sprite', 'pro', 'baobao'];
+  var PET_SKIN_NAME = { azhang: '阿账', sprite: '存钱罐精灵', pro: '记账小管家', baobao: '抱抱金' };
 
   /**
    * 当前宠物的显示名（聊天页标题 / 欢迎语 / AI 头像 aria / 系统提示共用）。
@@ -19667,7 +22144,7 @@
   function petSkin() {
     var st = getSettings();
     var s = st.mascot && st.mascot.skin;
-    return (s === 'sprite' || s === 'pro') ? s : 'azhang';
+    return (s === 'sprite' || s === 'pro' || s === 'baobao') ? s : 'azhang';
   }
 
   /**
@@ -20213,8 +22690,13 @@
      （2026-10 用户反馈：头像一点都不像）。运行时从 .aj-pet-face 的 background-image 抽本体图，
      不把 55KB 的 PNG 再打包一遍。 */
   var __azhangFaceCache = null;
+  /* 缓存要按皮肤分桶：贴纸皮肤下 .aj-pet-face 换成了「纸底 + 琥珀」那张图，
+     若沿用首次抽到的旧图，切完皮肤头像仍是绿叶子绿算盘（2026-11 修）。 */
+  var __azhangFaceKey = null;
   function azhangFaceSrc() {
-    if (__azhangFaceCache !== null) { return __azhangFaceCache; }
+    var key = '';
+    try { key = DOC.documentElement.getAttribute('data-skin') || ''; } catch (e) {}
+    if (__azhangFaceCache !== null && __azhangFaceKey === key) { return __azhangFaceCache; }
     var src = '';
     try {
       var d = document.createElement('div');
@@ -20227,6 +22709,7 @@
       if (m) { src = m[1]; }
     } catch (e) { src = ''; }
     __azhangFaceCache = src;
+    __azhangFaceKey = key;
     return src;
   }
   function azhangHeadSvg() {
@@ -20239,6 +22722,11 @@
     return '<svg class="azhang-head" viewBox="0 0 258 360" preserveAspectRatio="xMidYMid meet" ' +
       'style="display:block;width:100%;height:100%" role="img" aria-label="阿账">' +
       '<image href="' + src + '" xlink:href="' + src + '" x="0" y="0" width="258" height="360"/></svg>';
+  }
+
+  function mascotBarBaobaoHead() {
+    var pp = global.AJ && global.AJ.petPro;
+    return (pp && typeof pp._bbHead === 'function') ? pp._bbHead() : '';
   }
 
 function petRecallIcon() {
@@ -20256,6 +22744,7 @@ function petRecallIcon() {
       var prof = (pp && typeof pp._profile === 'function') ? pp._profile() : null;
       if (prof) { return mascotBarProHead(prof); }
     }
+    if (skin === 'baobao') { return mascotBarBaobaoHead(); }
     return azhangHeadSvg();
   }
 
@@ -20275,6 +22764,88 @@ function petRecallIcon() {
       petShow();
     });
     DOC.body.appendChild(btn);
+
+    /* 2026-11-03：收起小圆支持拖动。
+       用户反馈：键盘弹起后这颗写死在右下角的小圆正好压住发送键，
+       点「发送」实际点到的都是它 → 消息发不出去。
+       现在可以把它拖到任意位置并记住（localStorage），拖过的那一次不触发唤回。 */
+    (function enableRecallDrag() {
+      var KEY = 'ai_jizhang_pet_recall';
+      var drag = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
+
+      function clamp(x, y) {
+        var w = btn.offsetWidth || 42, h = btn.offsetHeight || 42;
+        var vw = global.innerWidth || 390, vh = global.innerHeight || 844;
+        return {
+          x: Math.min(Math.max(x, 4), Math.max(4, vw - w - 4)),
+          y: Math.min(Math.max(y, 4), Math.max(4, vh - h - 4))
+        };
+      }
+      function place(x, y) {
+        var p = clamp(x, y);
+        btn.style.left = p.x + 'px';
+        btn.style.top = p.y + 'px';
+        btn.style.right = 'auto';
+        btn.style.bottom = 'auto';
+      }
+      function restore() {
+        var saved = null;
+        try { saved = JSON.parse(global.localStorage.getItem(KEY) || 'null'); } catch (eR) { saved = null; }
+        if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+          place(saved.x, saved.y);
+        }
+      }
+
+      btn.addEventListener('pointerdown', function (e) {
+        if (btn.hidden) { return; }
+        var r = btn.getBoundingClientRect();
+        drag.on = true;
+        drag.moved = false;
+        drag.sx = e.clientX;
+        drag.sy = e.clientY;
+        drag.ox = r.left;
+        drag.oy = r.top;
+        try { btn.setPointerCapture(e.pointerId); } catch (eC) { /* 老内核忽略 */ }
+        btn.classList.add('dragging');
+      });
+      btn.addEventListener('pointermove', function (e) {
+        if (!drag.on) { return; }
+        var dx = e.clientX - drag.sx;
+        var dy = e.clientY - drag.sy;
+        /* 6px 内视为手抖，仍算点击 */
+        if (!drag.moved && Math.abs(dx) < 6 && Math.abs(dy) < 6) { return; }
+        drag.moved = true;
+        place(drag.ox + dx, drag.oy + dy);
+      });
+      btn.addEventListener('pointerup', endDrag);
+      btn.addEventListener('pointercancel', endDrag);
+      function endDrag() {
+        if (!drag.on) { return; }
+        drag.on = false;
+        btn.classList.remove('dragging');
+        if (!drag.moved) { return; }
+        var r = btn.getBoundingClientRect();
+        try {
+          global.localStorage.setItem(KEY, JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) }));
+        } catch (eS) { /* 隐私模式忽略 */ }
+        /* 拖完的这一次 click 必须吞掉，否则手一松宠物就被唤回了 */
+        btn.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          ev.preventDefault();
+        }, { capture: true, once: true });
+      }
+      /* 旋转 / 改变窗口大小后，把存过的位置夹回可视区 */
+      global.addEventListener('resize', function () {
+        if (btn.hidden) { return; }
+        if (btn.style.left || btn.style.top) {
+          var r = btn.getBoundingClientRect();
+          place(r.left, r.top);
+        }
+      });
+
+      restore();
+    })();
+
     petRecallEl = btn;
     return btn;
   }
@@ -20334,7 +22905,7 @@ function petRecallIcon() {
     var quiet = !!(opts && opts.quiet);
     var cur = petSkin();
     var next;
-    if (target === 'azhang' || target === 'sprite' || target === 'pro') {
+    if (target === 'azhang' || target === 'sprite' || target === 'pro' || target === 'baobao') {
       next = target;
     } else {
       var idx = PET_SKIN_ORDER.indexOf(cur);
@@ -20508,6 +23079,10 @@ function petRecallIcon() {
     /** 卡片里的真实形象：阿账走 moodSvg，精灵/管家直接用各自模块的形象 SVG（缺模块时退回通用图标） */
     function petPickArt(skin) {
       var sp, pp;
+      if (skin === 'baobao') {
+        pp = global.AJ && global.AJ.petPro;
+        return (pp && typeof pp._bbSvg === 'function' && pp._bbSvg()) || ic('spark', '', '');
+      }
       if (skin === 'azhang') {
         return azhangHeadSvg();
       }
@@ -20538,6 +23113,10 @@ function petRecallIcon() {
       '    <button type="button" class="pet-pick-card" data-skin="pro">' +
       '      <span class="ppc-ico ppc-art">' + petPickArt('pro') + '</span>' +
       '      <b>记账小管家</b><small>自定义形象工坊<br>绕行小猪 · 成就</small>' +
+      '    </button>' +
+      '    <button type="button" class="pet-pick-card" data-skin="baobao">' +
+      '      <span class="ppc-ico ppc-art">' + petPickArt('baobao') + '</span>' +
+      '      <b>抱抱金</b><small>绿发抱金币<br>专属萌宠</small>' +
       '    </button>' +
       '  </div>' +
       '  <button type="button" class="pet-pick-ok" id="petPickOk">就它了</button>' +
@@ -21082,6 +23661,7 @@ function petRecallIcon() {
        用户上次选的是精灵/管家时，这两处必须首帧就按存储值纠正，
        否则刷新后设置页显示的是错的（旧实现只在「打开设置页/切换形象」时刷新）。 */
     renderSettingsPage();
+    renderVoiceModeBars();   /* 说话方式键：聊天区 + 设置页各一份，首帧先按存储值点亮 */
     addWelcome();
     renderChatPeerName();   /* 上次选的是精灵/管家时，首帧标题与欢迎语就用对应名字 */
     // 默认视图按 UI 类型分流：简洁版进「记账」首页，完整版进聊天（修复简洁版刷新后落空白）

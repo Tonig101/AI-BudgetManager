@@ -1,0 +1,44 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>抱抱金单图</title>
+<style>
+  html,body { margin:0; background:#F3F0EA; }
+  #wrap { width:210px; height:180px; position:relative; overflow:hidden;
+          background:#fff; margin:10px; border-radius:14px;
+          box-shadow:0 2px 10px rgba(90,70,50,.12); }
+  iframe { width:390px; height:844px; border:0; position:absolute; left:-228px; top:-694px; }
+</style>
+<div id="wrap"><iframe id="f" src="index.html"></iframe></div>
+<script>
+try {
+  var raw = localStorage.getItem('ai_jizhang_v1');
+  var st = raw ? JSON.parse(raw) : {};
+  st.settings = st.settings || {};
+  st.settings.mascot = { skin: 'baobao', pet: true, poke: true };
+  localStorage.setItem('ai_jizhang_v1', JSON.stringify(st));
+} catch (e) {}
+
+var MOOD = (location.hash || '#idle').slice(1) || 'idle';
+var f = document.getElementById('f');
+
+function prep() {
+  try {
+    var d = f.contentDocument;
+    if (!d || !d.body) { return; }
+    var pet = d.querySelector('.pm-mascot');
+    if (!pet) { return; }
+    pet.className = 'pm-mascot pm-mst-' + MOOD + ' pm-scn-idle';
+    pet.style.zIndex = '99999';
+    pet.style.display = '';
+    pet.style.opacity = '1';
+    pet.style.bottom = '18px';
+    pet.style.right = '14px';
+    pet.style.background = 'transparent';
+    pet.style.boxShadow = 'none';
+  } catch (e) {}
+}
+
+var n = 0;
+function tick() { prep(); if (++n < 45) { setTimeout(tick, 120); } }
+setTimeout(tick, 700);
+</script>

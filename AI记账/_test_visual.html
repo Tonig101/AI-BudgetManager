@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>抱抱金 · 真机渲染对照</title>
+<style>
+  body { margin:0; background:#EDEAE3; padding:14px; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  h3 { margin:0 0 10px; font-size:14px; color:#5b4a3a; }
+  .row { display:flex; gap:12px; }
+  .cell { width:300px; height:300px; overflow:hidden; position:relative; border-radius:14px;
+          background:#fff; box-shadow:0 3px 12px rgba(90,70,50,.12); }
+  .cell iframe { width:390px; height:844px; border:0; position:absolute; left:0; top:-350px;
+                 transform:scale(.77); transform-origin:0 0; }
+  .cell b { position:absolute; left:8px; top:8px; font-size:12px; font-weight:600;
+            color:#3E3229; background:rgba(255,255,255,.92); padding:3px 8px; border-radius:8px; z-index:9; }
+  .note { margin-top:12px; font-size:12px; color:#8a7767; }
+</style>
+<h3>右下角宠物 · 五种表情实测（真实 index.html，非原型）</h3>
+<div class="row" id="row"></div>
+<div class="note">iframe 同源直连同一份 index.html，仅本地注入「skin=baobao」并给宠物加白色底座以便观察。</div>
+<script>
+try {
+  var raw = localStorage.getItem('ai_jizhang_v1');
+  var st = raw ? JSON.parse(raw) : {};
+  st.settings = st.settings || {};
+  st.settings.mascot = { skin: 'baobao', pet: true, poke: true };
+  localStorage.setItem('ai_jizhang_v1', JSON.stringify(st));
+} catch (e) {}
+
+var MOODS = [['idle', '待机'], ['save', '存钱'], ['error', '出错'], ['sleep', '打盹'], ['milestone', '里程碑']];
+var row = document.getElementById('row');
+MOODS.forEach(function (m) {
+  var c = document.createElement('div');
+  c.className = 'cell';
+  c.innerHTML = '<b>' + m[1] + '</b>';
+  var f = document.createElement('iframe');
+  f.src = 'index.html';
+  f.setAttribute('data-mood', m[0]);
+  c.appendChild(f);
+  row.appendChild(c);
+});
+
+function prep(fr) {
+  try {
+    var d = fr.contentDocument;
+    if (!d || !d.body) { return; }
+    var pet = d.querySelector('.pm-mascot');
+    if (!pet) { return; }
+    var mood = fr.getAttribute('data-mood');
+    var want = 'pm-mascot pm-mst-' + mood + ' pm-scn-idle';
+    if (pet.className !== want) { pet.className = want; }
+    /* 提到最上层并给白色圆角底座：免去和引导弹窗抢 z-index */
+    pet.style.zIndex = '99999';
+    pet.style.display = '';
+    pet.style.opacity = '1';
+    pet.style.bottom = '18px';
+    pet.style.right = '14px';
+    pet.style.background = 'rgba(255,255,255,.96)';
+    pet.style.borderRadius = '16px';
+    pet.style.padding = '6px 4px 2px';
+    pet.style.boxShadow = '0 2px 10px rgba(0,0,0,.10)';
+  } catch (e) {}
+}
+
+var tries = 0;
+function tick() {
+  document.querySelectorAll('iframe').forEach(prep);
+  if (++tries < 40) { setTimeout(tick, 150); }
+}
+setTimeout(tick, 800);
+</script>
