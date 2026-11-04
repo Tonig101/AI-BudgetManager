@@ -396,12 +396,19 @@
       income: 0,
       count: 0,
       byCategory: {},
+      byMainCategory: {},
       dailyMap: {}
     };
     var i;
     for (i = 0; i < CATEGORY_KEYS.length; i++) {
       result.byCategory[CATEGORY_KEYS[i]] = 0;
     }
+    var MAIN_KEYS = (DATA.MAIN_CATEGORIES && DATA.MAIN_CATEGORIES.length)
+      ? DATA.MAIN_CATEGORIES : ['餐饮', '交通', '购物', '社交', '学习', '娱乐', '居住', '其他'];
+    for (i = 0; i < MAIN_KEYS.length; i++) {
+      result.byMainCategory[MAIN_KEYS[i]] = 0;
+    }
+    var mainOf = DATA.mainCategoryOf || function (c) { return c; };
     var list = Array.isArray(bills) ? bills : [];
     for (i = 0; i < list.length; i++) {
       var b = list[i];
@@ -419,6 +426,12 @@
         result.byCategory[b.category] = 0;
       }
       result.byCategory[b.category] = round2(result.byCategory[b.category] + amount);
+      /* 预算 / 统计按 8 大类聚合：买菜、外卖、房租等细类也算进所属大类，避免漏算 */
+      var mc = mainOf(b.category);
+      if (!Object.prototype.hasOwnProperty.call(result.byMainCategory, mc)) {
+        result.byMainCategory[mc] = 0;
+      }
+      result.byMainCategory[mc] = round2(result.byMainCategory[mc] + amount);
       result.dailyMap[b.date] = round2((result.dailyMap[b.date] || 0) + amount);
     }
     return result;

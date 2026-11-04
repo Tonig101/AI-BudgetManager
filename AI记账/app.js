@@ -7747,9 +7747,12 @@
   function getCategorySlices(byCategory) {
     var slices = [];
     var i;
-    for (i = 0; i < DATA.CATEGORIES.length; i++) {
-      var key = DATA.CATEGORIES[i].key;
-      var value = ENG.round2(byCategory[key] || 0);
+    var mains = (DATA.MAIN_CATEGORIES && DATA.MAIN_CATEGORIES.length)
+      ? DATA.MAIN_CATEGORIES : SP_QUICK_CATS;
+    /* 按大类聚合：买菜 / 外卖 / 水果都算进餐饮，饼图不再摊成 50 多片 */
+    for (i = 0; i < mains.length; i++) {
+      var key = mains[i];
+      var value = catSpentOf(key, byCategory);
       if (value > 0) {
         /* 走 categoryColor 而不是直读 data.js：贴纸皮肤会把餐饮那几个真绿
            换成纸胶带暖色，直读的话饼图和图例会漏掉这次映射。 */
@@ -7970,7 +7973,7 @@
           '<span class="bill-dot" style="background:' + (isIncome ? skinGreen() : categoryColor(b.category)) + '"></span>' +
           '<span class="bill-main">' +
           '<span class="bill-note">' + esc(b.note) + '</span>' +
-          '<span class="bill-meta">' + esc(time ? time + ' · ' : '') + esc(isIncome ? '收入' : b.category) + '</span>' +
+          '<span class="bill-meta">' + esc(time ? time + ' · ' : '') + esc(isIncome ? '收入' : spCatLabel(b.category)) + '</span>' +
           '</span>' +
           '<span class="bill-amount' + (isIncome ? ' income' : '') + '">' +
           (isIncome ? '+' : '-') + money(b.amount) + '</span>' +
@@ -8025,15 +8028,28 @@
     var counts = {};
     var i;
     var j;
+    var mains = (DATA.MAIN_CATEGORIES && DATA.MAIN_CATEGORIES.length)
+      ? DATA.MAIN_CATEGORIES : SP_QUICK_CATS;
+    var mOf = DATA.mainCategoryOf || function (c) { return c; };
     for (j = 0; j < bills.length; j++) {
       if (bills[j].type === 'income') { continue; }
-      counts[bills[j].category] = (counts[bills[j].category] || 0) + 1;
+      var mcb = mOf(bills[j].category);
+      counts[mcb] = (counts[mcb] || 0) + 1;
     }
-    for (i = 0; i < DATA.CATEGORIES.length; i++) {
-      var key = DATA.CATEGORIES[i].key;
-      var val = ENG.round2(agg.byCategory[key] || 0);
+    for (i = 0; i < mains.length; i++) {
+      var key = mains[i];
+      var val = catSpentOf(key, agg.byCategory);
       if (val > 0) {
-        rows.push({ key: key, value: val, count: counts[key] || 0, color: categoryColor(key) });
+        /* 该大类下的细类拆解（买菜 ¥20 · 外卖 ¥15 …），让用户看清小类算在哪 */
+        var subs = [];
+        for (var sk in agg.byCategory) {
+          if (!Object.prototype.hasOwnProperty.call(agg.byCategory, sk)) { continue; }
+          if (mOf(sk) === key && (Number(agg.byCategory[sk]) || 0) > 0) {
+            subs.push({ key: sk, value: ENG.round2(agg.byCategory[sk]) });
+          }
+        }
+        subs.sort(function (a, b) { return b.value - a.value; });
+        rows.push({ key: key, value: val, count: counts[key] || 0, color: categoryColor(key), subs: subs });
       }
     }
     rows.sort(function (a, b) { return b.value - a.value; });
@@ -8052,6 +8068,16 @@
       /* 横条长度 = 占本月总支出的百分比，和右侧「n%」对得上（不是相对最高项，
          否则第一名永远是满条、与 36% 这样的数字自相矛盾） */
       var w = Math.max(3, pct);
+      /* 细类拆解：只有当大类下确实有细类消费时才显示，避免一行多余的小字 */
+      var bdHtml = '';
+      if (r.subs && r.subs.length && !(r.subs.length === 1 && r.subs[0].key === r.key)) {
+        var bparts = [];
+        for (var bi = 0; bi < Math.min(3, r.subs.length); bi++) {
+          bparts.push(esc(r.subs[bi].key) + ' ' + money(r.subs[bi].value));
+        }
+        if (r.subs.length > 3) { bparts.push('等 ' + r.subs.length + ' 类'); }
+        bdHtml = '<span class="rank-breakdown">' + bparts.join(' · ') + '</span>';
+      }
       html += '<li class="rank-row" data-cat="' + esc(r.key) + '" role="button" tabindex="0"' +
         ' title="点一下在上方环形图里高亮这个类目">' +
         '<span class="rank-ico" style="' + spCatTileStyle(r.key) + '">' + spCatIcon(r.key) + '</span>' +
@@ -8060,6 +8086,7 @@
         '<span class="rank-bar"><i style="width:' + w.toFixed(1) + '%;background:' + r.color + '"></i></span>' +
         '<span class="rank-sub"><span>本月共支出 ' + money(r.value) + ' · ' + pct.toFixed(0) + '%</span>' +
         '<span>支出 ' + r.count + ' 笔</span></span>' +
+        bdHtml +
         '</span></li>';
     }
     list.innerHTML = html;
@@ -8382,6 +8409,27 @@
    * - amount=0 表示「这分类当前没有可用额度」（自动且生活费为 0）。
    * @return {{amount:number, custom:boolean, pct:number}} pct 是「占生活费的百分比」派生值，仅展示用。
    */
+  /**
+   * 按「预算大类」口径统计已花：把 byCategory 里所有归属于该大类的细类金额相加。
+   * 传 byCategory（细类）或 byMainCategory（已聚合）都正确，兼容旧调用点。
+   */
+  function catSpentOf(main, byCategory) {
+    var src = byCategory || {};
+    var mOf = DATA.mainCategoryOf || function (c) { return c; };
+    var sum = 0;
+    for (var k in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, k)) { continue; }
+      if (mOf(k) === main) { sum = ENG.round2(sum + (Number(src[k]) || 0)); }
+    }
+    return ENG.round2(sum);
+  }
+
+  /** 明细里的分类文案：细类写成「大类 · 细类」，一眼看出它算进哪个预算。 */
+  function spCatLabel(cat) {
+    var main = DATA.mainCategoryOf ? DATA.mainCategoryOf(cat) : cat;
+    return (main && main !== cat) ? (main + ' · ' + cat) : cat;
+  }
+
   function catBudgetOf(cat) {
     var cb = (state.budget && state.budget.catBudgets) || {};
     var custom = Number(cb[cat]) || 0;
@@ -8438,7 +8486,7 @@
     if (!hint) { return; }
     var c = ctx || {};
     var totalNow = (typeof c.totalNow === 'number') ? c.totalNow : (Number(state.budget.total) || 0);
-    var spent = Number((c.spentMap || {})[cat]) || 0;
+    var spent = catSpentOf(cat, c.spentMap || {});
     var defPct = Math.round((DATA.CATEGORY_BUDGET_RATIO && DATA.CATEGORY_BUDGET_RATIO[cat] || 0) * 100);
     var autoAmt = (totalNow > 0 && defPct > 0) ? ENG.round2(totalNow * defPct / 100) : 0;
     /* 以输入框当前值为准：用户正在打字时也立刻反馈，不必等保存 */
@@ -8515,7 +8563,8 @@
     for (i = 0; i < bills.length; i++) {
       var b = bills[i];
       var inc = spIsIncome(b);
-      var cat = inc ? '收入' : b.category;
+      var mainCat = inc ? '收入' : (DATA.mainCategoryOf ? DATA.mainCategoryOf(b.category) : b.category);
+      var cat = inc ? '收入' : spCatLabel(b.category);
       var title = inc ? (b.source || b.note || '收入') : (b.note || b.category);
       var time = spTimeOf(b);
       /* 收入的分类方块：贴纸皮肤下走琥珀墨，否则流水里会冒出薄荷绿图标 */
@@ -8523,7 +8572,7 @@
         ? '--sc:#E08A12;--sc-ink:#8A5A0A'
         : ('--sc:#07C160;--sc-ink:#047A3E;background:#07C1601f');
       html += '<li class="sp-bill">' +
-        '<span class="sp-bill-ico" style="' + (inc ? incStyle : spCatTileStyle(b.category)) + '">' + spCatIcon(cat) + '</span>' +
+        '<span class="sp-bill-ico" style="' + (inc ? incStyle : spCatTileStyle(mainCat)) + '">' + spCatIcon(mainCat) + '</span>' +
         '<span class="sp-bill-main"><b>' + esc(title) + '</b><small>' +
         (time ? esc(time) + ' · ' : '') + esc(cat) + '</small></span>' +
         '<span class="sp-bill-amt' + (inc ? ' inc' : '') + '">' + (inc ? '+' : '-') + money(b.amount) + '</span>' +
@@ -8556,7 +8605,9 @@
     $('spDateLine').textContent = (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + week + ' · 今天想记点什么？';
     var q = '';
     var i;
-    var catSpent = (ov.cycleAgg && ov.cycleAgg.byCategory) || {};
+    /* 按 8 大类口径取已花：买菜 / 外卖等细类已归入所属大类，不会漏算 */
+    var catSpent = (ov.cycleAgg && ov.cycleAgg.byMainCategory) ||
+      (ov.cycleAgg && ov.cycleAgg.byCategory) || {};
     for (i = 0; i < SP_QUICK_CATS.length; i++) {
       var c = SP_QUICK_CATS[i];
       /* 分类额度小签：额度 > 0 才显示；自定义额度带 ✎，点它直接去设置里改 */

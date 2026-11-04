@@ -738,6 +738,56 @@
   var CATEGORY_KEYS = CATEGORIES.map(function (c) { return c.key; });
 
   /**
+   * 预算大类：首页快捷栏 / 分类预算 / 统计图表统一按这 8 类聚合。
+   * 与 app.js 的 SP_QUICK_CATS 同源，改动时两处必须一起改。
+   *
+   * 为什么需要归属表：CATEGORIES 里有 50+ 个细分品类（买菜 / 外卖 / 蔬菜 /
+   * 房租 / 电影票 …），全塞进预算页会太繁杂，所以「大类管预算、小类管看清」：
+   * 小类照旧记在账单里（明细、筛选都能看到），预算和统计按 CATEGORY_PARENT
+   * 归并到 8 个大类，保证任何一笔支出都不会被漏算。
+   */
+  var MAIN_CATEGORIES = ['餐饮', '交通', '购物', '社交', '学习', '娱乐', '居住', '其他'];
+
+  /** 细分品类 -> 预算大类。未列出的 key 一律归「其他」（见 mainCategoryOf）。 */
+  var CATEGORY_PARENT = {
+    /* 吃：买菜 / 外卖 / 水果都算餐饮，不再从餐饮预算里漏掉 */
+    '外卖': '餐饮', '蔬菜': '餐饮', '买菜': '餐饮', '水果': '餐饮',
+    '零食': '餐饮', '饮品': '餐饮', '烟酒': '餐饮',
+    /* 买东西 */
+    '日用': '购物', '服饰': '购物', '美容': '购物', '数码': '购物', '快递': '购物',
+    /* 住与固定开销 */
+    '房租': '居住', '房贷': '居住', '水费': '居住', '电费': '居住',
+    '燃气费': '居住', '话费': '居住', '物业': '居住', '维修': '居住',
+    /* 行 */
+    '汽车': '交通', '摩托': '交通', '加油费': '交通',
+    /* 玩 */
+    '旅行': '娱乐', '电影票': '娱乐', '游戏': '娱乐', '追星': '娱乐',
+    '运动': '娱乐', '麻将': '娱乐',
+    /* 学 */
+    '书籍': '学习',
+    /* 人情往来 */
+    '礼物': '社交', '长辈': '社交', '红包': '社交', '礼金': '社交',
+    /* 其余（医疗 / 宠物 / 育儿 / 资金往来等）统一进「其他」兜底 */
+    '医疗': '其他', '宠物': '其他', '育儿': '其他', '洗衣服': '其他',
+    '彩票': '其他', '捐赠': '其他', '转账': '其他', '还款': '其他', '借出': '其他'
+  };
+
+  /** 某品类归属哪个预算大类；8 大类返回自身，未知 / 收入一律归「其他」。 */
+  function mainCategoryOf(cat) {
+    if (MAIN_CATEGORIES.indexOf(cat) !== -1) { return cat; }
+    return CATEGORY_PARENT[cat] || '其他';
+  }
+
+  /** 该大类挂了哪些细类（含大类自身），按 CATEGORIES 顺序。 */
+  function subCategoriesOf(main) {
+    var out = [];
+    for (var i = 0; i < CATEGORY_KEYS.length; i++) {
+      if (mainCategoryOf(CATEGORY_KEYS[i]) === main) { out.push(CATEGORY_KEYS[i]); }
+    }
+    return out;
+  }
+
+  /**
    * 对话气泡 / 卡片标题里的小图标。
    *
    * 为什么不用 emoji：系统 emoji 在 Windows 上是 Segoe UI Emoji，在 macOS 上是 Apple Color
@@ -760,6 +810,10 @@
     DATA_VERSION: DATA_VERSION,
     CATEGORIES: CATEGORIES,
     CATEGORY_KEYS: CATEGORY_KEYS,
+    MAIN_CATEGORIES: MAIN_CATEGORIES,
+    CATEGORY_PARENT: CATEGORY_PARENT,
+    mainCategoryOf: mainCategoryOf,
+    subCategoriesOf: subCategoriesOf,
     FOOD_CATEGORIES: FOOD_CATEGORIES,
     CATEGORY_KEYWORDS: CATEGORY_KEYWORDS,
     CATEGORY_BUDGET_RATIO: CATEGORY_BUDGET_RATIO,

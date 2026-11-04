@@ -17150,3 +17150,14 @@ html[data-skin="sticker"] .chip-reco::before { box-shadow: 0 0 0 3px rgba(224, 1
 .pr-hub-rows .pr-hub-row:last-child { border-bottom: 0; }
 .pr-hub-item { color: var(--text); font-weight: 600; flex: 0 0 auto; }
 .pr-hub-band { color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* 类目排行：该大类下的细类拆解（买菜 / 外卖…），说明小类算进了哪个预算大类 */
+.rank-breakdown {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-3, #9AA3AD);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
